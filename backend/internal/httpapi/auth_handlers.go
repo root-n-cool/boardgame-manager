@@ -35,7 +35,10 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) logoutHandler(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("session_token"); err == nil {
-		_ = s.Sessions.Delete(r.Context(), auth.HashToken(cookie.Value))
+		if err := s.Sessions.Delete(r.Context(), auth.HashToken(cookie.Value)); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not log out")
+			return
+		}
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     "session_token",
