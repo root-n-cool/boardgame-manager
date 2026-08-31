@@ -29,6 +29,9 @@ func NewRouter(s *Server) http.Handler {
 		protected.Use(s.requireAuth)
 		protected.Post("/api/logout", s.logoutHandler)
 		protected.Get("/api/me", s.meHandler)
+		protected.Get("/api/users", s.listUsersHandler)
+		protected.Post("/api/users", s.createUserHandler)
+		protected.Delete("/api/users/{id}", s.deleteUserHandler)
 	})
 
 	return r
