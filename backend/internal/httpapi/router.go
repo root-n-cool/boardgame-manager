@@ -5,14 +5,24 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"boardgames-manager/internal/auth"
+	"boardgames-manager/internal/users"
 )
 
-func NewRouter() http.Handler {
+type Server struct {
+	Users    *users.Store
+	Sessions *auth.SessionStore
+}
+
+func NewRouter(s *Server) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
 
 	r.Get("/api/health", healthHandler)
+	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
+	r.Post("/api/bootstrap", s.bootstrapHandler)
 
 	return r
 }

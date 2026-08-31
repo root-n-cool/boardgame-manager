@@ -9,7 +9,7 @@ import (
 )
 
 func TestHealthEndpoint_ReturnsOK(t *testing.T) {
-	router := httpapi.NewRouter()
+	router := httpapi.NewRouter(newTestServer(t))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/health", nil)
 	rec := httptest.NewRecorder()
