@@ -23,6 +23,13 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
 	r.Post("/api/bootstrap", s.bootstrapHandler)
+	r.Post("/api/login", s.loginHandler)
+
+	r.Group(func(protected chi.Router) {
+		protected.Use(s.requireAuth)
+		protected.Post("/api/logout", s.logoutHandler)
+		protected.Get("/api/me", s.meHandler)
+	})
 
 	return r
 }
