@@ -7,6 +7,7 @@ import (
 	"boardgames-manager/internal/auth"
 	"boardgames-manager/internal/db"
 	"boardgames-manager/internal/httpapi"
+	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/users"
 )
 
@@ -23,5 +24,6 @@ func newTestServer(t *testing.T) *httpapi.Server {
 	return &httpapi.Server{
 		Users:    users.NewStore(conn),
 		Sessions: auth.NewSessionStore(conn),
+		Settings: settings.NewStore(conn),
 	}
 }

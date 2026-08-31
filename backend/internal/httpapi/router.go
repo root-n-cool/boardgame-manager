@@ -7,12 +7,14 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"boardgames-manager/internal/auth"
+	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/users"
 )
 
 type Server struct {
 	Users    *users.Store
 	Sessions *auth.SessionStore
+	Settings *settings.Store
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -32,6 +34,8 @@ func NewRouter(s *Server) http.Handler {
 		protected.Get("/api/users", s.listUsersHandler)
 		protected.Post("/api/users", s.createUserHandler)
 		protected.Delete("/api/users/{id}", s.deleteUserHandler)
+		protected.Get("/api/settings", s.getSettingsHandler)
+		protected.Put("/api/settings", s.putSettingsHandler)
 	})
 
 	return r
