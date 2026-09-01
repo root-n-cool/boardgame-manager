@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -30,6 +31,8 @@ func NewRouter(s *Server) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
 
+	bookingCredentialsLimiter := newRateLimiter(10, time.Minute)
+
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
 	r.Post("/api/bootstrap", s.bootstrapHandler)
@@ -39,6 +42,9 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/uploads/{filename}", s.getUploadHandler)
 	r.Get("/api/events", s.listEventsHandler)
 	r.Get("/api/events/{id}", s.getEventHandler)
+	r.Post("/api/events/{id}/bookings", s.createBookingHandler)
+	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/lookup", s.lookupBookingHandler)
+	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/{id}/cancel", s.cancelBookingHandler)
 
 	r.Group(func(protected chi.Router) {
 		protected.Use(s.requireAuth)
