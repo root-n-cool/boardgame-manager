@@ -82,9 +82,9 @@ Note:
   solo le righe DB, **non** il file fisico — evita bug di reference-counting,
   costo trascurabile di spazio disco per un uso selfhost di piccole
   dimensioni.
-- La UI impedisce di eliminare l'unica `GameLanguage` di un gioco (deve
-  sempre restarne almeno una); per cambiare la lingua base l'admin ne
-  aggiunge prima una nuova.
+- Non è prevista in questa fase l'eliminazione di una singola lingua: un
+  gioco ha sempre almeno la lingua base creata insieme ad esso. Aggiungerne
+  altre è possibile; rimuoverle è rimandato a una fase futura se necessario.
 
 ## 4. API
 
