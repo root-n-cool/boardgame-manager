@@ -11,6 +11,7 @@ import (
 	"boardgames-manager/internal/httpapi"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/users"
+	"boardgames-manager/internal/webui"
 )
 
 func main() {
@@ -43,10 +44,19 @@ func main() {
 		Settings: settings.NewStore(conn),
 	}
 
-	router := httpapi.NewRouter(server)
+	apiRouter := httpapi.NewRouter(server)
+
+	uiHandler, err := webui.Handler()
+	if err != nil {
+		log.Fatalf("load embedded frontend: %v", err)
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/api/", apiRouter)
+	mux.Handle("/", uiHandler)
 
 	log.Printf("listening on :%s", port)
-	if err := http.ListenAndServe(":"+port, router); err != nil {
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatalf("server error: %v", err)
 	}
 }
