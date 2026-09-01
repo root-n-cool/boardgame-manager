@@ -15,7 +15,7 @@ async function logout() {
   <div class="layout">
     <nav>
       <router-link :to="{ name: 'users' }">Utenti</router-link>
-      <router-link :to="{ name: 'settings' }">Impostazioni</router-link>
+      <router-link to="/settings">Impostazioni</router-link>
       <button @click="logout">Esci</button>
     </nav>
     <main>
