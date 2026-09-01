@@ -134,6 +134,21 @@ func (s *Store) UpdateGame(ctx context.Context, id int64, upd GameUpdate) (Game,
 	return s.GetGame(ctx, id)
 }
 
+func (s *Store) UpdateCoverPath(ctx context.Context, id int64, path string) (Game, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE games SET cover_path = ? WHERE id = ?`, path, id)
+	if err != nil {
+		return Game{}, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return Game{}, err
+	}
+	if affected == 0 {
+		return Game{}, ErrNotFound
+	}
+	return s.GetGame(ctx, id)
+}
+
 func (s *Store) DeleteGame(ctx context.Context, id int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM games WHERE id = ?`, id)
 	if err != nil {

@@ -47,6 +47,9 @@ const linkType = ref<'link' | 'youtube'>('link')
 const uploadFile = ref<File | null>(null)
 const mediaError = ref('')
 
+const coverFile = ref<File | null>(null)
+const coverError = ref('')
+
 function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
 }
@@ -102,6 +105,28 @@ async function deleteGame() {
 function onFileSelected(event: Event) {
   const target = event.target as HTMLInputElement
   uploadFile.value = target.files?.[0] || null
+}
+
+function onCoverFileSelected(event: Event) {
+  const target = event.target as HTMLInputElement
+  coverFile.value = target.files?.[0] || null
+}
+
+async function uploadCover() {
+  coverError.value = ''
+  if (!coverFile.value) {
+    coverError.value = 'Seleziona un immagine'
+    return
+  }
+  const formData = new FormData()
+  formData.append('file', coverFile.value)
+  try {
+    await api.post(`/games/${gameId}/cover`, formData)
+    coverFile.value = null
+    await load()
+  } catch (e) {
+    coverError.value = (e as Error).message
+  }
 }
 
 async function addLinkMedia() {
@@ -163,6 +188,16 @@ onMounted(async () => {
   <div v-if="game">
     <h1>{{ game.name }}</h1>
     <img v-if="game.coverPath" :src="`/api/uploads/${game.coverPath}`" :alt="game.name" class="cover" />
+
+    <form @submit.prevent="uploadCover">
+      <label>
+        Copertina (JPEG, PNG o WebP, max 5MB)
+        <input type="file" accept="image/jpeg,image/png,image/webp" @change="onCoverFileSelected" />
+      </label>
+      <button type="submit">Carica copertina</button>
+      <p v-if="coverError" class="error">{{ coverError }}</p>
+    </form>
+
     <p v-if="game.owner">Proprietario: {{ game.owner }}</p>
     <button type="button" @click="deleteGame">Elimina gioco</button>
 
