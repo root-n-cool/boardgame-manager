@@ -2,6 +2,8 @@
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
+import { useAuthStore } from '../stores/auth'
+import PublicHeader from '../components/PublicHeader.vue'
 
 interface GameMediaInfo {
   id: number
@@ -29,6 +31,7 @@ interface GameDetail {
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const gameId = route.params.id as string
 
 const game = ref<GameDetail | null>(null)
@@ -185,93 +188,104 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="game">
-    <h1>{{ game.name }}</h1>
-    <img v-if="game.coverPath" :src="`/api/uploads/${game.coverPath}`" :alt="game.name" class="cover" />
+  <div>
+    <PublicHeader />
+    <div class="public-page" v-if="game">
+      <h1>{{ game.name }}</h1>
+      <img v-if="game.coverPath" :src="`/api/uploads/${game.coverPath}`" :alt="game.name" class="cover" />
 
-    <form @submit.prevent="uploadCover">
-      <label>
-        Copertina (JPEG, PNG o WebP, max 5MB)
-        <input type="file" accept="image/jpeg,image/png,image/webp" @change="onCoverFileSelected" />
-      </label>
-      <button type="submit">Carica copertina</button>
-      <p v-if="coverError" class="error">{{ coverError }}</p>
-    </form>
+      <form v-if="auth.user" @submit.prevent="uploadCover">
+        <label>
+          Copertina (JPEG, PNG o WebP, max 5MB)
+          <input type="file" accept="image/jpeg,image/png,image/webp" @change="onCoverFileSelected" />
+        </label>
+        <button type="submit">Carica copertina</button>
+        <p v-if="coverError" class="error">{{ coverError }}</p>
+      </form>
 
-    <p v-if="game.owner">Proprietario: {{ game.owner }}</p>
-    <button type="button" @click="deleteGame">Elimina gioco</button>
+      <p v-if="game.owner">Proprietario: {{ game.owner }}</p>
+      <button v-if="auth.user" type="button" @click="deleteGame">Elimina gioco</button>
 
-    <nav class="language-tabs">
-      <button
-        v-for="l in game.languages"
-        :key="l.code"
-        type="button"
-        :class="{ active: l.code === activeLangCode }"
-        @click="selectLanguage(l.code)"
-      >
-        {{ l.code }}{{ l.isBaseLanguage ? ' ★' : '' }}
-      </button>
-    </nav>
+      <nav class="language-tabs">
+        <button
+          v-for="l in game.languages"
+          :key="l.code"
+          type="button"
+          :class="{ active: l.code === activeLangCode }"
+          @click="selectLanguage(l.code)"
+        >
+          {{ l.code }}{{ l.isBaseLanguage ? ' ★' : '' }}
+        </button>
+      </nav>
 
-    <form @submit.prevent="saveLanguage">
-      <label>
-        Nome
-        <input v-model="editName" required />
-      </label>
-      <label>
-        Descrizione
-        <textarea v-model="editDescription"></textarea>
-      </label>
-      <button type="submit">Salva</button>
-      <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
-    </form>
+      <template v-if="auth.user">
+        <form @submit.prevent="saveLanguage">
+          <label>
+            Nome
+            <input v-model="editName" required />
+          </label>
+          <label>
+            Descrizione
+            <textarea v-model="editDescription"></textarea>
+          </label>
+          <button type="submit">Salva</button>
+          <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
+        </form>
 
-    <form @submit.prevent="addLanguage">
-      <label>
-        Aggiungi lingua (es. en)
-        <input v-model="newLangCode" required />
-      </label>
-      <button type="submit">Aggiungi</button>
-    </form>
+        <form @submit.prevent="addLanguage">
+          <label>
+            Aggiungi lingua (es. en)
+            <input v-model="newLangCode" required />
+          </label>
+          <button type="submit">Aggiungi</button>
+        </form>
+      </template>
+      <template v-else>
+        <h2>{{ activeLanguage()?.name }}</h2>
+        <p v-if="activeLanguage()?.description">{{ activeLanguage()?.description }}</p>
+      </template>
 
-    <h2>Manuale e tutorial ({{ activeLangCode }})</h2>
-    <ul>
-      <li v-for="m in activeLanguage()?.media || []" :key="m.id">
-        <a v-if="m.type === 'file'" :href="`/api/uploads/${m.url}`" target="_blank">{{ m.title || 'Manuale' }}</a>
-        <a v-else :href="m.url" target="_blank">{{ m.title || m.url }}</a>
-        ({{ m.type }})
-        <button type="button" @click="removeMedia(m.id)">Rimuovi</button>
-      </li>
-    </ul>
+      <h2>Manuale e tutorial ({{ activeLangCode }})</h2>
+      <ul>
+        <li v-for="m in activeLanguage()?.media || []" :key="m.id">
+          <a v-if="m.type === 'file'" :href="`/api/uploads/${m.url}`" target="_blank">{{ m.title || 'Manuale' }}</a>
+          <a v-else :href="m.url" target="_blank">{{ m.title || m.url }}</a>
+          ({{ m.type }})
+          <button v-if="auth.user" type="button" @click="removeMedia(m.id)">Rimuovi</button>
+        </li>
+      </ul>
 
-    <form @submit.prevent="uploadManual">
-      <label>
-        Carica manuale (solo PDF, max 20MB)
-        <input type="file" accept="application/pdf" @change="onFileSelected" />
-      </label>
-      <button type="submit">Carica</button>
-    </form>
+      <template v-if="auth.user">
+        <form @submit.prevent="uploadManual">
+          <label>
+            Carica manuale (solo PDF, max 20MB)
+            <input type="file" accept="application/pdf" @change="onFileSelected" />
+          </label>
+          <button type="submit">Carica</button>
+        </form>
 
-    <form @submit.prevent="addLinkMedia">
-      <label>
-        Tipo
-        <select v-model="linkType">
-          <option value="link">Link</option>
-          <option value="youtube">YouTube</option>
-        </select>
-      </label>
-      <label>
-        URL
-        <input v-model="linkUrl" required />
-      </label>
-      <label>
-        Titolo
-        <input v-model="linkTitle" />
-      </label>
-      <button type="submit">Aggiungi</button>
-    </form>
-    <p v-if="mediaError" class="error">{{ mediaError }}</p>
+        <form @submit.prevent="addLinkMedia">
+          <label>
+            Tipo
+            <select v-model="linkType">
+              <option value="link">Link</option>
+              <option value="youtube">YouTube</option>
+            </select>
+          </label>
+          <label>
+            URL
+            <input v-model="linkUrl" required />
+          </label>
+          <label>
+            Titolo
+            <input v-model="linkTitle" />
+          </label>
+          <button type="submit">Aggiungi</button>
+        </form>
+        <p v-if="mediaError" class="error">{{ mediaError }}</p>
+      </template>
 
-    <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error" class="error">{{ error }}</p>
+    </div>
   </div>
 </template>
