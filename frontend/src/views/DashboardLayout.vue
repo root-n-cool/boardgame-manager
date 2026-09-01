@@ -6,7 +6,13 @@ const auth = useAuthStore()
 const router = useRouter()
 
 async function logout() {
-  await auth.logout()
+  // The store clears the local session either way; a failing POST /logout
+  // must not turn this button into a no-op.
+  try {
+    await auth.logout()
+  } catch (e) {
+    console.error('logout request failed', e)
+  }
   router.push({ name: 'login' })
 }
 </script>
@@ -15,7 +21,7 @@ async function logout() {
   <div class="layout">
     <nav>
       <router-link :to="{ name: 'users' }">Utenti</router-link>
-      <router-link to="/settings">Impostazioni</router-link>
+      <router-link :to="{ name: 'settings' }">Impostazioni</router-link>
       <button @click="logout">Esci</button>
     </nav>
     <main>

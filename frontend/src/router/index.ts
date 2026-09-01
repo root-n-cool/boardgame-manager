@@ -26,7 +26,13 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.checked) {
-    await auth.checkStatus()
+    // checkStatus already swallows a backend outage, but a rejected guard
+    // promise means a blank page, so never let one escape from here.
+    try {
+      await auth.checkStatus()
+    } catch (e) {
+      console.error('auth status check failed', e)
+    }
   }
 
   if (auth.needsSetup && to.name !== 'setup') {

@@ -14,9 +14,24 @@ export const useAuthStore = defineStore('auth', {
   }),
   actions: {
     async checkStatus() {
-      const status = await api.get<{ needsSetup: boolean }>('/bootstrap/status')
-      this.needsSetup = status.needsSetup
+      try {
+        const status = await api.get<{ needsSetup: boolean }>('/bootstrap/status')
+        this.needsSetup = status.needsSetup
+      } catch (e) {
+        // The backend being unreachable must not leave the router guard's
+        // promise rejected — that renders a blank page with only a console
+        // error. Fall back to "set up, nobody signed in" so the guard sends
+        // the visitor to the login page, where the failure is at least
+        // visible as a form error when they try to sign in.
+        console.error('could not read bootstrap status', e)
+        this.needsSetup = false
+        this.user = null
+        this.checked = true
+        return
+      }
+
       if (!this.needsSetup) {
+        // A 401 here is the ordinary "not signed in" answer, not a failure.
         try {
           this.user = await api.get<CurrentUser>('/me')
         } catch {
@@ -33,8 +48,13 @@ export const useAuthStore = defineStore('auth', {
       this.user = await api.post<CurrentUser>('/login', { email, password })
     },
     async logout() {
-      await api.post('/logout')
-      this.user = null
+      try {
+        await api.post('/logout')
+      } finally {
+        // Drop the local session even if the server call failed, so the
+        // "Esci" button can never leave the UI stuck in a signed-in state.
+        this.user = null
+      }
     },
   },
 })

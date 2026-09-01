@@ -47,7 +47,15 @@ async function save() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  // Unguarded, this becomes an unhandled rejection and an empty page whenever
+  // the request fails for any reason other than a 401.
+  try {
+    await load()
+  } catch (e) {
+    error.value = (e as Error).message
+  }
+})
 </script>
 
 <template>

@@ -39,12 +39,21 @@ async function removeUser(id: number) {
   }
 }
 
-onMounted(loadUsers)
+onMounted(async () => {
+  // Unguarded, this becomes an unhandled rejection and an empty page whenever
+  // the request fails for any reason other than a 401.
+  try {
+    await loadUsers()
+  } catch (e) {
+    error.value = (e as Error).message
+  }
+})
 </script>
 
 <template>
   <div>
     <h1>Utenti</h1>
+    <p v-if="error" class="error">{{ error }}</p>
     <ul>
       <li v-for="u in users" :key="u.id">
         {{ u.email }}
@@ -63,7 +72,6 @@ onMounted(loadUsers)
         <input v-model="newPassword" type="password" required minlength="8" />
       </label>
       <button type="submit">Aggiungi</button>
-      <p v-if="error" class="error">{{ error }}</p>
     </form>
   </div>
 </template>
