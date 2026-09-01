@@ -34,6 +34,7 @@ func NewRouter(s *Server) http.Handler {
 	r.Post("/api/login", s.loginHandler)
 	r.Get("/api/games", s.listGamesHandler)
 	r.Get("/api/games/{id}", s.getGameHandler)
+	r.Get("/api/uploads/{filename}", s.getUploadHandler)
 
 	r.Group(func(protected chi.Router) {
 		protected.Use(s.requireAuth)
@@ -50,6 +51,8 @@ func NewRouter(s *Server) http.Handler {
 		protected.Delete("/api/games/{id}", s.deleteGameHandler)
 		protected.Post("/api/games/{id}/languages", s.createLanguageHandler)
 		protected.Patch("/api/games/{id}/languages/{lang}", s.updateLanguageHandler)
+		protected.Post("/api/games/{id}/languages/{lang}/media", s.createMediaHandler)
+		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}", s.deleteMediaHandler)
 	})
 
 	return r
