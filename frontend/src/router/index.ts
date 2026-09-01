@@ -6,6 +6,7 @@ import DashboardLayout from '../views/DashboardLayout.vue'
 import UsersView from '../views/UsersView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import GamesView from '../views/GamesView.vue'
+import GameNewView from '../views/GameNewView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -19,6 +20,7 @@ const router = createRouter({
         { path: '', redirect: '/users' },
         { path: 'users', name: 'users', component: UsersView },
         { path: 'games', name: 'games', component: GamesView },
+        { path: 'games/new', name: 'game-new', component: GameNewView },
         { path: 'settings', name: 'settings', component: SettingsView },
       ],
     },
