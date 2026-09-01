@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"time"
 )
@@ -346,4 +347,8 @@ func (s *Store) TestInsertBooking(eventID, eventGameID int64, status string) err
 		eventID, eventGameID, phone, code, status,
 	)
 	return err
+}
+
+func isUniqueConstraintErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
