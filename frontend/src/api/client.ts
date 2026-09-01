@@ -17,9 +17,17 @@ let redirecting = false
  * rare in an admin panel, so the reload costs nothing in practice.
  */
 function redirectToLogin() {
-  // The login page itself probes GET /api/me through the auth store and gets a
-  // 401 whenever nobody is signed in — that is the normal state, not a session
-  // loss. Redirecting on it would reload /login forever.
+  // The pathname check stops the login page from reloading itself: a wrong-
+  // password attempt on LoginView is a POST /login that legitimately 401s
+  // while already on /login, and force-navigating to the page already shown
+  // would just reload it instead of letting the form show the error.
+  //
+  // Separately, checkStatus()'s own GET /me passes skipAuthRedirect below: a
+  // 401 there is always the expected "nobody's signed in" answer, not a
+  // session loss, and checkStatus() now runs on every route — including the
+  // public ones — not just /login, so this function can no longer rely on
+  // that call only ever happening on the login page. Every other 401 in the
+  // app still wants this hard redirect.
   if (redirecting || window.location.pathname === LOGIN_PATH) {
     return
   }
@@ -27,23 +35,28 @@ function redirectToLogin() {
   window.location.href = LOGIN_PATH
 }
 
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const isFormData = options.body instanceof FormData
+async function request<T>(
+  path: string,
+  options: RequestInit & { skipAuthRedirect?: boolean } = {},
+): Promise<T> {
+  const { skipAuthRedirect, ...fetchOptions } = options
+  const isFormData = fetchOptions.body instanceof FormData
   const headers: Record<string, string> = {
     ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...((options.headers as Record<string, string>) || {}),
+    ...((fetchOptions.headers as Record<string, string>) || {}),
   }
 
   const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
+    ...fetchOptions,
     credentials: 'include',
     headers,
   })
 
   if (!res.ok) {
     // Only 401 means "your session is gone"; a 404 or 409 from a normal call
-    // must still just throw for the caller's own error handling.
-    if (res.status === 401) {
+    // must still just throw for the caller's own error handling. skipAuthRedirect
+    // lets a specific call opt out of the hard redirect below (see checkStatus()).
+    if (res.status === 401 && !skipAuthRedirect) {
       redirectToLogin()
     }
     const body = await res.json().catch(() => ({ error: res.statusText }))
@@ -58,7 +71,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path),
+  get: <T>(path: string, options?: { skipAuthRedirect?: boolean }) => request<T>(path, options),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',

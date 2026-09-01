@@ -31,9 +31,11 @@ export const useAuthStore = defineStore('auth', {
       }
 
       if (!this.needsSetup) {
-        // A 401 here is the ordinary "not signed in" answer, not a failure.
+        // A 401 here is the ordinary "not signed in" answer, not a failure —
+        // skipAuthRedirect keeps client.ts from hard-redirecting to /login on
+        // it, since checkStatus() also runs on public routes now.
         try {
-          this.user = await api.get<CurrentUser>('/me')
+          this.user = await api.get<CurrentUser>('/me', { skipAuthRedirect: true })
         } catch {
           this.user = null
         }
