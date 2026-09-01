@@ -1,0 +1,272 @@
+/* BoardGames Manager — admin UI base styles.
+   Deliberately small and framework-free: one stylesheet, plain element
+   selectors plus the handful of layout classes used by the views. */
+
+:root {
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --border: #d8dce3;
+  --text: #1f2430;
+  --text-muted: #5c6577;
+  --accent: #2f5fd0;
+  --accent-hover: #24499f;
+  --danger: #b3261e;
+  --danger-bg: #fdecea;
+  --success: #1b6e3c;
+  --success-bg: #eaf6ee;
+  --radius: 6px;
+
+  color-scheme: light;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  margin: 0 0 1.25rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  font-weight: 600;
+  margin: 2rem 0 0.75rem;
+}
+
+p {
+  margin: 0.5rem 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* ---------- Dashboard shell (DashboardLayout.vue) ---------- */
+
+.layout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.layout > nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0 1.5rem;
+  height: 3.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.layout > nav a {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.layout > nav a:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.layout > nav a.router-link-active {
+  background: #e8eefb;
+  color: var(--accent);
+}
+
+/* Logout button sits on the far right and stays visually secondary. */
+.layout > nav button {
+  margin-left: auto;
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.layout > nav button:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.layout > main {
+  flex: 1;
+  width: 100%;
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+/* ---------- Auth pages (SetupView.vue, LoginView.vue) ---------- */
+
+.auth-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem 1.5rem;
+}
+
+.auth-page h1 {
+  font-size: 1.35rem;
+  text-align: center;
+  max-width: 22rem;
+}
+
+.auth-page form {
+  width: 100%;
+  max-width: 22rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(31, 36, 48, 0.08);
+}
+
+/* ---------- Forms ---------- */
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: stretch;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+input,
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 100%;
+}
+
+input:focus-visible,
+select:focus-visible,
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+button {
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+}
+
+button:hover {
+  background: var(--accent-hover);
+}
+
+/* Forms outside the auth card should not stretch their submit button. */
+.layout form {
+  max-width: 22rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  align-items: flex-start;
+}
+
+.layout form label,
+.layout form .error,
+.layout form .success {
+  align-self: stretch;
+}
+
+/* ---------- Lists (UsersView.vue) ---------- */
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+ul:empty {
+  display: none;
+}
+
+li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+li:last-child {
+  border-bottom: none;
+}
+
+li button {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--danger);
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+}
+
+li button:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+/* ---------- Feedback messages ---------- */
+
+.error,
+.success {
+  margin: 0;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius);
+  font-size: 0.9rem;
+}
+
+.error {
+  color: var(--danger);
+  background: var(--danger-bg);
+  border: 1px solid rgba(179, 38, 30, 0.25);
+}
+
+.success {
+  color: var(--success);
+  background: var(--success-bg);
+  border: 1px solid rgba(27, 110, 60, 0.25);
+}
