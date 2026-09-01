@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -21,7 +22,12 @@ func (s *Server) createLanguageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req createLanguageRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.LanguageCode == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "languageCode is required")
+		return
+	}
+	req.LanguageCode = strings.ToLower(strings.TrimSpace(req.LanguageCode))
+	if req.LanguageCode == "" {
 		writeError(w, http.StatusBadRequest, "languageCode is required")
 		return
 	}
@@ -54,6 +60,10 @@ func (s *Server) createLanguageHandler(w http.ResponseWriter, r *http.Request) {
 		GameID: gameID, LanguageCode: req.LanguageCode, IsBaseLanguage: false,
 		Name: name, Description: description,
 	})
+	if errors.Is(err, games.ErrDuplicateLanguage) {
+		writeError(w, http.StatusConflict, "questa lingua esiste già")
+		return
+	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create language")
 		return

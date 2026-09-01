@@ -84,6 +84,55 @@ func TestCreateLanguage_PrefillsFromEditedBaseLanguage(t *testing.T) {
 	}
 }
 
+func TestCreateLanguage_DuplicateCodeReturns409(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	id := createTestGame(t, router, cookie, "Azul")
+
+	payload, _ := json.Marshal(map[string]string{"languageCode": "en"})
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/languages", id), bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected first add to succeed with 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	dupeReq := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/languages", id), bytes.NewReader(payload))
+	dupeReq.AddCookie(cookie)
+	dupeRec := httptest.NewRecorder()
+	router.ServeHTTP(dupeRec, dupeReq)
+	if dupeRec.Code != http.StatusConflict {
+		t.Fatalf("expected 409 for duplicate language code, got %d: %s", dupeRec.Code, dupeRec.Body.String())
+	}
+}
+
+func TestCreateLanguage_NormalizesCaseAndWhitespaceBeforeDedup(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	id := createTestGame(t, router, cookie, "Azul")
+
+	payload, _ := json.Marshal(map[string]string{"languageCode": "en"})
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/languages", id), bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected first add to succeed with 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	dupePayload, _ := json.Marshal(map[string]string{"languageCode": " EN "})
+	dupeReq := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/languages", id), bytes.NewReader(dupePayload))
+	dupeReq.AddCookie(cookie)
+	dupeRec := httptest.NewRecorder()
+	router.ServeHTTP(dupeRec, dupeReq)
+	if dupeRec.Code != http.StatusConflict {
+		t.Fatalf("expected ' EN ' to collide with normalized existing 'en' and return 409, got %d: %s", dupeRec.Code, dupeRec.Body.String())
+	}
+}
+
 func TestCreateLanguage_RequiresAuth(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)

@@ -164,6 +164,28 @@ func TestGetLanguage_NotFound(t *testing.T) {
 	}
 }
 
+func TestCreateLanguage_DuplicateReturnsErrDuplicateLanguage(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	game, err := store.CreateGame(ctx, games.Game{Name: "Catan"})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	if _, err := store.CreateLanguage(ctx, games.GameLanguage{
+		GameID: game.ID, LanguageCode: "en", IsBaseLanguage: true, Name: "Catan",
+	}); err != nil {
+		t.Fatalf("create language: %v", err)
+	}
+
+	_, err = store.CreateLanguage(ctx, games.GameLanguage{
+		GameID: game.ID, LanguageCode: "en", IsBaseLanguage: false, Name: "Catan",
+	})
+	if !errors.Is(err, games.ErrDuplicateLanguage) {
+		t.Fatalf("expected ErrDuplicateLanguage, got %v", err)
+	}
+}
+
 func TestUpdateLanguage_ChangesNameAndDescription(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()

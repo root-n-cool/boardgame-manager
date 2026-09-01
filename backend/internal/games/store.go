@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -38,6 +39,7 @@ type GameUpdate struct {
 }
 
 var ErrNotFound = errors.New("not found")
+var ErrDuplicateLanguage = errors.New("language already exists for this game")
 
 type Store struct {
 	db *sql.DB
@@ -175,6 +177,9 @@ func (s *Store) CreateLanguage(ctx context.Context, gl GameLanguage) (GameLangua
 		gl.GameID, gl.LanguageCode, isBase, gl.Name, gl.Description,
 	)
 	if err != nil {
+		if isUniqueConstraintErr(err) {
+			return GameLanguage{}, ErrDuplicateLanguage
+		}
 		return GameLanguage{}, err
 	}
 	id, err := res.LastInsertId()
@@ -256,4 +261,8 @@ func (s *Store) UpdateLanguage(ctx context.Context, gameID int64, code string, n
 		return GameLanguage{}, ErrNotFound
 	}
 	return s.GetLanguage(ctx, gameID, code)
+}
+
+func isUniqueConstraintErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
 }
