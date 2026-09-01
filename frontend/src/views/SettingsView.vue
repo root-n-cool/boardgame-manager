@@ -9,14 +9,18 @@ interface SettingsResponse {
   searchApiKeySet: boolean
   searchApiKeyMasked?: string
   searchApiProvider: string
+  bggApiTokenSet: boolean
+  bggApiTokenMasked?: string
 }
 
 const defaultLanguage = ref('it')
 const youtubeApiKey = ref('')
 const searchApiKey = ref('')
 const searchApiProvider = ref('google')
+const bggApiToken = ref('')
 const youtubeApiKeyMasked = ref('')
 const searchApiKeyMasked = ref('')
+const bggApiTokenMasked = ref('')
 const message = ref('')
 const error = ref('')
 
@@ -26,6 +30,7 @@ async function load() {
   searchApiProvider.value = s.searchApiProvider || 'google'
   youtubeApiKeyMasked.value = s.youtubeApiKeyMasked || ''
   searchApiKeyMasked.value = s.searchApiKeyMasked || ''
+  bggApiTokenMasked.value = s.bggApiTokenMasked || ''
 }
 
 async function save() {
@@ -37,9 +42,11 @@ async function save() {
       youtubeApiKey: youtubeApiKey.value,
       searchApiKey: searchApiKey.value,
       searchApiProvider: searchApiProvider.value,
+      bggApiToken: bggApiToken.value,
     })
     youtubeApiKey.value = ''
     searchApiKey.value = ''
+    bggApiToken.value = ''
     message.value = 'Impostazioni salvate'
     await load()
   } catch (e) {
@@ -48,8 +55,6 @@ async function save() {
 }
 
 onMounted(async () => {
-  // Unguarded, this becomes an unhandled rejection and an empty page whenever
-  // the request fails for any reason other than a 401.
   try {
     await load()
   } catch (e) {
@@ -68,6 +73,11 @@ onMounted(async () => {
           <option value="it">Italiano</option>
           <option value="en">Inglese</option>
         </select>
+      </label>
+
+      <label>
+        BoardGameGeek API token
+        <input v-model="bggApiToken" type="password" :placeholder="bggApiTokenMasked || 'non configurato'" />
       </label>
 
       <label>
