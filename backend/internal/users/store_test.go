@@ -15,6 +15,10 @@ func newTestStore(t *testing.T) *users.Store {
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	// Every connection to ":memory:" is its own separate database, so pin the
+	// pool to one — otherwise a transaction plus a pooled second connection
+	// would be looking at two different (one empty) databases.
+	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { conn.Close() })
 	if err := db.Migrate(context.Background(), conn); err != nil {
 		t.Fatalf("migrate: %v", err)
@@ -95,7 +99,7 @@ func TestListAndDelete(t *testing.T) {
 		t.Fatalf("expected 2 users, got %d", len(list))
 	}
 
-	if err := store.Delete(ctx, a.ID); err != nil {
+	if err := store.DeleteIfNotLast(ctx, a.ID); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 
@@ -105,6 +109,83 @@ func TestListAndDelete(t *testing.T) {
 	}
 	if len(list) != 1 {
 		t.Fatalf("expected 1 user after delete, got %d", len(list))
+	}
+}
+
+func TestDeleteIfNotLast_RefusesToEmptyTheUsersTable(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	only, err := store.Create(ctx, "only@example.com", "hash")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	if err := store.DeleteIfNotLast(ctx, only.ID); !errors.Is(err, users.ErrCannotDeleteLastUser) {
+		t.Fatalf("expected ErrCannotDeleteLastUser, got %v", err)
+	}
+
+	// Leaving zero users would reopen the unauthenticated bootstrap endpoint,
+	// so the row must still be there.
+	count, err := store.Count(ctx)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected the last user to survive, got count %d", count)
+	}
+}
+
+func TestDeleteIfNotLast_UnknownIDReturnsNotFound(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	// Two users, so the last-user guard is not what rejects the call.
+	if _, err := store.Create(ctx, "a@example.com", "hash"); err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	if _, err := store.Create(ctx, "b@example.com", "hash"); err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+
+	if err := store.DeleteIfNotLast(ctx, 99999); !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for an unknown id, got %v", err)
+	}
+
+	count, err := store.Count(ctx)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected both users to survive, got count %d", count)
+	}
+}
+
+func TestDeleteIfNotLast_DeletesWhenMoreThanOneUserExists(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	a, err := store.Create(ctx, "a@example.com", "hash")
+	if err != nil {
+		t.Fatalf("create a: %v", err)
+	}
+	if _, err := store.Create(ctx, "b@example.com", "hash"); err != nil {
+		t.Fatalf("create b: %v", err)
+	}
+
+	if err := store.DeleteIfNotLast(ctx, a.ID); err != nil {
+		t.Fatalf("DeleteIfNotLast: %v", err)
+	}
+
+	if _, err := store.GetByID(ctx, a.ID); !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("expected the user to be gone, got %v", err)
+	}
+	count, err := store.Count(ctx)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected 1 user left, got %d", count)
 	}
 }
 

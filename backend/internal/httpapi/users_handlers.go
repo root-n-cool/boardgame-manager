@@ -59,18 +59,15 @@ func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	count, err := s.Users.Count(r.Context())
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete user")
-		return
-	}
-	if count <= 1 {
-		writeError(w, http.StatusConflict, "cannot delete the last remaining user")
-		return
-	}
-
-	if err := s.Users.Delete(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete user")
+	if err := s.Users.DeleteIfNotLast(r.Context(), id); err != nil {
+		switch {
+		case errors.Is(err, users.ErrCannotDeleteLastUser):
+			writeError(w, http.StatusConflict, "cannot delete the last remaining user")
+		case errors.Is(err, users.ErrNotFound):
+			writeError(w, http.StatusNotFound, "user not found")
+		default:
+			writeError(w, http.StatusInternalServerError, "could not delete user")
+		}
 		return
 	}
 
