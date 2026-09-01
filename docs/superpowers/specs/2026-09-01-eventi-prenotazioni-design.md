@@ -69,9 +69,10 @@ Note:
   elenco `EventGame`. Sia rimuovere un gioco dall'elenco sia ridurne la
   quantità sotto il numero di booking attivi già presenti per quel gioco
   sono trattati allo stesso modo: l'intera richiesta viene rifiutata
-  (400, nessun aggiornamento parziale) finché quei booking non vengono
-  cancellati dai rispettivi partecipanti (o l'evento non viene eliminato
-  del tutto).
+  (409 — è un conflitto con lo stato esistente, non una richiesta
+  malformata — nessun aggiornamento parziale) finché quei booking non
+  vengono cancellati dai rispettivi partecipanti (o l'evento non viene
+  eliminato del tutto).
 - Eliminare un evento elimina a cascata `EventGame` e `Booking` (attivi e
   cancellati) — non ci sono vincoli storici da preservare oltre
   all'evento stesso in questa fase (la classifica di Fase 4 leggerà da
