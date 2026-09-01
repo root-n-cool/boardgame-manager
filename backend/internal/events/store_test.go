@@ -152,6 +152,38 @@ func TestRemainingCapacity_DecreasesWithActiveBookingsOnly(t *testing.T) {
 	}
 }
 
+func TestGetEventGame_ReturnsRow(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGame(t, gameStore, "Catan")
+
+	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Quantity: 2}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, err := eventStore.ListEventGames(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+
+	got, err := eventStore.GetEventGame(ctx, eventGames[0].ID)
+	if err != nil {
+		t.Fatalf("get event game: %v", err)
+	}
+	if got.EventID != event.ID || got.GameID != gameID || got.Quantity != 2 {
+		t.Fatalf("unexpected event game: %+v", got)
+	}
+}
+
+func TestGetEventGame_NotFound(t *testing.T) {
+	eventStore, _ := newTestStore(t)
+	_, err := eventStore.GetEventGame(context.Background(), 999)
+	if !errors.Is(err, events.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
 func TestUpdateEvent_ChangesFieldsAndReplacesGames(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()

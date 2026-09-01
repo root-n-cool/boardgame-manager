@@ -101,6 +101,18 @@ func TestLookupAndCancelBooking_FullFlow(t *testing.T) {
 	if lookupRec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", lookupRec.Code, lookupRec.Body.String())
 	}
+	var lookupBody struct {
+		GameName   string `json:"gameName"`
+		EventTitle string `json:"eventTitle"`
+		EventDate  string `json:"eventDate"`
+		StartTime  string `json:"startTime"`
+	}
+	if err := json.NewDecoder(lookupRec.Body).Decode(&lookupBody); err != nil {
+		t.Fatalf("decode lookup: %v", err)
+	}
+	if lookupBody.GameName == "" || lookupBody.EventTitle == "" {
+		t.Fatalf("expected non-empty gameName and eventTitle, got %+v", lookupBody)
+	}
 
 	cancelPayload, _ := json.Marshal(map[string]string{"email": "mario@example.com", "bookingCode": created.BookingCode})
 	cancelRec := httptest.NewRecorder()

@@ -10,6 +10,10 @@ interface BookingResult {
   participantName: string
   bookingCode: string
   status: 'active' | 'cancelled'
+  eventTitle: string
+  eventDate: string
+  startTime: string
+  gameName: string
 }
 
 const email = ref('')
@@ -69,7 +73,11 @@ async function cancel() {
       <p v-if="error" class="error">{{ error }}</p>
 
       <div v-if="booking">
-        <p>Prenotazione per {{ booking.participantName }} — stato: {{ booking.status }}</p>
+        <p>
+          Prenotazione per {{ booking.participantName }} — {{ booking.gameName }} —
+          {{ booking.eventTitle }} ({{ booking.eventDate }} · {{ booking.startTime }}) —
+          stato: {{ booking.status }}
+        </p>
         <button v-if="booking.status === 'active'" type="button" @click="cancel">
           Annulla prenotazione
         </button>

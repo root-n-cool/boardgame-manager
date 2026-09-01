@@ -65,7 +65,12 @@ func (s *Server) lookupBookingHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not look up booking")
 		return
 	}
-	writeJSON(w, http.StatusOK, toBookingResponse(booking))
+	resp, err := s.toBookingDetailResponse(r.Context(), booking)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not build response")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (s *Server) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -88,5 +93,10 @@ func (s *Server) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not cancel booking")
 		return
 	}
-	writeJSON(w, http.StatusOK, toBookingResponse(booking))
+	resp, err := s.toBookingDetailResponse(r.Context(), booking)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not build response")
+		return
+	}
+	writeJSON(w, http.StatusOK, resp)
 }

@@ -52,6 +52,27 @@ func toBookingResponse(b events.Booking) map[string]any {
 	}
 }
 
+func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) (map[string]any, error) {
+	resp := toBookingResponse(b)
+	event, err := s.Events.GetEvent(ctx, b.EventID)
+	if err != nil {
+		return nil, err
+	}
+	eventGame, err := s.Events.GetEventGame(ctx, b.EventGameID)
+	if err != nil {
+		return nil, err
+	}
+	game, err := s.Games.GetGame(ctx, eventGame.GameID)
+	if err != nil {
+		return nil, err
+	}
+	resp["eventTitle"] = event.Title
+	resp["eventDate"] = event.EventDate
+	resp["startTime"] = event.StartTime
+	resp["gameName"] = game.Name
+	return resp, nil
+}
+
 func toBookingAdminResponse(b events.BookingWithGame) map[string]any {
 	return map[string]any{
 		"id": b.ID, "gameName": b.GameName, "participantName": b.ParticipantName,

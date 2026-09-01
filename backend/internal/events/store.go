@@ -191,6 +191,17 @@ func listEventGames(ctx context.Context, q queryer, eventID int64) ([]EventGame,
 	return out, rows.Err()
 }
 
+func (s *Store) GetEventGame(ctx context.Context, id int64) (EventGame, error) {
+	var eg EventGame
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, event_id, game_id, quantity FROM event_games WHERE id = ?`, id,
+	).Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.Quantity)
+	if errors.Is(err, sql.ErrNoRows) {
+		return EventGame{}, ErrNotFound
+	}
+	return eg, err
+}
+
 func (s *Store) RemainingCapacity(ctx context.Context, eventGameID int64) (int, error) {
 	var remaining int
 	err := s.db.QueryRowContext(ctx,
