@@ -7,6 +7,7 @@ import UsersView from '../views/UsersView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameNewView from '../views/GameNewView.vue'
+import GameDetailView from '../views/GameDetailView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -21,6 +22,7 @@ const router = createRouter({
         { path: 'users', name: 'users', component: UsersView },
         { path: 'games', name: 'games', component: GamesView },
         { path: 'games/new', name: 'game-new', component: GameNewView },
+        { path: 'games/:id', name: 'game-detail', component: GameDetailView },
         { path: 'settings', name: 'settings', component: SettingsView },
       ],
     },
