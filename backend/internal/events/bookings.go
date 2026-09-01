@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -128,4 +129,75 @@ func (s *Store) getBookingByID(ctx context.Context, id int64) (Booking, error) {
 	}
 	b.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 	return b, nil
+}
+
+func (s *Store) LookupBooking(ctx context.Context, email, code string) (Booking, error) {
+	code = strings.ToUpper(strings.TrimSpace(code))
+	var b Booking
+	var createdAt string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, event_id, event_game_id, participant_name, participant_email, participant_phone, booking_code, status, created_at
+		 FROM bookings WHERE booking_code = ? AND status = 'active'`, code,
+	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.ParticipantEmail, &b.ParticipantPhone, &b.BookingCode, &b.Status, &createdAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Booking{}, ErrInvalidBookingCredentials
+	}
+	if err != nil {
+		return Booking{}, err
+	}
+	if !strings.EqualFold(strings.TrimSpace(b.ParticipantEmail), strings.TrimSpace(email)) {
+		return Booking{}, ErrInvalidBookingCredentials
+	}
+	b.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	return b, nil
+}
+
+func (s *Store) CancelBooking(ctx context.Context, id int64, email, code string) (Booking, error) {
+	b, err := s.getBookingByID(ctx, id)
+	if err != nil {
+		return Booking{}, err
+	}
+	if b.Status != BookingStatusActive ||
+		strings.ToUpper(strings.TrimSpace(code)) != b.BookingCode ||
+		!strings.EqualFold(strings.TrimSpace(b.ParticipantEmail), strings.TrimSpace(email)) {
+		return Booking{}, ErrInvalidBookingCredentials
+	}
+	if _, err := s.db.ExecContext(ctx, `UPDATE bookings SET status = ? WHERE id = ?`, BookingStatusCancelled, id); err != nil {
+		return Booking{}, err
+	}
+	b.Status = BookingStatusCancelled
+	return b, nil
+}
+
+type BookingWithGame struct {
+	Booking
+	GameName string
+}
+
+func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]BookingWithGame, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT b.id, b.event_id, b.event_game_id, b.participant_name, b.participant_email, b.participant_phone,
+		        b.booking_code, b.status, b.created_at, g.name
+		 FROM bookings b
+		 JOIN event_games eg ON b.event_game_id = eg.id
+		 JOIN games g ON eg.game_id = g.id
+		 WHERE b.event_id = ? AND b.status = 'active'
+		 ORDER BY b.created_at`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []BookingWithGame
+	for rows.Next() {
+		var bg BookingWithGame
+		var createdAt string
+		if err := rows.Scan(&bg.ID, &bg.EventID, &bg.EventGameID, &bg.ParticipantName, &bg.ParticipantEmail,
+			&bg.ParticipantPhone, &bg.BookingCode, &bg.Status, &createdAt, &bg.GameName); err != nil {
+			return nil, err
+		}
+		bg.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		out = append(out, bg)
+	}
+	return out, rows.Err()
 }
