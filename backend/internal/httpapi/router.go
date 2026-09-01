@@ -32,6 +32,8 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
 	r.Post("/api/bootstrap", s.bootstrapHandler)
 	r.Post("/api/login", s.loginHandler)
+	r.Get("/api/games", s.listGamesHandler)
+	r.Get("/api/games/{id}", s.getGameHandler)
 
 	r.Group(func(protected chi.Router) {
 		protected.Use(s.requireAuth)
@@ -44,6 +46,8 @@ func NewRouter(s *Server) http.Handler {
 		protected.Put("/api/settings", s.putSettingsHandler)
 		protected.Get("/api/games/search", s.searchGamesHandler)
 		protected.Post("/api/games", s.createGameHandler)
+		protected.Patch("/api/games/{id}", s.updateGameHandler)
+		protected.Delete("/api/games/{id}", s.deleteGameHandler)
 	})
 
 	return r
