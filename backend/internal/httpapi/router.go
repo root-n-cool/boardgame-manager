@@ -8,6 +8,7 @@ import (
 
 	"boardgames-manager/internal/auth"
 	"boardgames-manager/internal/bgg"
+	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
@@ -19,6 +20,7 @@ type Server struct {
 	Sessions *auth.SessionStore
 	Settings *settings.Store
 	Games    *games.Store
+	Events   *events.Store
 	Storage  *storage.Store
 	BGG      bgg.Client
 }
@@ -35,6 +37,8 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/games", s.listGamesHandler)
 	r.Get("/api/games/{id}", s.getGameHandler)
 	r.Get("/api/uploads/{filename}", s.getUploadHandler)
+	r.Get("/api/events", s.listEventsHandler)
+	r.Get("/api/events/{id}", s.getEventHandler)
 
 	r.Group(func(protected chi.Router) {
 		protected.Use(s.requireAuth)

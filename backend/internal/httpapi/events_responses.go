@@ -1,0 +1,61 @@
+package httpapi
+
+import (
+	"context"
+
+	"boardgames-manager/internal/events"
+	"boardgames-manager/internal/games"
+)
+
+func toEventSummary(e events.Event) map[string]any {
+	return map[string]any{
+		"id": e.ID, "title": e.Title, "description": e.Description,
+		"eventDate": e.EventDate, "startTime": e.StartTime,
+	}
+}
+
+func toEventGameSummary(eventGameID int64, g games.Game, quantity, remaining int) map[string]any {
+	return map[string]any{
+		"eventGameId": eventGameID, "gameId": g.ID, "name": g.Name, "coverPath": g.CoverPath,
+		"quantity": quantity, "remaining": remaining,
+	}
+}
+
+func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]any, error) {
+	eventGames, err := s.Events.ListEventGames(ctx, e.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	gamesOut := make([]map[string]any, 0, len(eventGames))
+	for _, eg := range eventGames {
+		game, err := s.Games.GetGame(ctx, eg.GameID)
+		if err != nil {
+			return nil, err
+		}
+		remaining, err := s.Events.RemainingCapacity(ctx, eg.ID)
+		if err != nil {
+			return nil, err
+		}
+		gamesOut = append(gamesOut, toEventGameSummary(eg.ID, game, eg.Quantity, remaining))
+	}
+
+	detail := toEventSummary(e)
+	detail["games"] = gamesOut
+	return detail, nil
+}
+
+func toBookingResponse(b events.Booking) map[string]any {
+	return map[string]any{
+		"id": b.ID, "eventId": b.EventID, "eventGameId": b.EventGameID,
+		"participantName": b.ParticipantName, "bookingCode": b.BookingCode, "status": b.Status,
+	}
+}
+
+func toBookingAdminResponse(b events.BookingWithGame) map[string]any {
+	return map[string]any{
+		"id": b.ID, "gameName": b.GameName, "participantName": b.ParticipantName,
+		"participantEmail": b.ParticipantEmail, "participantPhone": b.ParticipantPhone,
+		"createdAt": b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+}

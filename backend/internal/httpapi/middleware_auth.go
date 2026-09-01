@@ -42,3 +42,17 @@ func currentUser(r *http.Request) (users.User, bool) {
 	u, ok := r.Context().Value(userContextKey).(users.User)
 	return u, ok
 }
+
+// hasAdminSession reports whether the request carries a currently valid
+// admin session, without requiring one (unlike requireAuth, it never writes
+// an error response). Used by handlers that serve different data to the
+// public than to an authenticated admin on the same route.
+func (s *Server) hasAdminSession(r *http.Request) bool {
+	cookie, err := r.Cookie("session_token")
+	if err != nil {
+		return false
+	}
+	tokenHash := auth.HashToken(cookie.Value)
+	_, err = s.Sessions.GetValidByTokenHash(r.Context(), tokenHash)
+	return err == nil
+}
