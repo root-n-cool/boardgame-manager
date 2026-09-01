@@ -270,3 +270,31 @@ li button:hover {
   background: var(--success-bg);
   border: 1px solid rgba(27, 110, 60, 0.25);
 }
+
+/* ---------- Games grid (GamesView.vue) ---------- */
+
+.game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+
+.game-grid li {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.game-grid img {
+  max-width: 100%;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.game-grid a {
+  text-decoration: none;
+  color: inherit;
+}

@@ -20,6 +20,7 @@ async function logout() {
 <template>
   <div class="layout">
     <nav>
+      <router-link :to="{ name: 'games' }">Giochi</router-link>
       <router-link :to="{ name: 'users' }">Utenti</router-link>
       <router-link :to="{ name: 'settings' }">Impostazioni</router-link>
       <button @click="logout">Esci</button>
