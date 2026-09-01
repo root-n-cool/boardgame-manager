@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import PublicHeader from '../components/PublicHeader.vue'
@@ -42,6 +42,14 @@ const bookingResult = ref<BookingResult | null>(null)
 async function load() {
   event.value = await api.get<EventDetail>(`/events/${eventId}`)
 }
+
+const hasStarted = computed(() => {
+  if (!event.value) {
+    return false
+  }
+  const startsAt = new Date(`${event.value.eventDate}T${event.value.startTime}`)
+  return startsAt <= new Date()
+})
 
 function startBooking(eventGameId: number) {
   selectedEventGameId.value = eventGameId
@@ -89,13 +97,23 @@ onMounted(async () => {
           <img v-if="g.coverPath" :src="`/api/uploads/${g.coverPath}`" :alt="g.name" />
           <router-link :to="`/games/${g.gameId}`">{{ g.name }}</router-link>
           <p>Disponibilità: {{ g.remaining }}</p>
-          <button type="button" :disabled="g.remaining <= 0" @click="startBooking(g.eventGameId)">
+          <button
+            v-if="!hasStarted"
+            type="button"
+            :disabled="g.remaining <= 0"
+            @click="startBooking(g.eventGameId)"
+          >
             Prenota
           </button>
         </li>
       </ul>
 
-      <form v-if="selectedEventGameId !== null && !bookingResult" @submit.prevent="submitBooking">
+      <p v-if="hasStarted">Questo evento è già iniziato: non è più possibile prenotare.</p>
+
+      <form
+        v-if="selectedEventGameId !== null && !bookingResult && !hasStarted"
+        @submit.prevent="submitBooking"
+      >
         <label>
           Nome
           <input v-model="participantName" required />
