@@ -4,6 +4,7 @@ import SetupView from '../views/SetupView.vue'
 import LoginView from '../views/LoginView.vue'
 import DashboardLayout from '../views/DashboardLayout.vue'
 import UsersView from '../views/UsersView.vue'
+import SettingsView from '../views/SettingsView.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -16,6 +17,7 @@ const router = createRouter({
       children: [
         { path: '', redirect: '/users' },
         { path: 'users', name: 'users', component: UsersView },
+        { path: 'settings', name: 'settings', component: SettingsView },
       ],
     },
   ],
