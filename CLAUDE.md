@@ -72,6 +72,25 @@ risultato di una sessione di brainstorming con l'utente:
   file locali nel repo (spec in `docs/superpowers/specs/`, piano di
   implementazione generato con la skill `writing-plans`).
 
+## Ambiente di sviluppo
+
+- **Il toolchain Go installato in locale su questa macchina è rotto**
+  (binario Go x86_64 su Mac arm64): qualunque `go build`/`go test`/`go run`
+  lanciato in locale fallisce o usa il binario sbagliato. Esegui SEMPRE i
+  comandi Go dentro Docker, esempio:
+  ```
+  docker run --rm -v "$(pwd)/backend:/app" \
+    -v bgm-gomodcache:/root/go/pkg/mod -v bgm-gocache:/root/.cache/go-build \
+    -w /app golang:1.25 go test ./...
+  ```
+  Riusa sempre questi due volumi nominati (`bgm-gomodcache`, `bgm-gocache`)
+  per cache moduli/build tra un'esecuzione e l'altra — non montarne di
+  nuovi o usare `-v $(pwd)... :/root/...` senza nome, altrimenti si riparte
+  da zero ogni volta. La versione Go del progetto è quella in
+  `backend/go.mod` (immagine Docker `golang:X.Y` corrispondente).
+- Il frontend (`npm`/`node`, `frontend/`) funziona regolarmente in locale:
+  non serve Docker per `npm run build`/`npm run dev`.
+
 ## Convenzioni di lavoro
 
 - Le spec di design vivono in `docs/superpowers/specs/`.
