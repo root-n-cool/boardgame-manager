@@ -298,3 +298,31 @@ li button:hover {
   text-decoration: none;
   color: inherit;
 }
+
+/* ---------- Game detail (GameDetailView.vue) ---------- */
+
+.cover {
+  max-width: 240px;
+  height: auto;
+  border-radius: 6px;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.language-tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.language-tabs button {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.language-tabs button.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}

@@ -209,7 +209,7 @@ onMounted(async () => {
         :class="{ active: l.code === activeLangCode }"
         @click="selectLanguage(l.code)"
       >
-        {{ l.code }}
+        {{ l.code }}{{ l.isBaseLanguage ? ' ★' : '' }}
       </button>
     </nav>
 
