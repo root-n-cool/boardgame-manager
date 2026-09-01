@@ -159,6 +159,64 @@ func TestCreateEvent_Succeeds(t *testing.T) {
 	}
 }
 
+func TestCreateEvent_RejectsZeroQuantity(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+
+	payload, _ := json.Marshal(map[string]any{
+		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
+		"games": []map[string]any{{"gameId": gameID, "quantity": 0}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateEvent_RejectsMalformedDate(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]any{
+		"title": "Serata giochi", "eventDate": "01/01/2099", "startTime": "20:00",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateEvent_RejectsDuplicateGame(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+
+	payload, _ := json.Marshal(map[string]any{
+		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
+		"games": []map[string]any{
+			{"gameId": gameID, "quantity": 1},
+			{"gameId": gameID, "quantity": 2},
+		},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestUpdateEvent_RejectsQuantityBelowActiveBookings(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)

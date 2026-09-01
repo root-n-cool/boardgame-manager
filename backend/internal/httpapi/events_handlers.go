@@ -72,7 +72,26 @@ func decodeEventRequest(r *http.Request) (eventRequest, bool) {
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		return eventRequest{}, false
 	}
-	return req, req.Title != "" && req.EventDate != "" && req.StartTime != ""
+	if req.Title == "" || req.EventDate == "" || req.StartTime == "" {
+		return eventRequest{}, false
+	}
+	if _, err := time.Parse("2006-01-02", req.EventDate); err != nil {
+		return eventRequest{}, false
+	}
+	if _, err := time.Parse("15:04", req.StartTime); err != nil {
+		return eventRequest{}, false
+	}
+	seenGames := map[int64]bool{}
+	for _, g := range req.Games {
+		if g.Quantity < 1 {
+			return eventRequest{}, false
+		}
+		if seenGames[g.GameID] {
+			return eventRequest{}, false
+		}
+		seenGames[g.GameID] = true
+	}
+	return req, true
 }
 
 func (s *Server) createEventHandler(w http.ResponseWriter, r *http.Request) {
