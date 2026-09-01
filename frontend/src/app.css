@@ -326,3 +326,119 @@ li button:hover {
   color: #fff;
   border-color: var(--accent);
 }
+
+/* ---------- Public shell (PublicHeader.vue + top-level public views) ---------- */
+
+.public-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0 1.5rem;
+  height: 3.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.public-header .brand {
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.public-header nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.public-header nav a {
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.public-header nav a:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.public-header nav button {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.public-header nav button:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.public-page {
+  width: 100%;
+  max-width: 52rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.event-list,
+.event-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+
+.event-list li,
+.event-grid li {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.event-list a,
+.event-grid a {
+  text-decoration: none;
+  color: inherit;
+}
+
+.event-games {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+}
+
+.event-games li {
+  border: 1px solid #d0d5dd;
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.event-games img {
+  max-width: 100%;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.booking-code {
+  font-size: 1.75rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+}
+
+.game-select-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.game-select-row input[type='number'] {
+  width: 5rem;
+}

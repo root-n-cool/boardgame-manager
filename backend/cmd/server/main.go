@@ -9,6 +9,7 @@ import (
 	"boardgames-manager/internal/auth"
 	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/db"
+	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
 	"boardgames-manager/internal/settings"
@@ -46,6 +47,7 @@ func main() {
 		Sessions: auth.NewSessionStore(conn),
 		Settings: settings.NewStore(conn),
 		Games:    games.NewStore(conn),
+		Events:   events.NewStore(conn),
 		Storage:  storage.NewStore(dataDir + "/uploads"),
 		BGG:      bgg.NewHTTPClient(),
 	}
