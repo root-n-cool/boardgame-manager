@@ -74,3 +74,81 @@ func decodeEventRequest(r *http.Request) (eventRequest, bool) {
 	}
 	return req, req.Title != "" && req.EventDate != "" && req.StartTime != ""
 }
+
+func (s *Server) createEventHandler(w http.ResponseWriter, r *http.Request) {
+	req, ok := decodeEventRequest(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "title, eventDate and startTime are required")
+		return
+	}
+	event, err := s.Events.CreateEvent(r.Context(), req.Title, req.Description, req.EventDate, req.StartTime, toEventGameInputs(req.Games))
+	if errors.Is(err, events.ErrGameNotFound) {
+		writeError(w, http.StatusBadRequest, "one of the selected games does not exist")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not create event")
+		return
+	}
+	writeJSON(w, http.StatusCreated, toEventSummary(event))
+}
+
+func (s *Server) updateEventHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid event id")
+		return
+	}
+	req, ok := decodeEventRequest(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "title, eventDate and startTime are required")
+		return
+	}
+	event, err := s.Events.UpdateEvent(r.Context(), id, req.Title, req.Description, req.EventDate, req.StartTime, toEventGameInputs(req.Games))
+	switch {
+	case errors.Is(err, events.ErrNotFound):
+		writeError(w, http.StatusNotFound, "event not found")
+	case errors.Is(err, events.ErrGameNotFound):
+		writeError(w, http.StatusBadRequest, "one of the selected games does not exist")
+	case errors.Is(err, events.ErrQuantityBelowActiveBookings):
+		writeError(w, http.StatusConflict, "quantity is below the number of active bookings for that game")
+	case err != nil:
+		writeError(w, http.StatusInternalServerError, "could not update event")
+	default:
+		writeJSON(w, http.StatusOK, toEventSummary(event))
+	}
+}
+
+func (s *Server) deleteEventHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid event id")
+		return
+	}
+	if err := s.Events.DeleteEvent(r.Context(), id); errors.Is(err, events.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "event not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not delete event")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+func (s *Server) listEventBookingsHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid event id")
+		return
+	}
+	list, err := s.Events.ListBookingsForEvent(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list bookings")
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, b := range list {
+		out = append(out, toBookingAdminResponse(b))
+	}
+	writeJSON(w, http.StatusOK, out)
+}
