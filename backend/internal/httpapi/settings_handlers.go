@@ -14,6 +14,8 @@ type settingsResponse struct {
 	SearchAPIKeySet     bool   `json:"searchApiKeySet"`
 	SearchAPIKeyMasked  string `json:"searchApiKeyMasked,omitempty"`
 	SearchAPIProvider   string `json:"searchApiProvider"`
+	BGGAPITokenSet      bool   `json:"bggApiTokenSet"`
+	BGGAPITokenMasked   string `json:"bggApiTokenMasked,omitempty"`
 }
 
 func maskKey(key string) string {
@@ -35,12 +37,16 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		SearchAPIProvider: cfg.SearchAPIProvider,
 		YouTubeAPIKeySet:  cfg.YouTubeAPIKey != "",
 		SearchAPIKeySet:   cfg.SearchAPIKey != "",
+		BGGAPITokenSet:    cfg.BGGAPIToken != "",
 	}
 	if resp.YouTubeAPIKeySet {
 		resp.YouTubeAPIKeyMasked = maskKey(cfg.YouTubeAPIKey)
 	}
 	if resp.SearchAPIKeySet {
 		resp.SearchAPIKeyMasked = maskKey(cfg.SearchAPIKey)
+	}
+	if resp.BGGAPITokenSet {
+		resp.BGGAPITokenMasked = maskKey(cfg.BGGAPIToken)
 	}
 	writeJSON(w, http.StatusOK, resp)
 }
@@ -50,6 +56,7 @@ type updateSettingsRequest struct {
 	YouTubeAPIKey     string `json:"youtubeApiKey"`
 	SearchAPIKey      string `json:"searchApiKey"`
 	SearchAPIProvider string `json:"searchApiProvider"`
+	BGGAPIToken       string `json:"bggApiToken"`
 }
 
 func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -70,12 +77,16 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		YouTubeAPIKey:     current.YouTubeAPIKey,
 		SearchAPIKey:      current.SearchAPIKey,
 		SearchAPIProvider: req.SearchAPIProvider,
+		BGGAPIToken:       current.BGGAPIToken,
 	}
 	if req.YouTubeAPIKey != "" {
 		next.YouTubeAPIKey = req.YouTubeAPIKey
 	}
 	if req.SearchAPIKey != "" {
 		next.SearchAPIKey = req.SearchAPIKey
+	}
+	if req.BGGAPIToken != "" {
+		next.BGGAPIToken = req.BGGAPIToken
 	}
 
 	if err := s.Settings.Update(r.Context(), next); err != nil {

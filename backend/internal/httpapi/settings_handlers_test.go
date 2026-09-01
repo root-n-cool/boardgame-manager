@@ -133,3 +133,41 @@ func maskedSuffix(key string) string {
 	}
 	return "****" + key[len(key)-4:]
 }
+
+func TestPutSettings_HandlesBGGToken(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]string{
+		"defaultLanguage": "it",
+		"bggApiToken":     "abcd1234efgh",
+	})
+	putReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(payload))
+	putReq.AddCookie(cookie)
+	putRec := httptest.NewRecorder()
+	router.ServeHTTP(putRec, putReq)
+
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", putRec.Code, putRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	getReq.AddCookie(cookie)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+
+	var body struct {
+		BGGAPITokenSet    bool   `json:"bggApiTokenSet"`
+		BGGAPITokenMasked string `json:"bggApiTokenMasked"`
+	}
+	if err := json.NewDecoder(getRec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.BGGAPITokenSet {
+		t.Fatal("expected bggApiTokenSet to be true")
+	}
+	if body.BGGAPITokenMasked == "abcd1234efgh" {
+		t.Fatal("expected bgg token to be masked, not returned in clear")
+	}
+}
