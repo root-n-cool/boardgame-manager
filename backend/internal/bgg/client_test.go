@@ -19,6 +19,7 @@ func TestSearch_ParsesResultsAndSendsAuthHeader(t *testing.T) {
 <items>
 	<item type="boardgame" id="13">
 		<name type="primary" value="Catan"/>
+		<name type="alternate" value="Die Siedler von Catan"/>
 		<yearpublished value="1995"/>
 	</item>
 </items>`))

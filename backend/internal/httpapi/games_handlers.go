@@ -5,10 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/storage"
 )
+
+var coverDownloadClient = &http.Client{Timeout: 15 * time.Second}
 
 type createGameRequest struct {
 	BGGID                 string `json:"bggId"`
@@ -147,7 +150,7 @@ func (s *Server) downloadCover(ctx context.Context, imageURL string) (string, er
 	if err != nil {
 		return "", err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := coverDownloadClient.Do(req)
 	if err != nil {
 		return "", err
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"time"
 )
 
 const DefaultBaseURL = "https://boardgamegeek.com/xmlapi2"
@@ -42,16 +43,32 @@ type HTTPClient struct {
 func NewHTTPClient() *HTTPClient {
 	return &HTTPClient{
 		BaseURL:    DefaultBaseURL,
-		HTTPClient: &http.Client{},
+		HTTPClient: &http.Client{Timeout: 15 * time.Second},
 	}
+}
+
+// nameXML matches BGG's repeated <name type="..." value="..."/> elements.
+// Both /search and /thing responses can list multiple names (primary plus
+// alternates); primaryName picks the one marked "primary" instead of
+// relying on document order (BGG does not guarantee primary comes first).
+type nameXML struct {
+	Type  string `xml:"type,attr"`
+	Value string `xml:"value,attr"`
+}
+
+func primaryName(names []nameXML, fallback string) string {
+	for _, n := range names {
+		if n.Type == "primary" {
+			return n.Value
+		}
+	}
+	return fallback
 }
 
 type searchResponseXML struct {
 	Items []struct {
-		ID   string `xml:"id,attr"`
-		Name struct {
-			Value string `xml:"value,attr"`
-		} `xml:"name"`
+		ID            string    `xml:"id,attr"`
+		Names         []nameXML `xml:"name"`
 		YearPublished struct {
 			Value string `xml:"value,attr"`
 		} `xml:"yearpublished"`
@@ -76,20 +93,17 @@ func (c *HTTPClient) Search(ctx context.Context, token, query string) ([]SearchR
 	out := make([]SearchResult, 0, len(parsed.Items))
 	for _, item := range parsed.Items {
 		year, _ := strconv.Atoi(item.YearPublished.Value)
-		out = append(out, SearchResult{ID: item.ID, Name: item.Name.Value, Year: year})
+		out = append(out, SearchResult{ID: item.ID, Name: primaryName(item.Names, item.ID), Year: year})
 	}
 	return out, nil
 }
 
 type thingResponseXML struct {
 	Items []struct {
-		ID    string `xml:"id,attr"`
-		Image string `xml:"image"`
-		Names []struct {
-			Type  string `xml:"type,attr"`
-			Value string `xml:"value,attr"`
-		} `xml:"name"`
-		Description   string `xml:"description"`
+		ID            string    `xml:"id,attr"`
+		Image         string    `xml:"image"`
+		Names         []nameXML `xml:"name"`
+		Description   string    `xml:"description"`
 		YearPublished struct {
 			Value string `xml:"value,attr"`
 		} `xml:"yearpublished"`
@@ -123,13 +137,6 @@ func (c *HTTPClient) GetThing(ctx context.Context, token, id string) (ThingDetai
 	}
 
 	item := parsed.Items[0]
-	primaryName := item.ID
-	for _, n := range item.Names {
-		if n.Type == "primary" {
-			primaryName = n.Value
-			break
-		}
-	}
 
 	year, _ := strconv.Atoi(item.YearPublished.Value)
 	minPlayers, _ := strconv.Atoi(item.MinPlayers.Value)
@@ -137,7 +144,7 @@ func (c *HTTPClient) GetThing(ctx context.Context, token, id string) (ThingDetai
 	playingTime, _ := strconv.Atoi(item.PlayingTime.Value)
 
 	return ThingDetail{
-		ID: item.ID, Name: primaryName, Description: item.Description,
+		ID: item.ID, Name: primaryName(item.Names, item.ID), Description: item.Description,
 		Year: year, MinPlayers: minPlayers, MaxPlayers: maxPlayers,
 		PlayingTime: playingTime, ImageURL: item.Image,
 	}, nil
