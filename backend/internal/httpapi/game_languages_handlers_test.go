@@ -42,6 +42,48 @@ func TestCreateLanguage_PrefillsFromBaseLanguage(t *testing.T) {
 	}
 }
 
+func TestCreateLanguage_PrefillsFromEditedBaseLanguage(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	id := createTestGame(t, router, cookie, "Azul")
+
+	// Edit the base language BEFORE adding a new one, so game.Name and the
+	// base language's saved Name diverge — this is what actually proves the
+	// prefill reads the base language's row, not the static game name.
+	editPayload, _ := json.Marshal(map[string]string{"name": "Azul (edited)", "description": "Edited description."})
+	editReq := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/games/%d/languages/it", id), bytes.NewReader(editPayload))
+	editReq.AddCookie(cookie)
+	editRec := httptest.NewRecorder()
+	router.ServeHTTP(editRec, editReq)
+	if editRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 editing base language, got %d: %s", editRec.Code, editRec.Body.String())
+	}
+
+	payload, _ := json.Marshal(map[string]string{"languageCode": "en"})
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/languages", id), bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Name        string  `json:"name"`
+		Description *string `json:"description"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Name != "Azul (edited)" {
+		t.Fatalf("expected new language prefilled with the EDITED base name 'Azul (edited)', got %q — this would incorrectly pass if the handler used game.Name directly instead of reading the base language's saved row", body.Name)
+	}
+	if body.Description == nil || *body.Description != "Edited description." {
+		t.Fatalf("expected new language prefilled with the EDITED base description, got %v", body.Description)
+	}
+}
+
 func TestCreateLanguage_RequiresAuth(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
