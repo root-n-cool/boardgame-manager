@@ -22,8 +22,7 @@ func Handler() (http.Handler, error) {
 			path = path[1:]
 		}
 		if _, err := fs.Stat(sub, path); err != nil {
-			indexReq := new(http.Request)
-			*indexReq = *r
+			indexReq := r.Clone(r.Context())
 			indexReq.URL.Path = "/"
 			fileServer.ServeHTTP(w, indexReq)
 			return
