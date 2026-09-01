@@ -24,6 +24,9 @@ async function logout() {
         <router-link to="/games">Area admin</router-link>
         <button type="button" @click="logout">Esci</button>
       </template>
+      <template v-else>
+        <router-link :to="{ name: 'login' }">Accedi</router-link>
+      </template>
     </nav>
   </header>
 </template>
