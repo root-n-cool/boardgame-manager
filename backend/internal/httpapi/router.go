@@ -7,7 +7,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"boardgames-manager/internal/auth"
+	"boardgames-manager/internal/bgg"
+	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/settings"
+	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
 )
 
@@ -15,6 +18,9 @@ type Server struct {
 	Users    *users.Store
 	Sessions *auth.SessionStore
 	Settings *settings.Store
+	Games    *games.Store
+	Storage  *storage.Store
+	BGG      bgg.Client
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -36,6 +42,8 @@ func NewRouter(s *Server) http.Handler {
 		protected.Delete("/api/users/{id}", s.deleteUserHandler)
 		protected.Get("/api/settings", s.getSettingsHandler)
 		protected.Put("/api/settings", s.putSettingsHandler)
+		protected.Get("/api/games/search", s.searchGamesHandler)
+		protected.Post("/api/games", s.createGameHandler)
 	})
 
 	return r

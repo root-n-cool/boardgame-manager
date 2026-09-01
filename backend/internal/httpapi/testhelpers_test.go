@@ -7,8 +7,10 @@ import (
 
 	"boardgames-manager/internal/auth"
 	"boardgames-manager/internal/db"
+	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
 	"boardgames-manager/internal/settings"
+	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
 )
 
@@ -39,5 +41,8 @@ func newTestServerWithDB(t *testing.T) (*httpapi.Server, *sql.DB) {
 		Users:    users.NewStore(conn),
 		Sessions: auth.NewSessionStore(conn),
 		Settings: settings.NewStore(conn),
+		Games:    games.NewStore(conn),
+		Storage:  storage.NewStore(t.TempDir()),
+		BGG:      &fakeBGGClient{},
 	}, conn
 }
