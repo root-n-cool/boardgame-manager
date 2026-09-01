@@ -1565,7 +1565,7 @@ import (
 	"boardgames-manager/internal/httpapi"
 )
 
-func createTestGame(t *testing.T, gamesStore *games.Store, name string) int64 {
+func createTestGameForEvent(t *testing.T, gamesStore *games.Store, name string) int64 {
 	t.Helper()
 	g, err := gamesStore.CreateGame(context.Background(), games.Game{Name: name})
 	if err != nil {
@@ -1577,7 +1577,7 @@ func createTestGame(t *testing.T, gamesStore *games.Store, name string) int64 {
 func TestListEvents_PublicSeesOnlyFutureEvents(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	if _, err := server.Events.CreateEvent(context.Background(), "Passato", nil, "2020-01-01", "20:00",
 		[]events.EventGameInput{{GameID: gameID, Quantity: 1}}); err != nil {
@@ -1608,7 +1608,7 @@ func TestListEvents_AdminSeesPastEventsToo(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	if _, err := server.Events.CreateEvent(context.Background(), "Passato", nil, "2020-01-01", "20:00",
 		[]events.EventGameInput{{GameID: gameID, Quantity: 1}}); err != nil {
@@ -1636,7 +1636,7 @@ func TestListEvents_AdminSeesPastEventsToo(t *testing.T) {
 func TestGetEvent_ReturnsGamesWithRemainingCapacity(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
 		[]events.EventGameInput{{GameID: gameID, Quantity: 3}})
@@ -1893,7 +1893,7 @@ func TestCreateEvent_Succeeds(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	payload, _ := json.Marshal(map[string]any{
 		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
@@ -1912,7 +1912,7 @@ func TestUpdateEvent_RejectsQuantityBelowActiveBookings(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
 		[]events.EventGameInput{{GameID: gameID, Quantity: 2}})
@@ -1944,7 +1944,7 @@ func TestDeleteEvent_Succeeds(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
 		[]events.EventGameInput{{GameID: gameID, Quantity: 1}})
@@ -1976,7 +1976,7 @@ func TestListEventBookings_ReturnsActiveBookings(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
 		[]events.EventGameInput{{GameID: gameID, Quantity: 1}})
@@ -2168,7 +2168,7 @@ func createTestEvent(t *testing.T, server *httpapi.Server, gameID int64, quantit
 func TestCreateBooking_Succeeds(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 	eventID := createTestEvent(t, server, gameID, 2)
 	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
 
@@ -2195,7 +2195,7 @@ func TestCreateBooking_Succeeds(t *testing.T) {
 func TestCreateBooking_SoldOutReturns409(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 	eventID := createTestEvent(t, server, gameID, 1)
 	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
 	if err := server.Events.TestInsertBooking(eventID, eventGames[0].ID, "active"); err != nil {
@@ -2216,7 +2216,7 @@ func TestCreateBooking_SoldOutReturns409(t *testing.T) {
 func TestLookupAndCancelBooking_FullFlow(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
-	gameID := createTestGame(t, server.Games, "Catan")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
 	eventID := createTestEvent(t, server, gameID, 1)
 	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
 
