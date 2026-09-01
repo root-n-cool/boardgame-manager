@@ -9,14 +9,14 @@ si prenotano un gioco per evento senza bisogno di login (email +
 telefono), e a fine partita inseriscono i punteggi che alimentano una
 classifica per gioco nel tempo.
 
-Il design completo vive in `docs/superpowers/specs/` (spec principale
-da completare e linkare qui una volta scritta).
+Il design completo vive in
+`docs/superpowers/specs/2026-08-31-boardgames-manager-design.md`.
 
 ## Stack tecnico
 
 - **Backend**: Go (monolite), router `chi` o stdlib `net/http`,
-  SQLite (driver cgo-free `modernc.org/sqlite`), migrazioni con
-  `goose` o `golang-migrate`.
+  SQLite (driver cgo-free `modernc.org/sqlite`), migrazioni con un
+  runner custom basato su `embed.FS` (vedi sotto).
 - **Frontend**: Vue 3 + Vite, build statico embeddato nel binario Go
   (`embed.FS`) — un solo binario/container serve sia API che frontend.
 - **Auth**: sessioni via cookie httpOnly (no JWT), password hashate
@@ -29,6 +29,15 @@ da completare e linkare qui una volta scritta).
 Non ridiscutere questi punti senza un motivo nuovo emerso — sono il
 risultato di una sessione di brainstorming con l'utente:
 
+- Migrazioni: niente dipendenza esterna (`goose`/`golang-migrate`), ma
+  un runner custom in `backend/internal/db/migrate.go` (~70 righe). I
+  file `.sql` in `backend/internal/db/migrations/` (naming
+  `NNNN_nome.sql`, es. `0001_init.sql`) sono embeddati nel binario con
+  `//go:embed`, applicati in ordine alfabetico all'avvio, ognuno in una
+  transazione, e registrati in una tabella `schema_migrations` che
+  rende l'operazione idempotente. Solo migrazioni forward: non esiste
+  il down/rollback. Per aggiungere una migrazione basta creare un
+  nuovo file `.sql` con il numero successivo.
 - Bootstrap primo utente come n8n: se non esistono utenti nel DB, si
   forza la registrazione del primo admin al primo accesso.
 - Un solo ruolo utente: admin/organizzatore a pieni permessi. Non

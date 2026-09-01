@@ -38,7 +38,16 @@ tramite la pagina di gestione utenti.
 
 - **Backend**: Go, monolite, router `chi` (o stdlib `net/http` con i
   pattern di routing di Go 1.22+), driver SQLite cgo-free
-  (`modernc.org/sqlite`), migrazioni con `goose` o `golang-migrate`.
+  (`modernc.org/sqlite`).
+- **Migrazioni**: runner custom invece di una dipendenza esterna come
+  `goose` o `golang-migrate`. I file `.sql` numerati
+  (`0001_init.sql`, ...) vivono in `backend/internal/db/migrations/`,
+  vengono embeddati nel binario con `//go:embed` e applicati in ordine
+  alfabetico all'avvio, ognuno dentro una transazione; una tabella
+  `schema_migrations` traccia le versioni già applicate e rende
+  l'operazione idempotente. Solo migrazioni forward, nessun rollback.
+  Il costo è ~70 righe in `backend/internal/db/migrate.go` e in cambio
+  il deploy resta un singolo binario senza CLI o step aggiuntivi.
 - **Frontend**: Vue 3 + Vite. Il build statico viene embeddato nel
   binario Go tramite `embed.FS`, quindi un solo processo serve sia le
   API sia l'interfaccia.
