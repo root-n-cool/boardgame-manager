@@ -2,6 +2,7 @@ package webui_test
 
 import (
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/webui"
@@ -30,5 +31,19 @@ func TestHandler_SPAFallbackDoesNotMutateOriginalRequest(t *testing.T) {
 	}
 	if rec.Code != 200 {
 		t.Fatalf("unexpected status code: got %d, want 200", rec.Code)
+	}
+	// A 200 alone used to be satisfiable by a directory listing served out of
+	// an unbuilt dist/, so assert we really got the SPA shell back.
+	if body := rec.Body.String(); !strings.Contains(body, `id="app"`) {
+		t.Fatalf("expected the SPA index.html for a client route, got: %s", body)
+	}
+}
+
+// TestHandler_SucceedsWithEmbeddedBuildOutput is the positive half of the
+// "frontend really got built" contract; see handlerFor's own tests for the
+// missing-index.html case, which needs an alternate filesystem to exercise.
+func TestHandler_SucceedsWithEmbeddedBuildOutput(t *testing.T) {
+	if _, err := webui.Handler(); err != nil {
+		t.Fatalf("Handler() failed — is the frontend built? %v", err)
 	}
 }
