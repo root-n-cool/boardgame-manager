@@ -48,6 +48,8 @@ func NewRouter(s *Server) http.Handler {
 		protected.Post("/api/games", s.createGameHandler)
 		protected.Patch("/api/games/{id}", s.updateGameHandler)
 		protected.Delete("/api/games/{id}", s.deleteGameHandler)
+		protected.Post("/api/games/{id}/languages", s.createLanguageHandler)
+		protected.Patch("/api/games/{id}/languages/{lang}", s.updateLanguageHandler)
 	})
 
 	return r
