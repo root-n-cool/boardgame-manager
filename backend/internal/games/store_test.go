@@ -2,6 +2,7 @@ package games_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -11,15 +12,25 @@ import (
 
 func newTestStore(t *testing.T) *games.Store {
 	t.Helper()
+	store, _ := newTestStoreWithDB(t)
+	return store
+}
+
+// newTestStoreWithDB also hands back the raw connection, for tests that need
+// to set up state (e.g. events/event_games rows) directly via SQL without
+// importing the events package.
+func newTestStoreWithDB(t *testing.T) (*games.Store, *sql.DB) {
+	t.Helper()
 	conn, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
 	}
+	conn.SetMaxOpenConns(1)
 	t.Cleanup(func() { conn.Close() })
 	if err := db.Migrate(context.Background(), conn); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return games.NewStore(conn)
+	return games.NewStore(conn), conn
 }
 
 func strPtr(v string) *string { return &v }
@@ -112,6 +123,35 @@ func TestDeleteGame_RemovesIt(t *testing.T) {
 	_, err = store.GetGame(ctx, created.ID)
 	if !errors.Is(err, games.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound after delete, got %v", err)
+	}
+}
+
+func TestDeleteGame_UsedByEventReturnsErrGameInUse(t *testing.T) {
+	store, conn := newTestStoreWithDB(t)
+	ctx := context.Background()
+
+	created, err := store.CreateGame(ctx, games.Game{Name: "Azul"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	res, err := conn.ExecContext(ctx,
+		`INSERT INTO events (title, event_date, start_time) VALUES ('t', '2099-01-01', '20:00')`)
+	if err != nil {
+		t.Fatalf("insert event: %v", err)
+	}
+	eventID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("event id: %v", err)
+	}
+	if _, err := conn.ExecContext(ctx,
+		`INSERT INTO event_games (event_id, game_id, quantity) VALUES (?, ?, 1)`, eventID, created.ID); err != nil {
+		t.Fatalf("insert event_games: %v", err)
+	}
+
+	err = store.DeleteGame(ctx, created.ID)
+	if !errors.Is(err, games.ErrGameInUse) {
+		t.Fatalf("expected ErrGameInUse, got %v", err)
 	}
 }
 

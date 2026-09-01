@@ -99,6 +99,9 @@ func (s *Server) deleteGameHandler(w http.ResponseWriter, r *http.Request) {
 	if err := s.Games.DeleteGame(r.Context(), id); errors.Is(err, games.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "game not found")
 		return
+	} else if errors.Is(err, games.ErrGameInUse) {
+		writeError(w, http.StatusConflict, "il gioco è usato in uno o più eventi")
+		return
 	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not delete game")
 		return

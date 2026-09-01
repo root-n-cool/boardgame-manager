@@ -40,6 +40,7 @@ type GameUpdate struct {
 
 var ErrNotFound = errors.New("not found")
 var ErrDuplicateLanguage = errors.New("language already exists for this game")
+var ErrGameInUse = errors.New("game is used by one or more events")
 
 type Store struct {
 	db *sql.DB
@@ -154,6 +155,9 @@ func (s *Store) UpdateCoverPath(ctx context.Context, id int64, path string) (Gam
 func (s *Store) DeleteGame(ctx context.Context, id int64) error {
 	res, err := s.db.ExecContext(ctx, `DELETE FROM games WHERE id = ?`, id)
 	if err != nil {
+		if isForeignKeyConstraintErr(err) {
+			return ErrGameInUse
+		}
 		return err
 	}
 	affected, err := res.RowsAffected()
@@ -265,4 +269,8 @@ func (s *Store) UpdateLanguage(ctx context.Context, gameID int64, code string, n
 
 func isUniqueConstraintErr(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+func isForeignKeyConstraintErr(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "FOREIGN KEY constraint failed")
 }
