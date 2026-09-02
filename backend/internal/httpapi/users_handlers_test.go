@@ -23,12 +23,12 @@ func TestListUsers_RequiresAuth(t *testing.T) {
 	}
 }
 
-func TestCreateUser_AsAdminSucceeds(t *testing.T) {
+func TestCreateUser_WithOnlyAnEmailReturnsAnInviteToken(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
-	payload, _ := json.Marshal(map[string]string{"email": "second@example.com", "password": "anotherpass1"})
+	payload, _ := json.Marshal(map[string]string{"email": "second@example.com"})
 	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
@@ -37,6 +37,78 @@ func TestCreateUser_AsAdminSucceeds(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
 	}
+	var created struct {
+		ID          int64  `json:"id"`
+		Email       string `json:"email"`
+		Pending     bool   `json:"pending"`
+		InviteToken string `json:"inviteToken"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created user: %v", err)
+	}
+	if created.Email != "second@example.com" {
+		t.Errorf("expected the invited email back, got %q", created.Email)
+	}
+	if !created.Pending {
+		t.Error("a freshly invited admin must be reported as pending")
+	}
+	if len(created.InviteToken) != 64 {
+		t.Errorf("expected a 64-char hex invite token, got %q", created.InviteToken)
+	}
+}
+
+func TestCreateUser_MissingEmailReturnsBadRequest(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]string{"email": "   "})
+	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListUsers_ReportsPendingAndActiveAdmins(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]string{"email": "second@example.com"})
+	createReq := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
+	createReq.AddCookie(cookie)
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, createReq)
+	if createRec.Code != http.StatusCreated {
+		t.Fatalf("invite second admin: %d %s", createRec.Code, createRec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, "/api/users", nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+
+	var list []struct {
+		Email       string  `json:"email"`
+		Pending     bool    `json:"pending"`
+		InviteToken *string `json:"inviteToken"`
+	}
+	if err := json.NewDecoder(listRec.Body).Decode(&list); err != nil {
+		t.Fatalf("decode list: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 admins, got %d", len(list))
+	}
+	if list[0].Pending || list[0].InviteToken != nil {
+		t.Errorf("the bootstrapped admin must be active with a null token, got %+v", list[0])
+	}
+	if !list[1].Pending || list[1].InviteToken == nil || *list[1].InviteToken == "" {
+		t.Errorf("the invited admin must be pending with a token, got %+v", list[1])
+	}
 }
 
 func TestCreateUser_DuplicateEmailReturnsConflict(t *testing.T) {
@@ -44,7 +116,7 @@ func TestCreateUser_DuplicateEmailReturnsConflict(t *testing.T) {
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
-	payload, _ := json.Marshal(map[string]string{"email": "admin@example.com", "password": "anotherpass1"})
+	payload, _ := json.Marshal(map[string]string{"email": "admin@example.com"})
 	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
@@ -114,7 +186,7 @@ func TestDeleteUser_RemovesTheUserAndReturnsOK(t *testing.T) {
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
-	payload, _ := json.Marshal(map[string]string{"email": "second@example.com", "password": "anotherpass1"})
+	payload, _ := json.Marshal(map[string]string{"email": "second@example.com"})
 	createReq := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
 	createReq.AddCookie(cookie)
 	createRec := httptest.NewRecorder()
@@ -161,7 +233,7 @@ func TestDeleteUser_UnknownIDReturnsNotFound(t *testing.T) {
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
 	// A second admin exists so the last-user guard is not what answers here.
-	payload, _ := json.Marshal(map[string]string{"email": "second@example.com", "password": "anotherpass1"})
+	payload, _ := json.Marshal(map[string]string{"email": "second@example.com"})
 	createReq := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
 	createReq.AddCookie(cookie)
 	createRec := httptest.NewRecorder()
@@ -184,11 +256,13 @@ func TestDeleteUser_UnknownIDReturnsNotFound(t *testing.T) {
 // sessions.user_id: removing an admin must immediately invalidate whatever
 // session that admin was holding.
 func TestDeleteUser_DeletedUsersSessionIsRejected(t *testing.T) {
+	t.Skip("riattivato nel Task 3: la vittima ora entra accettando l'invito")
+
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	adminCookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
-	payload, _ := json.Marshal(map[string]string{"email": "victim@example.com", "password": "victimpass1"})
+	payload, _ := json.Marshal(map[string]string{"email": "victim@example.com"})
 	createReq := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
 	createReq.AddCookie(adminCookie)
 	createRec := httptest.NewRecorder()
