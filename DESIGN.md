@@ -317,9 +317,9 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
 - **Il link d'invito è una riga di dato, rientrata** (`.admin-invite`): sotto
   la riga principale, oltre la pedina, in mono e troncato con ellissi — mai
   a spingere il foglio più largo. Compare solo per un admin in attesa e
-  resta visibile finché l'invito non viene copiato di nuovo o eliminato:
-  il token non scade e non si rigenera, quindi il link di oggi è quello
-  valido fra una settimana.
+  resta visibile finché l'invitato non attiva l'invito (impostando la password)
+  o la riga non viene eliminata: il token non scade e non si rigenera, quindi
+  il link di oggi è quello valido fra una settimana.
 - **Lo slot "Aggiungi admin" a riga piena** (`.admin-add`) è la variante
   orizzontale di `.add-card` del catalogo, stessa grammatica: bordo
   tratteggiato 2px senza fondo proprio (il cartoncino della pagina si vede
