@@ -35,11 +35,16 @@ func NewRouter(s *Server) http.Handler {
 
 	bookingCredentialsLimiter := newRateLimiter(10, time.Minute)
 	matchResultLimiter := newRateLimiter(60, time.Minute)
+	inviteLimiter := newRateLimiter(10, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
 	r.Post("/api/bootstrap", s.bootstrapHandler)
 	r.Post("/api/login", s.loginHandler)
+	// The token is 32 random bytes: the rate limit is not there against
+	// bruteforce, it is there so these two endpoints cannot be used as a probe.
+	r.With(inviteLimiter.middleware).Get("/api/invites/{token}", s.getInviteHandler)
+	r.With(inviteLimiter.middleware).Post("/api/invites/{token}", s.acceptInviteHandler)
 	r.Get("/api/games", s.listGamesHandler)
 	r.Get("/api/games/{id}", s.getGameHandler)
 	r.Get("/api/uploads/{filename}", s.getUploadHandler)

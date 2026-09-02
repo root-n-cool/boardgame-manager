@@ -256,24 +256,23 @@ func TestDeleteUser_UnknownIDReturnsNotFound(t *testing.T) {
 // sessions.user_id: removing an admin must immediately invalidate whatever
 // session that admin was holding.
 func TestDeleteUser_DeletedUsersSessionIsRejected(t *testing.T) {
-	t.Skip("riattivato nel Task 3: la vittima ora entra accettando l'invito")
-
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	adminCookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
-	payload, _ := json.Marshal(map[string]string{"email": "victim@example.com"})
-	createReq := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
-	createReq.AddCookie(adminCookie)
-	createRec := httptest.NewRecorder()
-	router.ServeHTTP(createRec, createReq)
-	if createRec.Code != http.StatusCreated {
-		t.Fatalf("create victim: %d %s", createRec.Code, createRec.Body.String())
+	victimToken := inviteAdmin(t, router, adminCookie, "victim@example.com")
+
+	acceptPayload, _ := json.Marshal(map[string]string{"password": "victimpass1"})
+	acceptRec := httptest.NewRecorder()
+	router.ServeHTTP(acceptRec, httptest.NewRequest(http.MethodPost, "/api/invites/"+victimToken, bytes.NewReader(acceptPayload)))
+	if acceptRec.Code != http.StatusOK {
+		t.Fatalf("accept invite: %d %s", acceptRec.Code, acceptRec.Body.String())
 	}
+
 	var victim struct {
 		ID int64 `json:"id"`
 	}
-	if err := json.NewDecoder(createRec.Body).Decode(&victim); err != nil {
+	if err := json.NewDecoder(acceptRec.Body).Decode(&victim); err != nil {
 		t.Fatalf("decode victim: %v", err)
 	}
 

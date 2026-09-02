@@ -20,6 +20,14 @@ func (s *Server) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// An admin with an invite still to accept has no password: bcrypt would
+	// fail on an empty hash anyway, but saying it here makes the intent
+	// readable and does not lean on the library's behaviour.
+	if user.Pending() {
+		writeError(w, http.StatusUnauthorized, "invalid credentials")
+		return
+	}
+
 	if !auth.VerifyPassword(user.PasswordHash, req.Password) {
 		writeError(w, http.StatusUnauthorized, "invalid credentials")
 		return

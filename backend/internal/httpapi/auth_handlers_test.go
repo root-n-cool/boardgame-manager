@@ -227,3 +227,26 @@ func TestLogout_InvalidatesSession(t *testing.T) {
 		t.Fatalf("expected 401 after logout, got %d", rec.Code)
 	}
 }
+
+// An invited but not yet active admin has no password: login must reject them
+// like any wrong credential, without revealing that the email exists pending.
+func TestLogin_PendingAdminCannotSignIn(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	inviteAdmin(t, router, cookie, "invited@example.com")
+
+	payload, _ := json.Marshal(map[string]string{"email": "invited@example.com", "password": ""})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewReader(payload)))
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("an empty password is a bad request, got %d", rec.Code)
+	}
+
+	payload, _ = json.Marshal(map[string]string{"email": "invited@example.com", "password": "anything123"})
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/login", bytes.NewReader(payload)))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 for a pending admin, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
