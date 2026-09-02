@@ -266,6 +266,52 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   orizzontale, **mai nell'altezza**: `min-height: 44px`, il minimo per un
   bersaglio da dito.
 
+### Scheda gioco (`/games/:id`)
+- **La copertina è il controllo di caricamento** (`.cover-uploader`): un
+  `<button>` che avvolge l'immagine, con un velo feltro all'88% e l'icona
+  upload che compare su hover e su focus da tastiera. Il click apre il file
+  picker e al `change` **l'upload parte da solo** — niente form, niente
+  bottone "Carica" da premere dopo. Durante il caricamento il velo resta
+  fisso su "Caricamento…" e il bottone è `disabled`. Per chi non è loggato
+  la copertina torna una `<img>` senza affordance.
+- **Dati BGG** (`.game-facts`): coppie etichetta/valore in una riga
+  impacchettata a sinistra (`display: flex; flex-wrap: wrap`), **mai** una
+  griglia `1fr` che li stira ai bordi della card. L'etichetta è
+  maiuscoletto tracciato in `--ink-muted`, il valore è mono (`Data`): è un
+  dato, non un titolo. Niente stat-tile a numero grande.
+- **Azione distruttiva in testa** (`button.is-compact`): "Elimina" +
+  cestino nella `.page-head`, non annegata in una riga di metadati insieme
+  ai link di navigazione. Stessa misura di `.action-link.is-compact`, con
+  l'icona **dopo** il testo — lì nomina la conseguenza, non anticipa
+  l'oggetto.
+- **Due fogli, non un foglio diviso** (`.panel-card` × 2): "Scheda" e
+  "Media" sono card separate sotto la barra delle lingue, che le governa
+  entrambe. Un filetto full-bleed in mezzo a una card sola tagliava il
+  foglio invece di articolarlo.
+- **Dentro un `.panel-card` il campo è largo quanto il foglio**: il tetto
+  di 30rem sui campi vale nella colonna della pagina, dove i form si
+  allineano ad altre card; dentro un pannello dedicato lasciava mezza
+  superficie vuota.
+- **Media come griglia di card** (`.media-grid`, riuso di `.game-grid`):
+  ogni media è una tessera 16/9 con preview, titolo e tipo, e chiude la
+  griglia lo slot "Aggiungi media". Le miniature YouTube arrivano da
+  `img.youtube.com/vi/<id>/hqdefault.jpg`: è 4/3 con due bande nere, e il
+  ritaglio a 16/9 con `object-fit: cover` toglie esattamente quelle. Se la
+  miniatura non carica (video privato, rimosso, offline) la tessera cade
+  sull'icona su feltro come per PDF e link.
+- **"Rimuovi" sta fuori dal link**: un `<button>` dentro un `<a>` non è
+  markup valido e su tastiera è una trappola. È un fratello in
+  `position: absolute` nell'angolo, invisibile finché non serve, sempre
+  visibile dove l'hover non esiste (`@media (hover: none)`), con l'area di
+  tocco portata a 44px da uno `::after` trasparente.
+
+### Griglie su telefono
+- Sotto 560px `.game-grid` smette di tenere le celle a 230px fisse e passa
+  a `repeat(auto-fill, minmax(140px, 1fr))`: il tetto fisso lasciava una
+  colonna sola con mezzo schermo vuoto accanto. `.media-grid` fa eccezione
+  e scende a una colonna piena — una miniatura video e un titolo che è un
+  URL hanno bisogno di tutta la riga.
+
 ### Inputs / Fields
 - **Style:** fondo cartoncino, bordo `#ddd0ab`, radius 6px.
 - **Focus:** outline 2px accento, offset 2px (mai un semplice cambio di

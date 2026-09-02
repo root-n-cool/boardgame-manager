@@ -82,6 +82,20 @@
   box-sizing: border-box;
 }
 
+/* Solo per lo screen reader / fuori dal flusso ma raggiungibile dai
+   programmi: l'input file della copertina, che è pilotato dall'immagine. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -516,39 +530,6 @@ form textarea {
   font-size: 0.85rem;
 }
 
-/* Un controllo secondario minore (cambia copertina) non merita il peso
-   visivo di una card intera: resta una riga inline sotto l'immagine. */
-form.inline-form {
-  display: flex;
-  /* La regola base dei form è a colonna: senza questo la "inline-form"
-     impilava label e bottone invece di metterli in riga. */
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.6rem;
-  margin: 0.75rem 0 1.5rem;
-  max-width: none;
-  background: none;
-  border: none;
-  padding: 0;
-  box-shadow: none;
-}
-
-/* In una riga inline la label non si stira a tutta larghezza (lo farebbe
-   per la regola dei form a colonna), altrimenti spinge il bottone a capo. */
-form.inline-form label {
-  align-self: auto;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8rem;
-}
-
-.inline-form button {
-  padding: 0.4rem 0.8rem;
-  font-size: 0.85rem;
-}
-
 /* ---------- Liste semplici (UsersView, ricerca BGG, media) ---------- */
 
 ul {
@@ -698,6 +679,26 @@ li button.btn-select {
   flex: none;
 }
 
+/* Stessa misura per un'azione di testa che è un bottone e non un link
+   (es. "Elimina" sulla scheda gioco): l'icona segue il testo, perché lì
+   nomina la conseguenza invece di anticipare l'oggetto. */
+button.is-compact {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.88rem;
+}
+
+button.is-compact svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
 /* Rimando indietro discreto (es. classifica -> scheda gioco). */
 .back-link {
   display: inline-block;
@@ -822,6 +823,7 @@ li button.btn-select {
   background: none;
   box-shadow: none;
   color: var(--ink-muted);
+  text-align: left;
   text-decoration: none;
   transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease,
     border-color 0.15s ease, color 0.15s ease;
@@ -862,6 +864,16 @@ li button.btn-select {
   color: inherit;
 }
 
+/* Su telefono il tetto di 230px lasciava una colonna sola con mezzo schermo
+   vuoto accanto: sotto questa misura le celle si dividono lo spazio invece
+   di tenere una larghezza fissa, e lo scaffale torna a due scatole per riga. */
+@media (max-width: 560px) {
+  .game-grid {
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 0.8rem;
+  }
+}
+
 /* Chi ha chiesto meno movimento perde il sollevamento, non il segnale: ombra,
    bordo e fondo continuano a rispondere, solo senza spostamento. */
 @media (prefers-reduced-motion: reduce) {
@@ -879,8 +891,8 @@ li button.btn-select {
 
 /* ---------- Scheda gioco (GameDetailView) ---------- */
 
-/* Identità del gioco: copertina e i suoi dati/azioni in una card sola,
-   invece di un'immagine sciolta con un file input larghissimo sotto. */
+/* Identità del gioco: copertina e i dati che arrivano da BGG in una card
+   sola, invece di un'immagine sciolta con un file input larghissimo sotto. */
 .game-cover-card {
   display: flex;
   flex-wrap: wrap;
@@ -890,7 +902,7 @@ li button.btn-select {
   border: 1px solid var(--card-line);
   border-radius: var(--radius);
   padding: 1.35rem;
-  margin: 0.9rem 0 1.75rem;
+  margin: 0 0 1.75rem;
   box-shadow: var(--shadow-card);
 }
 
@@ -922,23 +934,166 @@ li button.btn-select {
   color: var(--felt-text-muted);
 }
 
-/* Sotto questa misura la colonna dei dati diventa illeggibile (separatori
-   orfani, nome file troncato): meglio impilare copertina e dati. */
+/* La copertina è il controllo: niente form separato con un input file e un
+   bottone "carica", perché quel form pesava quanto i dati del gioco per
+   un'azione che si fa una volta sola. Il bottone non ha aspetto proprio —
+   è la cornice della copertina — e il segnale sta tutto nell'overlay. */
+.cover-uploader {
+  flex: none;
+  position: relative;
+  display: block;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  line-height: 0;
+}
+
+.cover-uploader:hover {
+  background: none;
+}
+
+/* Velo scuro + istruzione: fermo finché non serve, così la copertina si
+   guarda per quello che è. Compare al passaggio, al focus da tastiera e
+   per tutto il caricamento. */
+.cover-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem;
+  border-radius: var(--radius-sm);
+  background: rgb(20 53 40 / 88%);
+  color: var(--felt-text);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.cover-uploader:hover .cover-overlay,
+.cover-uploader:focus-visible .cover-overlay,
+.cover-uploader.is-uploading .cover-overlay {
+  opacity: 1;
+}
+
+.cover-uploader:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.cover-overlay svg {
+  width: 1.8rem;
+  height: 1.8rem;
+}
+
+.cover-overlay-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-align: center;
+}
+
+/* Un caricamento in corso non è annullabile a metà: il bersaglio resta
+   coperto e l'etichetta dice cosa sta succedendo. */
+.cover-uploader.is-uploading {
+  cursor: progress;
+  opacity: 1;
+}
+
+/* Dove l'hover non esiste il velo non comparirebbe mai e la copertina
+   sembrerebbe solo un'immagine: l'invito si trasforma in una pastiglia
+   nell'angolo, sempre visibile, che non copre l'illustrazione. Il velo
+   pieno torna durante il caricamento, dove deve bloccare il bersaglio. */
+@media (hover: none) {
+  .cover-overlay {
+    inset: auto 0.4rem 0.4rem auto;
+    flex-direction: row;
+    gap: 0.35rem;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    opacity: 1;
+  }
+
+  .cover-overlay svg {
+    width: 1rem;
+    height: 1rem;
+  }
+
+  .cover-overlay-label {
+    font-size: 0.75rem;
+  }
+
+  .cover-uploader.is-uploading .cover-overlay {
+    inset: 0;
+    flex-direction: column;
+    gap: 0.4rem;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+  }
+
+  .cover-uploader.is-uploading .cover-overlay svg {
+    width: 1.8rem;
+    height: 1.8rem;
+  }
+
+  .cover-uploader.is-uploading .cover-overlay-label {
+    font-size: 0.8rem;
+  }
+}
+
+/* Sotto questa misura la colonna dei dati diventa illeggibile: meglio
+   impilare copertina e dati. */
 .game-cover-info {
   flex: 1;
-  min-width: 18rem;
+  min-width: 16rem;
   display: flex;
   flex-direction: column;
   gap: 0.9rem;
 }
 
-.game-cover-info .meta-row,
-.game-cover-info .inline-form {
+/* I dati di BoardGameGeek: coppie etichetta/valore, non finti stat-tile a
+   numero grande. L'etichetta è un'insegna piccola, il valore è un dato e
+   quindi sta in mono, allineato in colonna con gli altri. */
+.game-facts {
   margin: 0;
+  /* Riga compatta impacchettata a sinistra, non una griglia stirata: con
+     `1fr` i quattro dati si allontanavano fino ai bordi della card e la
+     riga si leggeva come quattro cose separate invece che come la scheda
+     tecnica di un gioco. A schermo stretto vanno a capo da sé. */
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 2.5rem;
 }
 
-.game-cover-info .inline-form input[type='file'] {
-  max-width: 17rem;
+.game-facts > div {
+  min-width: 0;
+}
+
+.game-facts dt {
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--ink-muted);
+}
+
+.game-facts dd {
+  margin: 0.15rem 0 0;
+  font-family: 'Data', monospace;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.game-facts dd a {
+  text-decoration: none;
+}
+
+.game-facts dd a:hover {
+  text-decoration: underline;
 }
 
 /* Le lingue come pastiglie su una barra in feltro: angoli tondi su tutti i
@@ -947,8 +1102,9 @@ li button.btn-select {
 .language-tabs {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.3rem;
-  margin: 1.25rem 0 0;
+  margin: 1.25rem 0 0.9rem;
   padding: 0.4rem;
   background: var(--felt);
   border-radius: var(--radius);
@@ -1004,19 +1160,24 @@ li button.btn-select {
   height: 0.85rem;
 }
 
-/* Scheda unica per la lingua attiva: dettagli e materiali condividono lo
-   stesso foglio, divisi da una riga che taglia la card da bordo a bordo —
-   un filetto rientrato in mezzo a due form si legge come un errore. */
-.language-panel {
+/* Scheda e media della lingua attiva: due fogli distinti, separati dallo
+   spazio della pagina. Prima erano due sezioni di una card sola divise da
+   un filetto da bordo a bordo, che tagliava il foglio invece di articolarlo.
+   Le linguette lingua stanno sopra entrambi e li governano tutti e due. */
+.panel-card {
   background: var(--card);
   border: 1px solid var(--card-line);
   border-radius: var(--radius);
   padding: 1.35rem;
-  margin: 0.9rem 0 1.75rem;
+  margin-bottom: 1.75rem;
   box-shadow: var(--shadow-card);
 }
 
-.language-panel form {
+.panel-card + .panel-card {
+  margin-top: 1.25rem;
+}
+
+.panel-card form {
   max-width: none;
   background: none;
   border: none;
@@ -1025,16 +1186,24 @@ li button.btn-select {
   box-shadow: none;
 }
 
-.panel-section + .panel-section {
-  margin: 1.5rem -1.35rem 0;
-  padding: 1.5rem 1.35rem 0;
-  border-top: 1px solid var(--card-line);
+/* Dentro il foglio il campo è largo quanto il foglio: qui non c'è una
+   colonna di card con cui allinearsi, e la descrizione di un gioco a metà
+   riga lasciava mezzo pannello vuoto. */
+.panel-card form input,
+.panel-card form select,
+.panel-card form textarea {
+  max-width: none;
+}
+
+.panel-card .form-actions {
+  max-width: none;
 }
 
 /* Titolo di sezione a sinistra, la sua azione a destra sulla stessa riga. */
 .section-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
   margin-bottom: 1rem;
 }
@@ -1082,28 +1251,64 @@ li button.btn-select {
   font-size: 0.9rem;
 }
 
-/* Lista materiali: righe nude dentro il foglio, non una card annidata. */
-.media-list {
-  background: none;
-  border: none;
-  box-shadow: none;
-  margin: 0;
+/* Icona con la spunta dentro un submit: conferma l'esito dell'azione, non
+   la ripete. Sta prima del testo perché "salva" si legge come un gesto solo. */
+form button[type='submit'] svg {
+  flex: none;
+  width: 0.9rem;
+  height: 0.9rem;
 }
 
-.media-list li {
-  gap: 0.75rem;
-  padding: 0.6rem 0;
+form button[type='submit']:has(svg) {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
-.media-list li:first-child {
-  padding-top: 0;
+/* ---------- Media di una lingua (GameDetailView) ---------- */
+
+/* Stessa griglia dello scaffale: un media è una scatola con la sua
+   copertina, e lo slot tratteggiato in fondo è il posto dove manca. Le
+   tessere però sono orizzontali — una miniatura YouTube è 16/9, non il
+   ritratto di una scatola. */
+.media-grid {
+  margin-bottom: 0;
 }
 
-.media-list a {
-  margin-right: auto;
+.media-grid li {
+  position: relative;
 }
 
-.media-kind {
+.media-grid img,
+.media-grid .media-thumb,
+.media-grid .add-card .add-slot {
+  aspect-ratio: 16 / 9;
+}
+
+.media-grid img {
+  object-fit: cover;
+  background: var(--felt-deep);
+}
+
+.media-grid .add-card .add-slot svg {
+  width: 2.2rem;
+  height: 2.2rem;
+}
+
+/* Il titolo del media guarda come quello di una scatola ma è un h3: il
+   livello segue la gerarchia della pagina, non l'aspetto. */
+.media-grid h3 {
+  margin: 0 0.9rem 0.15rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  /* Un URL senza titolo è lunghissimo e non ha spazi: senza questo sfonda
+     la card invece di andare a capo. */
+  overflow-wrap: anywhere;
+}
+
+.media-grid .media-kind {
   font-family: 'Data', monospace;
   font-size: 0.7rem;
   font-weight: 600;
@@ -1111,6 +1316,64 @@ li button.btn-select {
   letter-spacing: 0.06em;
   color: var(--ink-muted);
 }
+
+/* I media fanno eccezione alla riga da due: una miniatura video e un titolo
+   che è un URL hanno bisogno di tutta la riga per restare leggibili. */
+@media (max-width: 560px) {
+  .media-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* "Rimuovi" nell'angolo della tessera, fuori dal link che apre il media:
+   un bottone dentro un <a> non è markup valido e su tastiera diventa una
+   trappola. Discreto finché non serve, ma sempre visibile dove il passaggio
+   del mouse non esiste (touch). */
+.media-remove {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border-radius: 999px;
+  background: rgb(20 53 40 / 82%);
+  color: var(--felt-text);
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.media-grid li:hover .media-remove,
+.media-remove:focus-visible {
+  opacity: 1;
+}
+
+.media-remove:hover {
+  background: var(--danger);
+}
+
+.media-remove svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Il cerchio resta piccolo per non coprire la miniatura, ma il bersaglio
+   arriva a 44px: l'area in più è invisibile e non sposta nulla. */
+.media-remove::after {
+  content: '';
+  position: absolute;
+  inset: -0.45rem;
+}
+
+@media (hover: none) {
+  .media-remove {
+    opacity: 1;
+  }
+}
+
 
 /* Riga azioni: i bottoni di un form stanno a destra, non spaiati a sinistra
    sotto l'ultimo campo. Si allineano al bordo destro dei campi, non a quello
