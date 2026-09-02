@@ -3,6 +3,7 @@ package events_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -137,7 +138,7 @@ func TestCreateBooking_AllowsSamePhoneAfterCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first booking: %v", err)
 	}
-	if _, err := eventStore.CancelBooking(ctx, first.ID, first.ParticipantEmail, first.BookingCode); err != nil {
+	if _, err := eventStore.CancelBooking(ctx, first.ID, first.BookingCode); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
 
@@ -146,33 +147,7 @@ func TestCreateBooking_AllowsSamePhoneAfterCancellation(t *testing.T) {
 	}
 }
 
-func TestLookupBooking_FindsActiveBookingByEmailAndCode(t *testing.T) {
-	eventStore, gameStore := newTestStore(t)
-	ctx := context.Background()
-	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 1}})
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
-	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-
-	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "Mario@Example.com", "3331234567", now)
-	if err != nil {
-		t.Fatalf("create booking: %v", err)
-	}
-
-	found, err := eventStore.LookupBooking(ctx, "mario@example.com", created.BookingCode)
-	if err != nil {
-		t.Fatalf("lookup with lowercase email: %v", err)
-	}
-	if found.ID != created.ID {
-		t.Fatalf("expected booking %d, got %d", created.ID, found.ID)
-	}
-}
-
-func TestLookupBooking_WrongEmailOrCodeReturnsGenericError(t *testing.T) {
+func TestLookupBooking_FindsActiveBookingByCode(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
@@ -189,10 +164,32 @@ func TestLookupBooking_WrongEmailOrCodeReturnsGenericError(t *testing.T) {
 		t.Fatalf("create booking: %v", err)
 	}
 
-	if _, err := eventStore.LookupBooking(ctx, "wrong@example.com", created.BookingCode); !errors.Is(err, events.ErrInvalidBookingCredentials) {
-		t.Fatalf("expected ErrInvalidBookingCredentials for wrong email, got %v", err)
+	found, err := eventStore.LookupBooking(ctx, strings.ToLower(created.BookingCode))
+	if err != nil {
+		t.Fatalf("lookup with lowercase code: %v", err)
 	}
-	if _, err := eventStore.LookupBooking(ctx, "mario@example.com", "WRONGCOD"); !errors.Is(err, events.ErrInvalidBookingCredentials) {
+	if found.ID != created.ID {
+		t.Fatalf("expected booking %d, got %d", created.ID, found.ID)
+	}
+}
+
+func TestLookupBooking_WrongCodeReturnsGenericError(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGame(t, gameStore, "Catan")
+	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Quantity: 1}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+
+	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now); err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	if _, err := eventStore.LookupBooking(ctx, "WRONGCOD"); !errors.Is(err, events.ErrInvalidBookingCredentials) {
 		t.Fatalf("expected ErrInvalidBookingCredentials for wrong code, got %v", err)
 	}
 }
@@ -213,16 +210,16 @@ func TestLookupBooking_CancelledBookingIsNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
-	if _, err := eventStore.CancelBooking(ctx, created.ID, created.ParticipantEmail, created.BookingCode); err != nil {
+	if _, err := eventStore.CancelBooking(ctx, created.ID, created.BookingCode); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
 
-	if _, err := eventStore.LookupBooking(ctx, "mario@example.com", created.BookingCode); !errors.Is(err, events.ErrInvalidBookingCredentials) {
+	if _, err := eventStore.LookupBooking(ctx, created.BookingCode); !errors.Is(err, events.ErrInvalidBookingCredentials) {
 		t.Fatalf("expected a cancelled booking to be unreachable by lookup, got %v", err)
 	}
 }
 
-func TestCancelBooking_RejectsWrongCredentials(t *testing.T) {
+func TestCancelBooking_RejectsWrongCode(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
@@ -239,7 +236,7 @@ func TestCancelBooking_RejectsWrongCredentials(t *testing.T) {
 		t.Fatalf("create booking: %v", err)
 	}
 
-	_, err = eventStore.CancelBooking(ctx, created.ID, "wrong@example.com", created.BookingCode)
+	_, err = eventStore.CancelBooking(ctx, created.ID, "WRONGCOD")
 	if !errors.Is(err, events.ErrInvalidBookingCredentials) {
 		t.Fatalf("expected ErrInvalidBookingCredentials, got %v", err)
 	}
@@ -273,7 +270,7 @@ func TestListBookingsForEvent_ReturnsOnlyActiveWithGameName(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create booking to cancel: %v", err)
 	}
-	if _, err := eventStore.CancelBooking(ctx, toCancel.ID, toCancel.ParticipantEmail, toCancel.BookingCode); err != nil {
+	if _, err := eventStore.CancelBooking(ctx, toCancel.ID, toCancel.BookingCode); err != nil {
 		t.Fatalf("cancel: %v", err)
 	}
 

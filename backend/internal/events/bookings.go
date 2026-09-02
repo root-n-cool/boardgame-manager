@@ -131,7 +131,7 @@ func (s *Store) getBookingByID(ctx context.Context, id int64) (Booking, error) {
 	return b, nil
 }
 
-func (s *Store) LookupBooking(ctx context.Context, email, code string) (Booking, error) {
+func (s *Store) LookupBooking(ctx context.Context, code string) (Booking, error) {
 	code = strings.ToUpper(strings.TrimSpace(code))
 	var b Booking
 	var createdAt string
@@ -145,21 +145,16 @@ func (s *Store) LookupBooking(ctx context.Context, email, code string) (Booking,
 	if err != nil {
 		return Booking{}, err
 	}
-	if !strings.EqualFold(strings.TrimSpace(b.ParticipantEmail), strings.TrimSpace(email)) {
-		return Booking{}, ErrInvalidBookingCredentials
-	}
 	b.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 	return b, nil
 }
 
-func (s *Store) CancelBooking(ctx context.Context, id int64, email, code string) (Booking, error) {
+func (s *Store) CancelBooking(ctx context.Context, id int64, code string) (Booking, error) {
 	b, err := s.getBookingByID(ctx, id)
 	if err != nil {
 		return Booking{}, err
 	}
-	if b.Status != BookingStatusActive ||
-		strings.ToUpper(strings.TrimSpace(code)) != b.BookingCode ||
-		!strings.EqualFold(strings.TrimSpace(b.ParticipantEmail), strings.TrimSpace(email)) {
+	if b.Status != BookingStatusActive || strings.ToUpper(strings.TrimSpace(code)) != b.BookingCode {
 		return Booking{}, ErrInvalidBookingCredentials
 	}
 	if _, err := s.db.ExecContext(ctx, `UPDATE bookings SET status = ? WHERE id = ?`, BookingStatusCancelled, id); err != nil {
