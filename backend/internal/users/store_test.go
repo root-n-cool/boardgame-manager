@@ -196,3 +196,126 @@ func TestGetByEmail_NotFound(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 }
+
+func TestCreateInvite_IsPendingAndFoundByToken(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := store.CreateInvite(ctx, "invited@example.com", "tok-abc")
+	if err != nil {
+		t.Fatalf("create invite: %v", err)
+	}
+	if !created.Pending() {
+		t.Fatal("a freshly invited admin must be pending")
+	}
+	if created.InviteToken == nil || *created.InviteToken != "tok-abc" {
+		t.Fatalf("expected invite token tok-abc, got %v", created.InviteToken)
+	}
+	if created.PasswordHash != "" {
+		t.Fatalf("expected an empty password hash, got %q", created.PasswordHash)
+	}
+
+	found, err := store.GetByInviteToken(ctx, "tok-abc")
+	if err != nil {
+		t.Fatalf("get by invite token: %v", err)
+	}
+	if found.ID != created.ID {
+		t.Fatalf("expected user %d, got %d", created.ID, found.ID)
+	}
+}
+
+func TestCreateInvite_DuplicateEmailReturnsError(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := store.Create(ctx, "admin@example.com", "hashed-value"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	_, err := store.CreateInvite(ctx, "admin@example.com", "tok-abc")
+	if !errors.Is(err, users.ErrDuplicateEmail) {
+		t.Fatalf("expected ErrDuplicateEmail, got %v", err)
+	}
+}
+
+func TestGetByInviteToken_UnknownTokenReturnsNotFound(t *testing.T) {
+	store := newTestStore(t)
+
+	_, err := store.GetByInviteToken(context.Background(), "nope")
+	if !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestActivate_SetsPasswordAndKillsTheLink(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	invited, err := store.CreateInvite(ctx, "invited@example.com", "tok-abc")
+	if err != nil {
+		t.Fatalf("create invite: %v", err)
+	}
+
+	if err := store.Activate(ctx, invited.ID, "hashed-value"); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	active, err := store.GetByID(ctx, invited.ID)
+	if err != nil {
+		t.Fatalf("get by id: %v", err)
+	}
+	if active.Pending() {
+		t.Fatal("an activated admin must not be pending")
+	}
+	if active.PasswordHash != "hashed-value" {
+		t.Fatalf("expected the new hash, got %q", active.PasswordHash)
+	}
+
+	// Il link deve morire: nessuno può riusarlo per riscrivere la password.
+	if _, err := store.GetByInviteToken(ctx, "tok-abc"); !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("expected the token to be gone, got %v", err)
+	}
+	if err := store.Activate(ctx, invited.ID, "second-hash"); !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("expected a second activation to fail, got %v", err)
+	}
+}
+
+// Un invito pendente non è un accesso funzionante: non deve poter tenere in
+// vita l'istanza al posto dell'unico admin attivo.
+func TestDeleteIfNotLast_PendingInviteDoesNotCountAsAnAdmin(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	active, err := store.Create(ctx, "admin@example.com", "hashed-value")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if _, err := store.CreateInvite(ctx, "invited@example.com", "tok-abc"); err != nil {
+		t.Fatalf("create invite: %v", err)
+	}
+
+	if err := store.DeleteIfNotLast(ctx, active.ID); !errors.Is(err, users.ErrCannotDeleteLastUser) {
+		t.Fatalf("expected ErrCannotDeleteLastUser, got %v", err)
+	}
+}
+
+// ...e per contro deve sempre essere revocabile, anche con un solo admin attivo.
+func TestDeleteIfNotLast_PendingInviteCanAlwaysBeRevoked(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	if _, err := store.Create(ctx, "admin@example.com", "hashed-value"); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	invited, err := store.CreateInvite(ctx, "invited@example.com", "tok-abc")
+	if err != nil {
+		t.Fatalf("create invite: %v", err)
+	}
+
+	if err := store.DeleteIfNotLast(ctx, invited.ID); err != nil {
+		t.Fatalf("expected the pending invite to be deletable, got %v", err)
+	}
+	if _, err := store.GetByID(ctx, invited.ID); !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("expected the invite to be gone, got %v", err)
+	}
+}
