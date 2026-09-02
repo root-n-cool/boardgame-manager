@@ -34,6 +34,7 @@ func NewRouter(s *Server) http.Handler {
 	r.Use(middleware.Logger)
 
 	bookingCredentialsLimiter := newRateLimiter(10, time.Minute)
+	matchResultLimiter := newRateLimiter(60, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
@@ -48,7 +49,7 @@ func NewRouter(s *Server) http.Handler {
 	r.Post("/api/events/{id}/bookings", s.createBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/lookup", s.lookupBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/{id}/cancel", s.cancelBookingHandler)
-	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/{id}/match-result", s.submitMatchResultHandler)
+	r.With(matchResultLimiter.middleware).Post("/api/bookings/{id}/match-result", s.submitMatchResultHandler)
 
 	r.Group(func(protected chi.Router) {
 		protected.Use(s.requireAuth)
