@@ -2115,17 +2115,50 @@ tbody tr:nth-child(3) .rank-medal {
   height: 1rem;
 }
 
+/* `flex-direction: row` non è ridondante: la regola globale su `form` è una
+   colonna, e senza sovrascriverla `flex: 1 1 14rem` sull'input cresceva
+   sull'asse verticale — campo altissimo e bottoni impilati a sinistra
+   (difetto reale segnalato dall'utente). */
 .admin-add-form {
   display: flex;
+  flex-direction: row;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: 0.9rem;
 }
 
+/* Il campo si prende tutto lo spazio libero della riga, così le due azioni
+   finiscono a destra senza bisogno di un `margin-left: auto`. */
 .admin-add-form input {
   flex: 1 1 14rem;
   min-width: 0;
+  margin-bottom: 0;
+}
+
+.admin-add-form button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.admin-add-form button svg {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* Sotto questa misura il campo non sta in riga con due bottoni: va a capo
+   pieno e le azioni restano insieme, allineate a destra. */
+@media (max-width: 560px) {
+  .admin-add-form input {
+    flex: 1 1 100%;
+  }
+
+  .admin-add-form {
+    justify-content: flex-end;
+  }
 }
 
 /* Il rientro allinea il link sotto l'email quando c'è spazio; su telefono quei
