@@ -189,6 +189,47 @@ func TestGetLeaderboard_ReturnsAggregatedStats(t *testing.T) {
 	}
 }
 
+func TestGetLeaderboard_CancelledBookingMatchDoesNotAppear(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	booking := createTestBooking(t, router, eventID, eventGames[0].ID)
+
+	submitPayload, _ := json.Marshal(map[string]any{
+		"bookingCode": booking.BookingCode,
+		"players": []map[string]any{
+			{"name": "Mario", "score": 42},
+			{"name": "Luigi", "score": 10},
+		},
+	})
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/match-result", booking.ID), bytes.NewReader(submitPayload)))
+
+	cancelPayload, _ := json.Marshal(map[string]string{"bookingCode": booking.BookingCode})
+	cancelRec := httptest.NewRecorder()
+	router.ServeHTTP(cancelRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/cancel", booking.ID), bytes.NewReader(cancelPayload)))
+	if cancelRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 on cancel, got %d: %s", cancelRec.Code, cancelRec.Body.String())
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d/leaderboard", gameID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Players []any `json:"players"`
+		Matches []any `json:"matches"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Matches) != 0 {
+		t.Fatalf("expected the cancelled booking's match to not appear, got %d matches: %+v", len(body.Matches), body.Matches)
+	}
+}
+
 func TestGetLeaderboard_ReturnsEmptyArraysWhenNoResults(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)

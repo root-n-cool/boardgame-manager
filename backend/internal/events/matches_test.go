@@ -145,6 +145,40 @@ func TestSubmitMatchResult_RejectsEmptyPlayers(t *testing.T) {
 	}
 }
 
+func TestCancelBooking_DeletesExistingMatchResult(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGame(t, gameStore, "Catan")
+	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Quantity: 1}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	if _, err := eventStore.SubmitMatchResult(ctx, booking.ID, booking.BookingCode,
+		[]events.PlayerScore{{Name: "Mario", Score: 42}, {Name: "Luigi", Score: 30}}); err != nil {
+		t.Fatalf("submit match result: %v", err)
+	}
+
+	if _, err := eventStore.CancelBooking(ctx, booking.ID, booking.BookingCode); err != nil {
+		t.Fatalf("cancel booking: %v", err)
+	}
+
+	found, err := eventStore.GetMatchResultForBooking(ctx, booking.ID)
+	if err != nil {
+		t.Fatalf("get match result: %v", err)
+	}
+	if found != nil {
+		t.Fatalf("expected the match result to be deleted after cancellation, got %+v", found)
+	}
+}
+
 func TestGetMatchResultForBooking_ReturnsNilWhenNoneSubmitted(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()

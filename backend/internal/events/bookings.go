@@ -157,7 +157,26 @@ func (s *Store) CancelBooking(ctx context.Context, id int64, code string) (Booki
 	if b.Status != BookingStatusActive || strings.ToUpper(strings.TrimSpace(code)) != b.BookingCode {
 		return Booking{}, ErrInvalidBookingCredentials
 	}
-	if _, err := s.db.ExecContext(ctx, `UPDATE bookings SET status = ? WHERE id = ?`, BookingStatusCancelled, id); err != nil {
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Booking{}, err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `UPDATE bookings SET status = ? WHERE id = ?`, BookingStatusCancelled, id); err != nil {
+		return Booking{}, err
+	}
+	// A cancelled booking means the participant didn't play — any match
+	// result already submitted for it must not keep counting in the public
+	// leaderboard or the admin's read-only results view. This also prevents
+	// double-counting if the freed (event_id, phone) slot gets re-booked and
+	// scored again.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM match_results WHERE booking_id = ?`, id); err != nil {
+		return Booking{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
 		return Booking{}, err
 	}
 	b.Status = BookingStatusCancelled

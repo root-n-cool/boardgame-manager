@@ -270,8 +270,10 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, title string, descrip
 
 	// Games no longer present: safe to drop (the guard above already ensured
 	// zero active bookings for any of them). This also cascades away any
-	// cancelled bookings for that game/event pair, which is fine — there is
-	// no historical reporting on Booking/EventGame in this phase.
+	// cancelled bookings for that game/event pair. Any match result for a
+	// cancelled booking was already deleted by CancelBooking, so this
+	// cascade only ever drops bookings/results that were correctly
+	// considered void — it does not silently erase live historical data.
 	for gameID, eg := range existingByGame {
 		if _, stillPresent := newByGame[gameID]; !stillPresent {
 			if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, eg.ID); err != nil {
