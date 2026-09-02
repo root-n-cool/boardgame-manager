@@ -70,6 +70,16 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 	resp["eventDate"] = event.EventDate
 	resp["startTime"] = event.StartTime
 	resp["gameName"] = game.Name
+
+	matchResult, err := s.Events.GetMatchResultForBooking(ctx, b.ID)
+	if err != nil {
+		return nil, err
+	}
+	if matchResult == nil {
+		resp["matchResult"] = nil
+	} else {
+		resp["matchResult"] = toMatchResultResponse(*matchResult)
+	}
 	return resp, nil
 }
 
@@ -79,4 +89,16 @@ func toBookingAdminResponse(b events.BookingWithGame) map[string]any {
 		"participantEmail": b.ParticipantEmail, "participantPhone": b.ParticipantPhone,
 		"createdAt": b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
+}
+
+func toPlayerScores(players []events.PlayerScore) []map[string]any {
+	out := make([]map[string]any, 0, len(players))
+	for _, p := range players {
+		out = append(out, map[string]any{"name": p.Name, "score": p.Score})
+	}
+	return out
+}
+
+func toMatchResultResponse(m events.MatchResult) map[string]any {
+	return map[string]any{"players": toPlayerScores(m.Players)}
 }

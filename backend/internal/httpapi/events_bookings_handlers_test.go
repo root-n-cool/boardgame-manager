@@ -142,3 +142,35 @@ func TestLookupBooking_WrongCodeReturns404(t *testing.T) {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
+
+func TestLookupBooking_IncludesNullMatchResultWhenNoneSubmitted(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	createPayload, _ := json.Marshal(map[string]any{
+		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
+		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+	})
+	createRec := httptest.NewRecorder()
+	router.ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(createPayload)))
+	var created struct {
+		BookingCode string `json:"bookingCode"`
+	}
+	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+
+	lookupPayload, _ := json.Marshal(map[string]string{"bookingCode": created.BookingCode})
+	lookupRec := httptest.NewRecorder()
+	router.ServeHTTP(lookupRec, httptest.NewRequest(http.MethodPost, "/api/bookings/lookup", bytes.NewReader(lookupPayload)))
+	var body map[string]any
+	if err := json.NewDecoder(lookupRec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode lookup: %v", err)
+	}
+	if v, ok := body["matchResult"]; !ok || v != nil {
+		t.Fatalf("expected matchResult to be present and null, got %#v", v)
+	}
+}
