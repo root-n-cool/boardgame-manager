@@ -442,3 +442,35 @@ li button:hover {
 .game-select-row input[type='number'] {
   width: 5rem;
 }
+
+.player-score-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.player-score-row input[type='number'] {
+  width: 5rem;
+}
+
+.player-score-row input:not([type='number']) {
+  flex: 1;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+}
+
+th {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}

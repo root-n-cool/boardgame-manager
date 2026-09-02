@@ -55,7 +55,7 @@ async function cancel() {
   error.value = ''
   try {
     booking.value = await api.post<BookingResult>(`/bookings/${booking.value.id}/cancel`, {
-      bookingCode: bookingCode.value,
+      bookingCode: booking.value.bookingCode,
     })
     cancelMessage.value = 'Prenotazione annullata.'
   } catch (e) {
@@ -82,7 +82,7 @@ async function submitScore() {
   try {
     const result = await api.post<{ players: PlayerScore[] }>(
       `/bookings/${booking.value.id}/match-result`,
-      { bookingCode: bookingCode.value, players: players.value },
+      { bookingCode: booking.value.bookingCode, players: players.value },
     )
     booking.value.matchResult = result
     scoreMessage.value = 'Punteggio salvato.'
@@ -122,7 +122,7 @@ async function submitScore() {
           <h2>Punteggio finale</h2>
           <div v-for="(p, index) in players" :key="index" class="player-score-row">
             <input v-model="p.name" placeholder="Nome giocatore" required />
-            <input v-model.number="p.score" type="number" required />
+            <input v-model.number="p.score" type="number" placeholder="Punteggio" required />
             <button type="button" @click="removePlayerRow(index)">Rimuovi</button>
           </div>
           <button type="button" @click="addPlayerRow">Aggiungi giocatore</button>

@@ -191,7 +191,7 @@ onMounted(async () => {
     <ul>
       <li v-for="m in matchResults" :key="m.bookingId">
         {{ m.participantName }} — {{ m.gameName }}:
-        <span v-for="(p, index) in m.players" :key="p.name">
+        <span v-for="(p, index) in m.players" :key="index">
           {{ p.name }} {{ p.score }}{{ index < m.players.length - 1 ? ', ' : '' }}
         </span>
       </li>

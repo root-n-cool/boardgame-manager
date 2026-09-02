@@ -133,7 +133,7 @@ onMounted(async () => {
       <div v-if="bookingResult" class="success">
         <p>Prenotazione confermata! Il tuo codice è:</p>
         <p class="booking-code">{{ bookingResult.bookingCode }}</p>
-        <p>Conservalo insieme alla tua email per gestire la prenotazione da "Gestisci prenotazione".</p>
+        <p>Conservalo per gestire la prenotazione o inserire il punteggio finale da "Gestisci prenotazione".</p>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>

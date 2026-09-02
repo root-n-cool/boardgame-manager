@@ -78,7 +78,7 @@ onMounted(async () => {
       <ul>
         <li v-for="(m, index) in leaderboard?.matches" :key="index">
           {{ m.eventTitle }} ({{ m.eventDate }} · {{ m.startTime }}):
-          <span v-for="(p, pIndex) in m.players" :key="p.name">
+          <span v-for="(p, pIndex) in m.players" :key="pIndex">
             {{ p.name }} {{ p.score }}{{ p.isWinner ? ' 🏆' : '' }}{{ pIndex < m.players.length - 1 ? ', ' : '' }}
           </span>
         </li>
