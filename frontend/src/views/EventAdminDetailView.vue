@@ -155,7 +155,7 @@ onMounted(async () => {
       <fieldset>
         <legend>Giochi</legend>
         <div v-for="g in availableGames" :key="g.id" class="game-select-row">
-          <label>
+          <label class="checkbox-label">
             <input
               type="checkbox"
               :checked="isSelected(g.id)"
@@ -189,7 +189,7 @@ onMounted(async () => {
     <h2>Risultati inseriti</h2>
     <p v-if="matchResults.length === 0">Nessun punteggio inserito ancora.</p>
     <ul>
-      <li v-for="m in matchResults" :key="m.bookingId">
+      <li v-for="m in matchResults" :key="m.bookingId" class="list-row-text">
         {{ m.participantName }} — {{ m.gameName }}:
         <span v-for="(p, index) in m.players" :key="index">
           {{ p.name }} {{ p.score }}{{ index < m.players.length - 1 ? ', ' : '' }}

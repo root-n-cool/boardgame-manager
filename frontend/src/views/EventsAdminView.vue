@@ -26,13 +26,23 @@ onMounted(loadEvents)
 <template>
   <div>
     <h1>Eventi</h1>
-    <router-link to="/admin/events/new">Crea evento</router-link>
+    <p class="page-meta">
+      {{ events.length === 0 ? 'Nessun evento creato' : events.length === 1 ? '1 evento' : `${events.length} eventi` }}
+    </p>
+    <router-link to="/admin/events/new" class="action-link">Crea evento</router-link>
     <p v-if="error" class="error">{{ error }}</p>
     <ul class="event-grid">
       <li v-for="e in events" :key="e.id">
         <router-link :to="`/admin/events/${e.id}`">
           <h2>{{ e.title }}</h2>
-          <p>{{ e.eventDate }} · {{ e.startTime }}</p>
+          <p>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6" />
+              <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
+              <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+            </svg>
+            {{ e.eventDate }} · {{ e.startTime }}
+          </p>
         </router-link>
       </li>
     </ul>

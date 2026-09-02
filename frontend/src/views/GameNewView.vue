@@ -97,10 +97,11 @@ async function createManual() {
       <p v-if="searchError" class="error">{{ searchError }}</p>
       <ul>
         <li v-for="r in results" :key="r.bggId">
-          <button type="button" @click="selectResult(r)">{{ r.name }} ({{ r.year }})</button>
+          {{ r.name }} ({{ r.year }})
+          <button type="button" class="btn-select" @click="selectResult(r)">Importa</button>
         </li>
       </ul>
-      <button type="button" @click="startManual">Crea manualmente</button>
+      <button type="button" class="btn-secondary" @click="startManual">Crea manualmente</button>
     </div>
 
     <div v-if="mode === 'bgg-import'">

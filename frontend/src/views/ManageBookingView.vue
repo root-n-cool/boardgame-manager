@@ -113,7 +113,7 @@ async function submitScore() {
           {{ booking.eventTitle }} ({{ booking.eventDate }} · {{ booking.startTime }}) —
           stato: {{ booking.status }}
         </p>
-        <button v-if="booking.status === 'active'" type="button" @click="cancel">
+        <button v-if="booking.status === 'active'" type="button" class="btn-danger" @click="cancel">
           Annulla prenotazione
         </button>
         <p v-if="cancelMessage" class="success">{{ cancelMessage }}</p>
@@ -123,9 +123,9 @@ async function submitScore() {
           <div v-for="(p, index) in players" :key="index" class="player-score-row">
             <input v-model="p.name" placeholder="Nome giocatore" required />
             <input v-model.number="p.score" type="number" placeholder="Punteggio" required />
-            <button type="button" @click="removePlayerRow(index)">Rimuovi</button>
+            <button type="button" class="btn-danger" @click="removePlayerRow(index)">Rimuovi</button>
           </div>
-          <button type="button" @click="addPlayerRow">Aggiungi giocatore</button>
+          <button type="button" class="btn-secondary" @click="addPlayerRow">Aggiungi giocatore</button>
           <button type="submit">
             {{ booking.matchResult ? 'Aggiorna punteggio' : 'Invia punteggio' }}
           </button>

@@ -95,6 +95,16 @@ onMounted(async () => {
       <ul class="event-games">
         <li v-for="g in event.games" :key="g.eventGameId">
           <img v-if="g.coverPath" :src="`/api/uploads/${g.coverPath}`" :alt="g.name" />
+          <div v-else class="cover-placeholder" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />
+              <circle cx="8.3" cy="8.3" r="1.3" fill="currentColor" />
+              <circle cx="15.7" cy="8.3" r="1.3" fill="currentColor" />
+              <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+              <circle cx="8.3" cy="15.7" r="1.3" fill="currentColor" />
+              <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
+            </svg>
+          </div>
           <router-link :to="`/games/${g.gameId}`">{{ g.name }}</router-link>
           <p>Disponibilità: {{ g.remaining }}</p>
           <button
@@ -130,9 +140,12 @@ onMounted(async () => {
         <p v-if="bookingError" class="error">{{ bookingError }}</p>
       </form>
 
-      <div v-if="bookingResult" class="success">
-        <p>Prenotazione confermata! Il tuo codice è:</p>
-        <p class="booking-code">{{ bookingResult.bookingCode }}</p>
+      <div v-if="bookingResult">
+        <p class="success">Prenotazione confermata!</p>
+        <div class="booking-code-card">
+          <span class="label">Il tuo codice</span>
+          <span class="booking-code">{{ bookingResult.bookingCode }}</span>
+        </div>
         <p>Conservalo per gestire la prenotazione o inserire il punteggio finale da "Gestisci prenotazione".</p>
       </div>
 

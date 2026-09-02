@@ -194,18 +194,24 @@ onMounted(async () => {
       <h1>{{ game.name }}</h1>
       <img v-if="game.coverPath" :src="`/api/uploads/${game.coverPath}`" :alt="game.name" class="cover" />
 
-      <form v-if="auth.user" @submit.prevent="uploadCover">
+      <form v-if="auth.user" class="inline-form" @submit.prevent="uploadCover">
         <label>
-          Copertina (JPEG, PNG o WebP, max 5MB)
+          Cambia copertina
           <input type="file" accept="image/jpeg,image/png,image/webp" @change="onCoverFileSelected" />
         </label>
-        <button type="submit">Carica copertina</button>
-        <p v-if="coverError" class="error">{{ coverError }}</p>
+        <button type="submit" class="btn-secondary">Carica</button>
       </form>
+      <p v-if="coverError" class="error">{{ coverError }}</p>
 
-      <p v-if="game.owner">Proprietario: {{ game.owner }}</p>
-      <p><router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link></p>
-      <button v-if="auth.user" type="button" @click="deleteGame">Elimina gioco</button>
+      <div class="meta-row">
+        <span v-if="game.owner">Proprietario: {{ game.owner }}</span>
+        <span v-if="game.owner" class="divider">·</span>
+        <router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link>
+        <template v-if="auth.user">
+          <span class="divider">·</span>
+          <button type="button" class="btn-danger" @click="deleteGame">Elimina gioco</button>
+        </template>
+      </div>
 
       <nav class="language-tabs">
         <button
@@ -215,11 +221,23 @@ onMounted(async () => {
           :class="{ active: l.code === activeLangCode }"
           @click="selectLanguage(l.code)"
         >
-          {{ l.code }}{{ l.isBaseLanguage ? ' ★' : '' }}
+          {{ l.code }}
+          <svg
+            v-if="l.isBaseLanguage"
+            class="base-language-badge"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-label="Lingua base"
+          >
+            <path
+              d="M12 3.5l2.47 5.77 6.24.56-4.73 4.16 1.42 6.1L12 16.9l-5.4 3.2 1.42-6.1-4.73-4.16 6.24-.56L12 3.5Z"
+              fill="currentColor"
+            />
+          </svg>
         </button>
       </nav>
 
-      <template v-if="auth.user">
+      <div v-if="auth.user" class="card-group">
         <form @submit.prevent="saveLanguage">
           <label>
             Nome
@@ -238,9 +256,9 @@ onMounted(async () => {
             Aggiungi lingua (es. en)
             <input v-model="newLangCode" required />
           </label>
-          <button type="submit">Aggiungi</button>
+          <button type="submit" class="btn-secondary">Aggiungi</button>
         </form>
-      </template>
+      </div>
       <template v-else>
         <h2>{{ activeLanguage()?.name }}</h2>
         <p v-if="activeLanguage()?.description">{{ activeLanguage()?.description }}</p>
@@ -256,13 +274,13 @@ onMounted(async () => {
         </li>
       </ul>
 
-      <template v-if="auth.user">
+      <div v-if="auth.user" class="card-group">
         <form @submit.prevent="uploadManual">
           <label>
             Carica manuale (solo PDF, max 20MB)
             <input type="file" accept="application/pdf" @change="onFileSelected" />
           </label>
-          <button type="submit">Carica</button>
+          <button type="submit" class="btn-secondary">Carica</button>
         </form>
 
         <form @submit.prevent="addLinkMedia">
@@ -281,10 +299,10 @@ onMounted(async () => {
             Titolo
             <input v-model="linkTitle" />
           </label>
-          <button type="submit">Aggiungi</button>
+          <button type="submit" class="btn-secondary">Aggiungi link</button>
         </form>
         <p v-if="mediaError" class="error">{{ mediaError }}</p>
-      </template>
+      </div>
 
       <p v-if="error" class="error">{{ error }}</p>
     </div>

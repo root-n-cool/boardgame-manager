@@ -94,7 +94,7 @@ onMounted(loadGames)
       <fieldset>
         <legend>Giochi</legend>
         <div v-for="g in availableGames" :key="g.id" class="game-select-row">
-          <label>
+          <label class="checkbox-label">
             <input
               type="checkbox"
               :checked="isSelected(g.id)"

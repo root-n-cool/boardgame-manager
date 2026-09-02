@@ -1,12 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#1f4d3a" />
     <title>BoardGames Manager</title>
   </head>
   <body>
+    <!--
+      THESIS: Il catalogo è uno scaffale di scatole di gioco su un tavolo in
+      feltro — non cartelle e form come ogni altro admin tool. Corretto dopo
+      revisione utente: la prima resa (mazzo di carte, seme di picche) leggeva
+      come poker, non come Eurogame; il motivo è ora dado & pedina (meeple).
+      OWN-WORLD: feltro verde come fondo strutturale (nav/header, tavolo di un
+      evento pubblico), cartoncino avorio per le superfici di contenuto, rosso
+      caldo per azioni/stato attivo, grottesca decisa. Marchio e icone
+      disegnate nel linguaggio dado/pedina (mai carte da poker, mai emoji).
+      STORY: l'admin sfoglia lo scaffale per gestire il catalogo; il
+      partecipante prenota un posto al tavolo (il booking_code appare come
+      indice d'angolo); a fine partita scrive il punteggio su un taccuino a
+      bordo tavolo; la classifica diventa uno scoreboard a medaglie.
+      FIRST VIEWPORT: pagina evento pubblica — tavolo in feltro verde con le
+      scatole dei giochi disponibili, chip posti, tocco per prenotare.
+      FORM: dado & pedina su tavolo in feltro (evoluzione della direzione
+      "mazzo & tavolo", seed 7653778e, dopo correzione del motivo su
+      richiesta utente: via l'iconografia da poker, dentro dadi/meeple).
+      FINISH: unreviewed and undocumented is unfinished; this build ends
+      with the finish review, the verdict, and DESIGN.md.
+    -->
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

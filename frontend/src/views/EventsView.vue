@@ -30,13 +30,22 @@ onMounted(loadEvents)
     <PublicHeader />
     <div class="public-page">
       <h1>Prossimi eventi</h1>
+      <p v-if="!error" class="page-meta">
+        {{ events.length === 0 ? 'Nessun evento in programma' : events.length === 1 ? '1 evento in programma' : `${events.length} eventi in programma` }}
+      </p>
       <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="!error && events.length === 0">Nessun evento in programma.</p>
       <ul class="event-list">
         <li v-for="e in events" :key="e.id">
           <router-link :to="`/events/${e.id}`">
             <h2>{{ e.title }}</h2>
-            <p>{{ e.eventDate }} · {{ e.startTime }}</p>
+            <p>
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6" />
+                <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
+                <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+              {{ e.eventDate }} · {{ e.startTime }}
+            </p>
           </router-link>
         </li>
       </ul>

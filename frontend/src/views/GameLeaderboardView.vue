@@ -52,34 +52,49 @@ onMounted(async () => {
       <h1>Classifica</h1>
       <p v-if="error" class="error">{{ error }}</p>
 
-      <table v-if="leaderboard && leaderboard.players.length > 0">
-        <thead>
-          <tr>
-            <th>Giocatore</th>
-            <th>Partite</th>
-            <th>Vittorie</th>
-            <th>Punteggio medio</th>
-            <th>Punteggio totale</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="p in leaderboard.players" :key="p.name">
-            <td>{{ p.name }}</td>
-            <td>{{ p.gamesPlayed }}</td>
-            <td>{{ p.wins }}</td>
-            <td>{{ p.averageScore.toFixed(1) }}</td>
-            <td>{{ p.totalScore }}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div v-if="leaderboard && leaderboard.players.length > 0" class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Giocatore</th>
+              <th>Partite</th>
+              <th>Vittorie</th>
+              <th>Punteggio medio</th>
+              <th>Punteggio totale</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(p, index) in leaderboard.players" :key="p.name">
+              <td><span class="rank-medal">{{ index + 1 }}</span>{{ p.name }}</td>
+              <td>{{ p.gamesPlayed }}</td>
+              <td>{{ p.wins }}</td>
+              <td>{{ p.averageScore.toFixed(1) }}</td>
+              <td>{{ p.totalScore }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
       <p v-else-if="leaderboard">Nessun punteggio ancora registrato per questo gioco.</p>
 
       <h2 v-if="leaderboard && leaderboard.matches.length > 0">Storico partite</h2>
       <ul>
-        <li v-for="(m, index) in leaderboard?.matches" :key="index">
+        <li v-for="(m, index) in leaderboard?.matches" :key="index" class="list-row-text">
           {{ m.eventTitle }} ({{ m.eventDate }} · {{ m.startTime }}):
           <span v-for="(p, pIndex) in m.players" :key="pIndex">
-            {{ p.name }} {{ p.score }}{{ p.isWinner ? ' 🏆' : '' }}{{ pIndex < m.players.length - 1 ? ', ' : '' }}
+            <span :class="{ 'win-badge': p.isWinner }">
+              {{ p.name }} {{ p.score }}
+              <svg v-if="p.isWinner" viewBox="0 0 24 24" fill="none" aria-label="Vincitore">
+                <path
+                  d="M7 4h10v3.2c0 3.3-2.2 6-5 6.6-2.8-.6-5-3.3-5-6.6V4Z"
+                  stroke="currentColor"
+                  stroke-width="1.6"
+                  stroke-linejoin="round"
+                />
+                <path d="M7 5.5H4.5A2 2 0 0 0 5 9.4L7 10.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                <path d="M17 5.5h2.5A2 2 0 0 1 19 9.4L17 10.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                <path d="M12 13.8v3.4M9 20h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+              </svg>
+            </span>{{ pIndex < m.players.length - 1 ? ', ' : '' }}
           </span>
         </li>
       </ul>
