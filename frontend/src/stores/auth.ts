@@ -46,6 +46,12 @@ export const useAuthStore = defineStore('auth', {
       this.user = await api.post<CurrentUser>('/bootstrap', { email, password })
       this.needsSetup = false
     },
+    // Accettare un invito apre già la sessione lato server: qui non serve
+    // altro che registrare l'utente, come fa bootstrap per il primo admin.
+    async acceptInvite(token: string, password: string) {
+      this.user = await api.post<CurrentUser>(`/invites/${token}`, { password })
+      this.needsSetup = false
+    },
     async login(email: string, password: string) {
       this.user = await api.post<CurrentUser>('/login', { email, password })
     },
