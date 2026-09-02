@@ -146,6 +146,48 @@ func TestSubmitMatchResult_ResubmitReplacesPlayers(t *testing.T) {
 	}
 }
 
+func TestGetLeaderboard_ReturnsAggregatedStats(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	booking := createTestBooking(t, router, eventID, eventGames[0].ID)
+
+	submitPayload, _ := json.Marshal(map[string]any{
+		"bookingCode": booking.BookingCode,
+		"players": []map[string]any{
+			{"name": "Mario", "score": 42},
+			{"name": "Luigi", "score": 10},
+		},
+	})
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/match-result", booking.ID), bytes.NewReader(submitPayload)))
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d/leaderboard", gameID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Players []struct {
+			Name string `json:"name"`
+			Wins int    `json:"wins"`
+		} `json:"players"`
+		Matches []struct {
+			Players []struct {
+				Name     string `json:"name"`
+				IsWinner bool   `json:"isWinner"`
+			} `json:"players"`
+		} `json:"matches"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Players) != 2 || len(body.Matches) != 1 {
+		t.Fatalf("unexpected body: %+v", body)
+	}
+}
+
 func TestListEventMatchResults_RequiresAuth(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)

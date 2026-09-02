@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"boardgames-manager/internal/events"
+	"boardgames-manager/internal/leaderboard"
 )
 
 const maxPlayersPerMatch = 20
@@ -83,4 +84,39 @@ func (s *Server) listEventMatchResultsHandler(w http.ResponseWriter, r *http.Req
 		})
 	}
 	writeJSON(w, http.StatusOK, out)
+}
+
+func toLeaderboardResponse(lb leaderboard.Leaderboard) map[string]any {
+	playerStats := make([]map[string]any, 0, len(lb.Players))
+	for _, p := range lb.Players {
+		playerStats = append(playerStats, map[string]any{
+			"name": p.Name, "gamesPlayed": p.GamesPlayed, "wins": p.Wins,
+			"averageScore": p.AverageScore, "totalScore": p.TotalScore,
+		})
+	}
+	matches := make([]map[string]any, 0, len(lb.Matches))
+	for _, m := range lb.Matches {
+		matchPlayers := make([]map[string]any, 0, len(m.Players))
+		for _, p := range m.Players {
+			matchPlayers = append(matchPlayers, map[string]any{"name": p.Name, "score": p.Score, "isWinner": p.IsWinner})
+		}
+		matches = append(matches, map[string]any{
+			"eventTitle": m.EventTitle, "eventDate": m.EventDate, "startTime": m.StartTime, "players": matchPlayers,
+		})
+	}
+	return map[string]any{"players": playerStats, "matches": matches}
+}
+
+func (s *Server) getLeaderboardHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid game id")
+		return
+	}
+	lb, err := s.Leaderboard.GetLeaderboard(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not build leaderboard")
+		return
+	}
+	writeJSON(w, http.StatusOK, toLeaderboardResponse(lb))
 }

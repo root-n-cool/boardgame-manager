@@ -11,19 +11,21 @@ import (
 	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/games"
+	"boardgames-manager/internal/leaderboard"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
 )
 
 type Server struct {
-	Users    *users.Store
-	Sessions *auth.SessionStore
-	Settings *settings.Store
-	Games    *games.Store
-	Events   *events.Store
-	Storage  *storage.Store
-	BGG      bgg.Client
+	Users       *users.Store
+	Sessions    *auth.SessionStore
+	Settings    *settings.Store
+	Games       *games.Store
+	Events      *events.Store
+	Leaderboard *leaderboard.Store
+	Storage     *storage.Store
+	BGG         bgg.Client
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -42,6 +44,7 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/uploads/{filename}", s.getUploadHandler)
 	r.Get("/api/events", s.listEventsHandler)
 	r.Get("/api/events/{id}", s.getEventHandler)
+	r.Get("/api/games/{id}/leaderboard", s.getLeaderboardHandler)
 	r.Post("/api/events/{id}/bookings", s.createBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/lookup", s.lookupBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/{id}/cancel", s.cancelBookingHandler)
