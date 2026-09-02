@@ -29,7 +29,10 @@ async function addUser() {
   }
 }
 
-async function removeUser(id: number) {
+async function removeUser(id: number, email: string) {
+  if (!window.confirm(`Rimuovere l'amministratore ${email}? Non potrà più accedere.`)) {
+    return
+  }
   error.value = ''
   try {
     await api.delete(`/users/${id}`)
@@ -57,7 +60,7 @@ onMounted(async () => {
     <ul>
       <li v-for="u in users" :key="u.id">
         {{ u.email }}
-        <button @click="removeUser(u.id)">Rimuovi</button>
+        <button @click="removeUser(u.id, u.email)">Rimuovi</button>
       </li>
     </ul>
 

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import PublicHeader from '../components/PublicHeader.vue'
+import ModalDialog from '../components/ModalDialog.vue'
 
 interface GameMediaInfo {
   id: number
@@ -43,12 +44,15 @@ const editDescription = ref('')
 const saveMessage = ref('')
 
 const newLangCode = ref('')
+const languageModalOpen = ref(false)
+const languageError = ref('')
 
 const linkUrl = ref('')
 const linkTitle = ref('')
-const linkType = ref<'link' | 'youtube'>('link')
 const uploadFile = ref<File | null>(null)
 const mediaError = ref('')
+const mediaModalOpen = ref(false)
+const mediaKind = ref<'file' | 'link' | 'youtube'>('file')
 
 const coverFile = ref<File | null>(null)
 const coverError = ref('')
@@ -85,18 +89,30 @@ async function saveLanguage() {
   }
 }
 
+function openLanguageModal() {
+  newLangCode.value = ''
+  languageError.value = ''
+  languageModalOpen.value = true
+}
+
 async function addLanguage() {
-  error.value = ''
+  languageError.value = ''
+  const code = newLangCode.value.trim().toLowerCase()
   try {
-    await api.post(`/games/${gameId}/languages`, { languageCode: newLangCode.value })
+    await api.post(`/games/${gameId}/languages`, { languageCode: code })
+    languageModalOpen.value = false
     newLangCode.value = ''
     await load()
+    selectLanguage(code)
   } catch (e) {
-    error.value = (e as Error).message
+    languageError.value = (e as Error).message
   }
 }
 
 async function deleteGame() {
+  if (!window.confirm(`Eliminare "${game.value?.name}" dal catalogo? L'operazione non è reversibile.`)) {
+    return
+  }
   try {
     await api.delete(`/games/${gameId}`)
     router.push('/games')
@@ -132,14 +148,37 @@ async function uploadCover() {
   }
 }
 
-async function addLinkMedia() {
+function openMediaModal() {
+  mediaKind.value = 'file'
+  uploadFile.value = null
+  linkUrl.value = ''
+  linkTitle.value = ''
   mediaError.value = ''
+  mediaModalOpen.value = true
+}
+
+/** Un solo submit per i tre tipi: file caricato, link esterno, video YouTube. */
+async function submitMedia() {
+  mediaError.value = ''
+  const base = `/games/${gameId}/languages/${activeLangCode.value}/media`
   try {
-    await api.post(`/games/${gameId}/languages/${activeLangCode.value}/media`, {
-      type: linkType.value,
-      url: linkUrl.value,
-      title: linkTitle.value,
-    })
+    if (mediaKind.value === 'file') {
+      if (!uploadFile.value) {
+        mediaError.value = 'Seleziona un file PDF'
+        return
+      }
+      const formData = new FormData()
+      formData.append('file', uploadFile.value)
+      await api.post(base, formData)
+    } else {
+      await api.post(base, {
+        type: mediaKind.value,
+        url: linkUrl.value,
+        title: linkTitle.value,
+      })
+    }
+    mediaModalOpen.value = false
+    uploadFile.value = null
     linkUrl.value = ''
     linkTitle.value = ''
     await load()
@@ -148,24 +187,16 @@ async function addLinkMedia() {
   }
 }
 
-async function uploadManual() {
-  mediaError.value = ''
-  if (!uploadFile.value) {
-    mediaError.value = 'Seleziona un file PDF'
-    return
-  }
-  const formData = new FormData()
-  formData.append('file', uploadFile.value)
-  try {
-    await api.post(`/games/${gameId}/languages/${activeLangCode.value}/media`, formData)
-    uploadFile.value = null
-    await load()
-  } catch (e) {
-    mediaError.value = (e as Error).message
-  }
+const mediaKindLabels: Record<string, string> = {
+  file: 'PDF',
+  link: 'Link',
+  youtube: 'YouTube',
 }
 
-async function removeMedia(mediaId: number) {
+async function removeMedia(mediaId: number, title: string) {
+  if (!window.confirm(`Rimuovere "${title}"?`)) {
+    return
+  }
   mediaError.value = ''
   try {
     await api.delete(`/games/${gameId}/languages/${activeLangCode.value}/media/${mediaId}`)
@@ -192,25 +223,45 @@ onMounted(async () => {
     <PublicHeader />
     <div class="public-page" v-if="game">
       <h1>{{ game.name }}</h1>
-      <img v-if="game.coverPath" :src="`/api/uploads/${game.coverPath}`" :alt="game.name" class="cover" />
 
-      <form v-if="auth.user" class="inline-form" @submit.prevent="uploadCover">
-        <label>
-          Cambia copertina
-          <input type="file" accept="image/jpeg,image/png,image/webp" @change="onCoverFileSelected" />
-        </label>
-        <button type="submit" class="btn-secondary">Carica</button>
-      </form>
-      <p v-if="coverError" class="error">{{ coverError }}</p>
+      <div class="game-cover-card">
+        <img
+          v-if="game.coverPath"
+          :src="`/api/uploads/${game.coverPath}`"
+          :alt="`Copertina di ${game.name}`"
+          class="cover"
+        />
+        <div v-else class="cover cover-empty" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />
+            <circle cx="8.3" cy="8.3" r="1.3" fill="currentColor" />
+            <circle cx="15.7" cy="8.3" r="1.3" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+            <circle cx="8.3" cy="15.7" r="1.3" fill="currentColor" />
+            <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
+          </svg>
+        </div>
 
-      <div class="meta-row">
-        <span v-if="game.owner">Proprietario: {{ game.owner }}</span>
-        <span v-if="game.owner" class="divider">·</span>
-        <router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link>
-        <template v-if="auth.user">
-          <span class="divider">·</span>
-          <button type="button" class="btn-danger" @click="deleteGame">Elimina gioco</button>
-        </template>
+        <div class="game-cover-info">
+          <div class="meta-row">
+            <span v-if="game.owner">Proprietario: {{ game.owner }}</span>
+            <span v-if="game.owner" class="divider">·</span>
+            <router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link>
+            <template v-if="auth.user">
+              <span class="divider">·</span>
+              <button type="button" class="btn-danger" @click="deleteGame">Elimina gioco</button>
+            </template>
+          </div>
+
+          <form v-if="auth.user" class="inline-form" @submit.prevent="uploadCover">
+            <label>
+              {{ game.coverPath ? 'Cambia copertina' : 'Carica una copertina' }}
+              <input type="file" accept="image/jpeg,image/png,image/webp" @change="onCoverFileSelected" />
+            </label>
+            <button type="submit" class="btn-secondary">Carica</button>
+          </form>
+          <p v-if="coverError" class="error">{{ coverError }}</p>
+        </div>
       </div>
 
       <nav class="language-tabs">
@@ -235,76 +286,140 @@ onMounted(async () => {
             />
           </svg>
         </button>
+        <button v-if="auth.user" type="button" class="language-tab-add" @click="openLanguageModal">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+          </svg>
+          Lingua
+        </button>
       </nav>
 
-      <div v-if="auth.user" class="card-group">
-        <form @submit.prevent="saveLanguage">
-          <label>
-            Nome
-            <input v-model="editName" required />
-          </label>
-          <label>
-            Descrizione
-            <textarea v-model="editDescription"></textarea>
-          </label>
-          <button type="submit">Salva</button>
-          <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
-        </form>
+      <div class="language-panel">
+        <section class="panel-section">
+          <div class="section-head">
+            <h2>Scheda</h2>
+            <span class="lang-chip">{{ activeLangCode }}</span>
+          </div>
 
-        <form @submit.prevent="addLanguage">
-          <label>
-            Aggiungi lingua (es. en)
-            <input v-model="newLangCode" required />
-          </label>
-          <button type="submit" class="btn-secondary">Aggiungi</button>
-        </form>
-      </div>
-      <template v-else>
-        <h2>{{ activeLanguage()?.name }}</h2>
-        <p v-if="activeLanguage()?.description">{{ activeLanguage()?.description }}</p>
-      </template>
+          <form v-if="auth.user" @submit.prevent="saveLanguage">
+            <label>
+              Nome
+              <input v-model="editName" required />
+            </label>
+            <label>
+              Descrizione
+              <textarea v-model="editDescription" rows="3"></textarea>
+            </label>
+            <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
+            <div class="form-actions">
+              <button type="submit">Salva</button>
+            </div>
+          </form>
+          <template v-else>
+            <h3 class="language-name">{{ activeLanguage()?.name }}</h3>
+            <p v-if="activeLanguage()?.description">{{ activeLanguage()?.description }}</p>
+            <p v-else class="empty-note">Nessuna descrizione per questa lingua.</p>
+          </template>
+        </section>
 
-      <h2>Manuale e tutorial ({{ activeLangCode }})</h2>
-      <ul>
-        <li v-for="m in activeLanguage()?.media || []" :key="m.id">
-          <a v-if="m.type === 'file'" :href="`/api/uploads/${m.url}`" target="_blank">{{ m.title || 'Manuale' }}</a>
-          <a v-else :href="m.url" target="_blank">{{ m.title || m.url }}</a>
-          ({{ m.type }})
-          <button v-if="auth.user" type="button" @click="removeMedia(m.id)">Rimuovi</button>
-        </li>
-      </ul>
+        <section class="panel-section">
+          <div class="section-head">
+            <h2>Manuale e tutorial</h2>
+            <button v-if="auth.user" type="button" class="btn-secondary" @click="openMediaModal">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              </svg>
+              Aggiungi
+            </button>
+          </div>
 
-      <div v-if="auth.user" class="card-group">
-        <form @submit.prevent="uploadManual">
-          <label>
-            Carica manuale (solo PDF, max 20MB)
-            <input type="file" accept="application/pdf" @change="onFileSelected" />
-          </label>
-          <button type="submit" class="btn-secondary">Carica</button>
-        </form>
-
-        <form @submit.prevent="addLinkMedia">
-          <label>
-            Tipo
-            <select v-model="linkType">
-              <option value="link">Link</option>
-              <option value="youtube">YouTube</option>
-            </select>
-          </label>
-          <label>
-            URL
-            <input v-model="linkUrl" required />
-          </label>
-          <label>
-            Titolo
-            <input v-model="linkTitle" />
-          </label>
-          <button type="submit" class="btn-secondary">Aggiungi link</button>
-        </form>
-        <p v-if="mediaError" class="error">{{ mediaError }}</p>
+          <ul v-if="(activeLanguage()?.media || []).length > 0" class="media-list">
+            <li v-for="m in activeLanguage()?.media || []" :key="m.id">
+              <a v-if="m.type === 'file'" :href="`/api/uploads/${m.url}`" target="_blank">{{ m.title || 'Manuale' }}</a>
+              <a v-else :href="m.url" target="_blank">{{ m.title || m.url }}</a>
+              <span class="media-kind">{{ mediaKindLabels[m.type] ?? m.type }}</span>
+              <button
+                v-if="auth.user"
+                type="button"
+                class="btn-danger"
+                @click="removeMedia(m.id, m.title || m.url)"
+              >
+                Rimuovi
+              </button>
+            </li>
+          </ul>
+          <p v-else class="empty-note">Nessun manuale o tutorial per questa lingua.</p>
+          <p v-if="mediaError && !mediaModalOpen" class="error">{{ mediaError }}</p>
+        </section>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
+
+      <ModalDialog
+        :open="languageModalOpen"
+        title="Aggiungi lingua"
+        @close="languageModalOpen = false"
+      >
+        <form @submit.prevent="addLanguage">
+          <label>
+            Codice lingua
+            <input v-model="newLangCode" placeholder="es. en" required autofocus />
+          </label>
+          <p class="field-hint">Due lettere, come <code>it</code>, <code>en</code>, <code>de</code>.</p>
+          <p v-if="languageError" class="error">{{ languageError }}</p>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" @click="languageModalOpen = false">Annulla</button>
+            <button type="submit">Aggiungi lingua</button>
+          </div>
+        </form>
+      </ModalDialog>
+
+      <ModalDialog
+        :open="mediaModalOpen"
+        title="Aggiungi manuale o tutorial"
+        @close="mediaModalOpen = false"
+      >
+        <form @submit.prevent="submitMedia">
+          <div class="segmented" role="radiogroup" aria-label="Tipo di materiale">
+            <label :class="{ active: mediaKind === 'file' }">
+              <input v-model="mediaKind" type="radio" value="file" />
+              File PDF
+            </label>
+            <label :class="{ active: mediaKind === 'link' }">
+              <input v-model="mediaKind" type="radio" value="link" />
+              Link
+            </label>
+            <label :class="{ active: mediaKind === 'youtube' }">
+              <input v-model="mediaKind" type="radio" value="youtube" />
+              YouTube
+            </label>
+          </div>
+
+          <template v-if="mediaKind === 'file'">
+            <label>
+              File del manuale
+              <input type="file" accept="application/pdf" @change="onFileSelected" />
+            </label>
+            <p class="field-hint">Solo PDF, massimo 20MB.</p>
+          </template>
+          <template v-else>
+            <label>
+              URL
+              <input v-model="linkUrl" :placeholder="mediaKind === 'youtube' ? 'https://youtube.com/watch?v=...' : 'https://...'" required />
+            </label>
+            <label>
+              Titolo
+              <input v-model="linkTitle" placeholder="Come si gioca" />
+            </label>
+          </template>
+
+          <p v-if="mediaError" class="error">{{ mediaError }}</p>
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" @click="mediaModalOpen = false">Annulla</button>
+            <button type="submit">Aggiungi</button>
+          </div>
+        </form>
+      </ModalDialog>
     </div>
   </div>
 </template>

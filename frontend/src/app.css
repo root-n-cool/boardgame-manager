@@ -432,7 +432,6 @@ button.btn-select:hover {
    quando il markup le mette una dietro l'altra senza nulla in mezzo. */
 .layout form,
 .public-page form {
-  max-width: 26rem;
   background: var(--card);
   border: 1px solid var(--card-line);
   border-radius: var(--radius);
@@ -440,6 +439,17 @@ button.btn-select:hover {
   margin-bottom: 1.75rem;
   align-items: flex-start;
   box-shadow: var(--shadow-card);
+}
+
+/* Una card è larga quanto la colonna — liste, tabelle e form si allineano
+   allo stesso bordo, altrimenti la pagina sembra montata con pezzi di
+   misure diverse. Il campo però non segue la card: si ferma alla misura in
+   cui resta leggibile. Le pagine di auth restano l'eccezione: card unica e
+   centrata, senza nulla con cui allinearsi. */
+form input,
+form select,
+form textarea {
+  max-width: 30rem;
 }
 
 .layout form fieldset,
@@ -510,6 +520,9 @@ button.btn-select:hover {
    visivo di una card intera: resta una riga inline sotto l'immagine. */
 form.inline-form {
   display: flex;
+  /* La regola base dei form è a colonna: senza questo la "inline-form"
+     impilava label e bottone invece di metterli in riga. */
+  flex-direction: row;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.6rem;
@@ -521,7 +534,10 @@ form.inline-form {
   box-shadow: none;
 }
 
-.inline-form label {
+/* In una riga inline la label non si stira a tutta larghezza (lo farebbe
+   per la regola dei form a colonna), altrimenti spinge il bottone a capo. */
+form.inline-form label {
+  align-self: auto;
   flex-direction: row;
   align-items: center;
   gap: 0.5rem;
@@ -567,6 +583,16 @@ li:last-child {
    space-between tra i nodi, altrimenti il testo si spande ai bordi. */
 li.list-row-text {
   display: block;
+}
+
+/* Seconda riga di una li.list-row-text: contatti, punteggi — dato secondario,
+   in mono come da regola del dato. */
+.row-meta {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  font-family: 'Data', monospace;
 }
 
 /* La maggior parte dei bottoni in una lista è "Rimuovi": il colore d'allarme
@@ -628,11 +654,25 @@ li button.btn-select {
   background: var(--accent-deep);
 }
 
+/* Rimando indietro discreto (es. classifica -> scheda gioco). */
+.back-link {
+  display: inline-block;
+  margin-bottom: 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.back-link:hover {
+  color: var(--accent);
+}
+
 /* ---------- Lo scaffale — griglia scatole di gioco (GamesView) ---------- */
 
 .game-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(190px, 230px));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 230px));
   gap: 1.1rem;
   list-style: none;
   padding: 0;
@@ -699,7 +739,7 @@ li button.btn-select {
 
 .game-grid h2 {
   margin: 0 0.9rem 0.15rem;
-  font-size: 0.98rem;
+  font-size: 1.1rem;
 }
 
 .game-grid p {
@@ -710,31 +750,86 @@ li button.btn-select {
 
 /* ---------- Scheda gioco (GameDetailView) ---------- */
 
-.cover {
-  max-width: 220px;
-  height: auto;
+/* Identità del gioco: copertina e i suoi dati/azioni in una card sola,
+   invece di un'immagine sciolta con un file input larghissimo sotto. */
+.game-cover-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1.35rem;
+  background: var(--card);
+  border: 1px solid var(--card-line);
   border-radius: var(--radius);
+  padding: 1.35rem;
+  margin: 0.9rem 0 1.75rem;
+  box-shadow: var(--shadow-card);
+}
+
+.cover {
+  flex: none;
+  width: 170px;
+  max-width: 100%;
+  height: auto;
   display: block;
-  margin-bottom: 1.1rem;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--card-line);
   box-shadow: var(--shadow-card);
 }
 
-/* Le lingue come linguette di carta appoggiate sulla banda in feltro. */
+/* Nessuna copertina: il dado sul feltro, come nelle griglie. */
+.cover-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 3 / 4;
+  background: var(--felt);
+  background-image: radial-gradient(rgb(255 255 255 / 6%) 1.5px, transparent 1.5px);
+  background-size: 14px 14px;
+}
+
+.cover-empty svg {
+  width: 2.4rem;
+  height: 2.4rem;
+  color: var(--felt-text-muted);
+}
+
+/* Sotto questa misura la colonna dei dati diventa illeggibile (separatori
+   orfani, nome file troncato): meglio impilare copertina e dati. */
+.game-cover-info {
+  flex: 1;
+  min-width: 18rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.game-cover-info .meta-row,
+.game-cover-info .inline-form {
+  margin: 0;
+}
+
+.game-cover-info .inline-form input[type='file'] {
+  max-width: 17rem;
+}
+
+/* Le lingue come pastiglie su una barra in feltro: angoli tondi su tutti i
+   lati, non linguette tagliate in basso — la mezza curva faceva leggere la
+   barra come un pezzo staccato dal pannello sotto. */
 .language-tabs {
   display: flex;
+  align-items: center;
   gap: 0.3rem;
   margin: 1.25rem 0 0;
-  padding: 0.4rem 0.4rem 0;
+  padding: 0.4rem;
   background: var(--felt);
-  border-radius: var(--radius) var(--radius) 0 0;
+  border-radius: var(--radius);
 }
 
 .language-tabs button {
   background: var(--felt-deep);
   color: var(--felt-text-muted);
   border: none;
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  border-radius: var(--radius-sm);
   font-family: 'Data', monospace;
   font-size: 0.8rem;
   font-weight: 600;
@@ -752,6 +847,165 @@ li button.btn-select {
   color: var(--ink);
 }
 
+/* "Aggiungi lingua" vive in fondo alla barra, separato dalle linguette di
+   navigazione: a sinistra si scelgono le lingue, a destra se ne crea una. */
+.language-tabs .language-tab-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  background: var(--felt-line);
+  color: var(--felt-text);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+}
+
+.language-tabs .language-tab-add:hover {
+  background: var(--card);
+  color: var(--felt-deep);
+}
+
+.language-tab-add svg {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* Scheda unica per la lingua attiva: dettagli e materiali condividono lo
+   stesso foglio, divisi da una riga che taglia la card da bordo a bordo —
+   un filetto rientrato in mezzo a due form si legge come un errore. */
+.language-panel {
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  padding: 1.35rem;
+  margin: 0.9rem 0 1.75rem;
+  box-shadow: var(--shadow-card);
+}
+
+.language-panel form {
+  max-width: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 0;
+  box-shadow: none;
+}
+
+.panel-section + .panel-section {
+  margin: 1.5rem -1.35rem 0;
+  padding: 1.5rem 1.35rem 0;
+  border-top: 1px solid var(--card-line);
+}
+
+/* Titolo di sezione a sinistra, la sua azione a destra sulla stessa riga. */
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+.section-head > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.section-head > button svg {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+/* Codice lingua attiva accanto al titolo: è un dato, quindi mono. */
+.lang-chip {
+  font-family: 'Data', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  background: var(--card-alt);
+  border-radius: 999px;
+  padding: 0.15rem 0.5rem;
+}
+
+.language-name {
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.3rem;
+}
+
+.empty-note {
+  margin: 0;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+/* Lista materiali: righe nude dentro il foglio, non una card annidata. */
+.media-list {
+  background: none;
+  border: none;
+  box-shadow: none;
+  margin: 0;
+}
+
+.media-list li {
+  gap: 0.75rem;
+  padding: 0.6rem 0;
+}
+
+.media-list li:first-child {
+  padding-top: 0;
+}
+
+.media-list a {
+  margin-right: auto;
+}
+
+.media-kind {
+  font-family: 'Data', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+}
+
+/* Riga azioni: i bottoni di un form stanno a destra, non spaiati a sinistra
+   sotto l'ultimo campo. Si allineano al bordo destro dei campi, non a quello
+   della card, altrimenti restano sospesi lontano dal contenuto. */
+.form-actions {
+  display: flex;
+  align-self: stretch;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.25rem;
+  max-width: 30rem;
+}
+
+.field-hint {
+  margin: -0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.field-hint code {
+  font-family: 'Data', monospace;
+  font-size: 0.78rem;
+}
+
 /* ---------- Public shell (PublicHeader + top-level public views) ---------- */
 
 .public-page {
@@ -763,7 +1017,7 @@ li button.btn-select {
 
 .event-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 260px));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 260px));
   gap: 1rem;
   list-style: none;
   padding: 0;
@@ -796,7 +1050,7 @@ li button.btn-select {
 
 .event-list h2 {
   margin: 0 0 0.3rem;
-  font-size: 1.02rem;
+  font-size: 1.1rem;
 }
 
 .event-list p {
@@ -820,7 +1074,7 @@ li button.btn-select {
 /* Griglia eventi lato admin: stessa grammatica, senza feltro. */
 .event-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 260px));
+  grid-template-columns: repeat(auto-fit, minmax(220px, 260px));
   gap: 1rem;
   list-style: none;
   padding: 0;
@@ -853,7 +1107,7 @@ li button.btn-select {
 
 .event-grid h2 {
   margin: 0 0 0.3rem;
-  font-size: 1.02rem;
+  font-size: 1.1rem;
 }
 
 .event-grid p {
@@ -869,7 +1123,9 @@ li button.btn-select {
 /* Il tavolo in feltro: le scatole dei giochi di un evento, pronte. */
 .event-games {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 210px));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 210px));
+  width: fit-content;
+  max-width: 100%;
   gap: 1.1rem;
   list-style: none;
   padding: 1.25rem;
@@ -948,6 +1204,54 @@ li button.btn-select {
   font-size: 2rem;
   letter-spacing: 0.14em;
   color: var(--ink);
+}
+
+/* ---------- Riepilogo prenotazione (ManageBookingView) ---------- */
+
+.booking-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 1.1rem 1.3rem;
+  margin: 0.5rem 0 1rem;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.booking-summary h2 {
+  margin: 0;
+}
+
+.booking-summary-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  font-family: 'Data', monospace;
+}
+
+.booking-summary-participant {
+  margin: 0.2rem 0 0.5rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.status-badge.status-active {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.status-badge.status-cancelled {
+  color: var(--ink-muted);
+  background: var(--card-alt);
 }
 
 /* ---------- Selezione giochi in un evento ---------- */
@@ -1029,6 +1333,25 @@ th {
   border-bottom: none;
 }
 
+/* Con `border-collapse: collapse` il ritaglio di `overflow: hidden` sul
+   <table> non è affidabile: gli angoli della banda in feltro e dell'ultima
+   riga vanno arrotondati sulle celle. */
+thead tr:first-child th:first-child {
+  border-top-left-radius: var(--radius);
+}
+
+thead tr:first-child th:last-child {
+  border-top-right-radius: var(--radius);
+}
+
+tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--radius);
+}
+
+tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--radius);
+}
+
 tbody tr:last-child td {
   border-bottom: none;
 }
@@ -1095,4 +1418,114 @@ tbody tr:nth-child(3) .rank-medal {
   width: 0.85rem;
   height: 0.85rem;
   color: var(--gold-text);
+}
+
+/* ---------- Modale (ModalDialog.vue) ---------- */
+
+/* Un foglio di cartoncino sollevato sul feltro: <dialog> nativo, quindi il
+   focus trap e l'Esc sono del browser. */
+.modal {
+  width: min(30rem, calc(100% - 2rem));
+  padding: 0;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+}
+
+.modal::backdrop {
+  background: rgb(20 53 40 / 55%);
+}
+
+.modal-sheet {
+  padding: 1.35rem;
+}
+
+.modal-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.modal-head h2 {
+  margin: 0;
+}
+
+.modal-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  padding: 0.35rem;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid transparent;
+}
+
+.modal-close:hover {
+  color: var(--ink);
+  background: var(--card-alt);
+}
+
+.modal-close svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* I form dentro la modale non sono card a loro volta. */
+.modal form {
+  max-width: none;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-bottom: 0;
+  box-shadow: none;
+}
+
+/* ---------- Scelta segmentata (tipo di materiale) ---------- */
+
+/* Tre opzioni si scelgono a vista, non in una tendina: radio veri sotto,
+   linguette sopra, così restano navigabili da tastiera. */
+.segmented {
+  display: flex;
+  align-self: stretch;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  background: var(--card-alt);
+  border-radius: var(--radius-sm);
+}
+
+.segmented label {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  flex-direction: row;
+  padding: 0.4rem 0.5rem;
+  border-radius: calc(var(--radius-sm) - 2px);
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+  text-align: center;
+  cursor: pointer;
+}
+
+.segmented label.active {
+  background: var(--card);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgb(36 31 24 / 10%);
+}
+
+.segmented input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.segmented label:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }

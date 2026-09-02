@@ -181,8 +181,9 @@ onMounted(async () => {
     <h2>Prenotazioni attive</h2>
     <p v-if="bookings.length === 0">Nessuna prenotazione ancora.</p>
     <ul>
-      <li v-for="b in bookings" :key="b.id">
-        {{ b.participantName }} — {{ b.gameName }} — {{ b.participantEmail }} — {{ b.participantPhone }}
+      <li v-for="b in bookings" :key="b.id" class="list-row-text">
+        <strong>{{ b.participantName }}</strong> — {{ b.gameName }}
+        <span class="row-meta">{{ b.participantEmail }} · {{ b.participantPhone }}</span>
       </li>
     </ul>
 
@@ -190,9 +191,11 @@ onMounted(async () => {
     <p v-if="matchResults.length === 0">Nessun punteggio inserito ancora.</p>
     <ul>
       <li v-for="m in matchResults" :key="m.bookingId" class="list-row-text">
-        {{ m.participantName }} — {{ m.gameName }}:
-        <span v-for="(p, index) in m.players" :key="index">
-          {{ p.name }} {{ p.score }}{{ index < m.players.length - 1 ? ', ' : '' }}
+        <strong>{{ m.participantName }}</strong> — {{ m.gameName }}
+        <span class="row-meta">
+          <span v-for="(p, index) in m.players" :key="index">
+            {{ p.name }} {{ p.score }}{{ index < m.players.length - 1 ? ', ' : '' }}
+          </span>
         </span>
       </li>
     </ul>

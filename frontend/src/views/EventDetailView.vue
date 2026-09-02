@@ -57,6 +57,10 @@ function startBooking(eventGameId: number) {
   bookingResult.value = null
 }
 
+const selectedGame = computed(
+  () => event.value?.games.find((g) => g.eventGameId === selectedEventGameId.value) ?? null,
+)
+
 async function submitBooking() {
   bookingError.value = ''
   if (selectedEventGameId.value === null) {
@@ -124,6 +128,7 @@ onMounted(async () => {
         v-if="selectedEventGameId !== null && !bookingResult && !hasStarted"
         @submit.prevent="submitBooking"
       >
+        <h2>Prenota: {{ selectedGame?.name }}</h2>
         <label>
           Nome
           <input v-model="participantName" required />
@@ -141,7 +146,7 @@ onMounted(async () => {
       </form>
 
       <div v-if="bookingResult">
-        <p class="success">Prenotazione confermata!</p>
+        <p class="success">Prenotazione confermata per {{ selectedGame?.name }}!</p>
         <div class="booking-code-card">
           <span class="label">Il tuo codice</span>
           <span class="booking-code">{{ bookingResult.bookingCode }}</span>

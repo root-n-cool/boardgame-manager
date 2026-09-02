@@ -52,6 +52,9 @@ async function cancel() {
   if (!booking.value) {
     return
   }
+  if (!window.confirm(`Annullare la prenotazione per ${booking.value.gameName}?`)) {
+    return
+  }
   error.value = ''
   try {
     booking.value = await api.post<BookingResult>(`/bookings/${booking.value.id}/cancel`, {
@@ -108,11 +111,19 @@ async function submitScore() {
       <p v-if="error" class="error">{{ error }}</p>
 
       <div v-if="booking">
-        <p>
-          Prenotazione per {{ booking.participantName }} — {{ booking.gameName }} —
-          {{ booking.eventTitle }} ({{ booking.eventDate }} · {{ booking.startTime }}) —
-          stato: {{ booking.status }}
-        </p>
+        <div class="booking-summary">
+          <h2>{{ booking.gameName }}</h2>
+          <p class="booking-summary-meta">
+            {{ booking.eventTitle }} · {{ booking.eventDate }} · {{ booking.startTime }}
+          </p>
+          <p class="booking-summary-participant">Prenotato da <strong>{{ booking.participantName }}</strong></p>
+          <span
+            class="status-badge"
+            :class="booking.status === 'active' ? 'status-active' : 'status-cancelled'"
+          >
+            {{ booking.status === 'active' ? 'Attiva' : 'Annullata' }}
+          </span>
+        </div>
         <button v-if="booking.status === 'active'" type="button" class="btn-danger" @click="cancel">
           Annulla prenotazione
         </button>

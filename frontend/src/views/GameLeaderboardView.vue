@@ -30,15 +30,25 @@ interface LeaderboardResponse {
   matches: MatchEntry[]
 }
 
+interface GameSummary {
+  name: string
+}
+
 const route = useRoute()
 const gameId = route.params.id as string
 
 const leaderboard = ref<LeaderboardResponse | null>(null)
+const game = ref<GameSummary | null>(null)
 const error = ref('')
 
 onMounted(async () => {
   try {
-    leaderboard.value = await api.get<LeaderboardResponse>(`/games/${gameId}/leaderboard`)
+    const [leaderboardResult, gameResult] = await Promise.all([
+      api.get<LeaderboardResponse>(`/games/${gameId}/leaderboard`),
+      api.get<GameSummary>(`/games/${gameId}`),
+    ])
+    leaderboard.value = leaderboardResult
+    game.value = gameResult
   } catch (e) {
     error.value = (e as Error).message
   }
@@ -49,7 +59,8 @@ onMounted(async () => {
   <div>
     <PublicHeader />
     <div class="public-page">
-      <h1>Classifica</h1>
+      <router-link :to="`/games/${gameId}`" class="back-link">&larr; {{ game?.name ?? 'Torna al gioco' }}</router-link>
+      <h1>Classifica{{ game ? `: ${game.name}` : '' }}</h1>
       <p v-if="error" class="error">{{ error }}</p>
 
       <div v-if="leaderboard && leaderboard.players.length > 0" class="table-scroll">
