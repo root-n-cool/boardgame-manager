@@ -39,6 +39,18 @@ interface BookingAdminInfo {
   createdAt: string
 }
 
+interface MatchResultPlayer {
+  name: string
+  score: number
+}
+
+interface MatchResultAdminInfo {
+  bookingId: number
+  participantName: string
+  gameName: string
+  players: MatchResultPlayer[]
+}
+
 const route = useRoute()
 const eventId = route.params.id as string
 
@@ -52,6 +64,7 @@ const saveMessage = ref('')
 const availableGames = ref<GameSummary[]>([])
 const selectedGames = ref<SelectedGame[]>([])
 const bookings = ref<BookingAdminInfo[]>([])
+const matchResults = ref<MatchResultAdminInfo[]>([])
 
 function isSelected(gameId: number) {
   return selectedGames.value.some((g) => g.gameId === gameId)
@@ -88,6 +101,7 @@ async function load() {
   availableGames.value = games
   selectedGames.value = event.games.map((g) => ({ gameId: g.gameId, quantity: g.quantity }))
   bookings.value = await api.get<BookingAdminInfo[]>(`/events/${eventId}/bookings`)
+  matchResults.value = await api.get<MatchResultAdminInfo[]>(`/events/${eventId}/match-results`)
 }
 
 async function saveEvent() {
@@ -169,6 +183,17 @@ onMounted(async () => {
     <ul>
       <li v-for="b in bookings" :key="b.id">
         {{ b.participantName }} — {{ b.gameName }} — {{ b.participantEmail }} — {{ b.participantPhone }}
+      </li>
+    </ul>
+
+    <h2>Risultati inseriti</h2>
+    <p v-if="matchResults.length === 0">Nessun punteggio inserito ancora.</p>
+    <ul>
+      <li v-for="m in matchResults" :key="m.bookingId">
+        {{ m.participantName }} — {{ m.gameName }}:
+        <span v-for="(p, index) in m.players" :key="p.name">
+          {{ p.name }} {{ p.score }}{{ index < m.players.length - 1 ? ', ' : '' }}
+        </span>
       </li>
     </ul>
   </div>
