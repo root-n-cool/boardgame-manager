@@ -95,7 +95,7 @@ func TestLookupAndCancelBooking_FullFlow(t *testing.T) {
 		t.Fatalf("decode create: %v", err)
 	}
 
-	lookupPayload, _ := json.Marshal(map[string]string{"email": "mario@example.com", "bookingCode": created.BookingCode})
+	lookupPayload, _ := json.Marshal(map[string]string{"bookingCode": created.BookingCode})
 	lookupRec := httptest.NewRecorder()
 	router.ServeHTTP(lookupRec, httptest.NewRequest(http.MethodPost, "/api/bookings/lookup", bytes.NewReader(lookupPayload)))
 	if lookupRec.Code != http.StatusOK {
@@ -114,7 +114,7 @@ func TestLookupAndCancelBooking_FullFlow(t *testing.T) {
 		t.Fatalf("expected non-empty gameName and eventTitle, got %+v", lookupBody)
 	}
 
-	cancelPayload, _ := json.Marshal(map[string]string{"email": "mario@example.com", "bookingCode": created.BookingCode})
+	cancelPayload, _ := json.Marshal(map[string]string{"bookingCode": created.BookingCode})
 	cancelRec := httptest.NewRecorder()
 	router.ServeHTTP(cancelRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/cancel", created.ID), bytes.NewReader(cancelPayload)))
 	if cancelRec.Code != http.StatusOK {
@@ -131,11 +131,11 @@ func TestLookupAndCancelBooking_FullFlow(t *testing.T) {
 	}
 }
 
-func TestLookupBooking_WrongCredentialsReturns404(t *testing.T) {
+func TestLookupBooking_WrongCodeReturns404(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 
-	payload, _ := json.Marshal(map[string]string{"email": "nobody@example.com", "bookingCode": "AAAAAAAA"})
+	payload, _ := json.Marshal(map[string]string{"bookingCode": "AAAAAAAA"})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/bookings/lookup", bytes.NewReader(payload)))
 	if rec.Code != http.StatusNotFound {

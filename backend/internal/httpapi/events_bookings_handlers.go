@@ -45,18 +45,17 @@ func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-type bookingCredentialsRequest struct {
-	Email       string `json:"email"`
+type bookingCodeRequest struct {
 	BookingCode string `json:"bookingCode"`
 }
 
 func (s *Server) lookupBookingHandler(w http.ResponseWriter, r *http.Request) {
-	var req bookingCredentialsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.BookingCode == "" {
-		writeError(w, http.StatusBadRequest, "email and bookingCode are required")
+	var req bookingCodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BookingCode == "" {
+		writeError(w, http.StatusBadRequest, "bookingCode is required")
 		return
 	}
-	booking, err := s.Events.LookupBooking(r.Context(), req.Email, req.BookingCode)
+	booking, err := s.Events.LookupBooking(r.Context(), req.BookingCode)
 	if errors.Is(err, events.ErrInvalidBookingCredentials) {
 		writeError(w, http.StatusNotFound, "prenotazione non trovata")
 		return
@@ -79,12 +78,12 @@ func (s *Server) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid booking id")
 		return
 	}
-	var req bookingCredentialsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Email == "" || req.BookingCode == "" {
-		writeError(w, http.StatusBadRequest, "email and bookingCode are required")
+	var req bookingCodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.BookingCode == "" {
+		writeError(w, http.StatusBadRequest, "bookingCode is required")
 		return
 	}
-	booking, err := s.Events.CancelBooking(r.Context(), id, req.Email, req.BookingCode)
+	booking, err := s.Events.CancelBooking(r.Context(), id, req.BookingCode)
 	if errors.Is(err, events.ErrInvalidBookingCredentials) || errors.Is(err, events.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "prenotazione non trovata")
 		return
