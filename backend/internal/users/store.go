@@ -15,16 +15,16 @@ type User struct {
 	// their own response maps today; the tag is defence in depth against a
 	// future writeJSON(w, 200, user) leaking bcrypt hashes.
 	PasswordHash string `json:"-"`
-	// InviteToken è il token in chiaro del link di invito, non-nil solo
-	// finché l'admin non ha scelto la propria password. Azzerarlo è ciò
-	// che rende il link inutilizzabile.
+	// InviteToken is the plaintext token of the invite link, non-nil only
+	// until the admin has chosen their own password. Clearing it is what
+	// makes the link unusable.
 	InviteToken *string
 	CreatedAt   time.Time
 }
 
-// Pending dice se l'admin ha un invito ancora da accettare. invite_token è
-// l'unico criterio di "attivo" usato dal codice: password_hash resta un
-// dettaglio interno dello store.
+// Pending reports whether the admin still has an invite to accept.
+// invite_token is the only "active" criterion the code uses: password_hash
+// stays an internal detail of the store.
 func (u User) Pending() bool { return u.InviteToken != nil }
 
 var ErrNotFound = errors.New("user not found")
@@ -60,9 +60,9 @@ func (s *Store) Create(ctx context.Context, email, passwordHash string) (User, e
 	return s.GetByID(ctx, id)
 }
 
-// CreateInvite crea un admin in attesa: nessuna password, un token di invito.
-// La password la scriverà lui stesso aprendo il link (vedi Activate), così chi
-// invita non la conosce mai.
+// CreateInvite creates a pending admin: no password, one invite token. The
+// password is written by the invitee themselves through the link (see
+// Activate), so whoever invited them never knows it.
 func (s *Store) CreateInvite(ctx context.Context, email, token string) (User, error) {
 	res, err := s.db.ExecContext(ctx, `INSERT INTO users (email, password_hash, invite_token) VALUES (?, '', ?)`, email, token)
 	if err != nil {
@@ -78,11 +78,11 @@ func (s *Store) CreateInvite(ctx context.Context, email, token string) (User, er
 	return s.GetByID(ctx, id)
 }
 
-// Activate scrive la password scelta dall'invitato e azzera il token.
+// Activate writes the password the invitee chose and clears the token.
 //
-// La condizione `invite_token IS NOT NULL` nella WHERE è quello che rende il
-// link monouso: due POST concorrenti sullo stesso invito non possono impostare
-// due password diverse — il secondo trova zero righe e riceve ErrNotFound.
+// The `invite_token IS NOT NULL` condition in the WHERE is what makes the link
+// single-use: two concurrent POSTs on the same invite cannot set two different
+// passwords — the second one matches zero rows and gets ErrNotFound.
 func (s *Store) Activate(ctx context.Context, id int64, passwordHash string) error {
 	res, err := s.db.ExecContext(ctx,
 		`UPDATE users SET password_hash = ?, invite_token = NULL WHERE id = ? AND invite_token IS NOT NULL`,
@@ -175,11 +175,11 @@ func (s *Store) DeleteIfNotLast(ctx context.Context, id int64) error {
 	}
 	defer tx.Rollback()
 
-	// Contiamo gli admin ATTIVI diversi dal target: se non ne resta nessuno,
-	// la cancellazione lascerebbe l'istanza senza nessuno in grado di entrare,
-	// mentre POST /api/bootstrap resterebbe chiuso (guarda COUNT(*) totale).
-	// Un invito pendente non è un accesso funzionante, quindi non conta come
-	// admin — e per lo stesso motivo è sempre revocabile.
+	// Count the ACTIVE admins other than the target: if none is left, the
+	// deletion would leave the instance with nobody able to sign in, while
+	// POST /api/bootstrap stays closed (it looks at the total COUNT(*)).
+	// A pending invite is not a working way in, so it does not count as an
+	// admin — and for the same reason it is always revocable.
 	var otherActive int
 	if err := tx.QueryRowContext(ctx,
 		`SELECT COUNT(*) FROM users WHERE invite_token IS NULL AND id != ?`, id).Scan(&otherActive); err != nil {

@@ -271,7 +271,7 @@ func TestActivate_SetsPasswordAndKillsTheLink(t *testing.T) {
 		t.Fatalf("expected the new hash, got %q", active.PasswordHash)
 	}
 
-	// Il link deve morire: nessuno può riusarlo per riscrivere la password.
+	// The link must die: nobody may reuse it to rewrite the password.
 	if _, err := store.GetByInviteToken(ctx, "tok-abc"); !errors.Is(err, users.ErrNotFound) {
 		t.Fatalf("expected the token to be gone, got %v", err)
 	}
@@ -280,8 +280,8 @@ func TestActivate_SetsPasswordAndKillsTheLink(t *testing.T) {
 	}
 }
 
-// Un invito pendente non è un accesso funzionante: non deve poter tenere in
-// vita l'istanza al posto dell'unico admin attivo.
+// A pending invite is not a working way in, so it must not keep the instance
+// alive in place of the only active admin.
 func TestDeleteIfNotLast_PendingInviteDoesNotCountAsAnAdmin(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
@@ -299,7 +299,7 @@ func TestDeleteIfNotLast_PendingInviteDoesNotCountAsAnAdmin(t *testing.T) {
 	}
 }
 
-// ...e per contro deve sempre essere revocabile, anche con un solo admin attivo.
+// ...and conversely it must always be revocable, even with a single active admin.
 func TestDeleteIfNotLast_PendingInviteCanAlwaysBeRevoked(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
