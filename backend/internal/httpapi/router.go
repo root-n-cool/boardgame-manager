@@ -69,6 +69,7 @@ func NewRouter(s *Server) http.Handler {
 		protected.Put("/api/events/{id}", s.updateEventHandler)
 		protected.Delete("/api/events/{id}", s.deleteEventHandler)
 		protected.Get("/api/events/{id}/bookings", s.listEventBookingsHandler)
+		protected.Get("/api/events/{id}/match-results", s.listEventMatchResultsHandler)
 	})
 
 	return r

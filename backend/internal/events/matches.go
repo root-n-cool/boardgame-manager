@@ -145,3 +145,46 @@ func (s *Store) GetMatchResultForBooking(ctx context.Context, bookingID int64) (
 	}
 	return &m, nil
 }
+
+type BookingMatchResult struct {
+	BookingID       int64
+	ParticipantName string
+	GameName        string
+	Players         []PlayerScore
+}
+
+// ListMatchResultsForEvent returns, for every booking of the event that has
+// a MatchResult, the participant, the game and the players/scores
+// submitted — read-only data for the admin event detail page.
+func (s *Store) ListMatchResultsForEvent(ctx context.Context, eventID int64) ([]BookingMatchResult, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT b.id, b.participant_name, g.name, mps.player_name, mps.score
+		 FROM bookings b
+		 JOIN event_games eg ON b.event_game_id = eg.id
+		 JOIN games g ON eg.game_id = g.id
+		 JOIN match_results mr ON mr.booking_id = b.id
+		 JOIN match_player_scores mps ON mps.match_result_id = mr.id
+		 WHERE b.event_id = ?
+		 ORDER BY b.id, mps.id`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []BookingMatchResult
+	var current *BookingMatchResult
+	for rows.Next() {
+		var bookingID int64
+		var participantName, gameName, playerName string
+		var score int
+		if err := rows.Scan(&bookingID, &participantName, &gameName, &playerName, &score); err != nil {
+			return nil, err
+		}
+		if current == nil || current.BookingID != bookingID {
+			out = append(out, BookingMatchResult{BookingID: bookingID, ParticipantName: participantName, GameName: gameName})
+			current = &out[len(out)-1]
+		}
+		current.Players = append(current.Players, PlayerScore{Name: playerName, Score: score})
+	}
+	return out, rows.Err()
+}

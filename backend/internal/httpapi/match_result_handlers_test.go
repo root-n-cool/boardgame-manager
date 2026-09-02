@@ -145,3 +145,51 @@ func TestSubmitMatchResult_ResubmitReplacesPlayers(t *testing.T) {
 		t.Fatalf("expected 2 players after resubmission, got %d", len(body.Players))
 	}
 }
+
+func TestListEventMatchResults_RequiresAuth(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/events/1/match-results", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestListEventMatchResults_ReturnsSubmittedResults(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	booking := createTestBooking(t, router, eventID, eventGames[0].ID)
+
+	submitPayload, _ := json.Marshal(map[string]any{
+		"bookingCode": booking.BookingCode,
+		"players":     []map[string]any{{"name": "Mario", "score": 42}},
+	})
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/match-result", booking.ID), bytes.NewReader(submitPayload)))
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d/match-results", eventID), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body []struct {
+		GameName string `json:"gameName"`
+		Players  []struct {
+			Name  string `json:"name"`
+			Score int    `json:"score"`
+		} `json:"players"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body) != 1 || body[0].GameName != "Catan" || len(body[0].Players) != 1 || body[0].Players[0].Name != "Mario" {
+		t.Fatalf("unexpected body: %+v", body)
+	}
+}

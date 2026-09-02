@@ -63,3 +63,24 @@ func (s *Server) submitMatchResultHandler(w http.ResponseWriter, r *http.Request
 		writeJSON(w, http.StatusOK, toMatchResultResponse(result))
 	}
 }
+
+func (s *Server) listEventMatchResultsHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid event id")
+		return
+	}
+	list, err := s.Events.ListMatchResultsForEvent(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list match results")
+		return
+	}
+	out := make([]map[string]any, 0, len(list))
+	for _, m := range list {
+		out = append(out, map[string]any{
+			"bookingId": m.BookingID, "participantName": m.ParticipantName,
+			"gameName": m.GameName, "players": toPlayerScores(m.Players),
+		})
+	}
+	writeJSON(w, http.StatusOK, out)
+}
