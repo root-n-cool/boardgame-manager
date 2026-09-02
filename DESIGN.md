@@ -305,6 +305,37 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   visibile dove l'hover non esiste (`@media (hover: none)`), con l'area di
   tocco portata a 44px da uno `::after` trasparente.
 
+### Amministratori (`/users`)
+- **La riga admin** (`.admin-row`, dentro `.admin-list` in un `.panel-card`):
+  la pedina con l'iniziale (`.admin-pawn`) sta dove il catalogo mette la
+  copertina, lo `.status-badge` ("Attivo" / "In attesa") dove il catalogo
+  mette l'anno. Un admin **in attesa** — invitato ma senza password ancora
+  impostata — ha la pedina tratteggiata invece che piena: è una pedina non
+  ancora posata sul tavolo, coerente con il tratteggio delle card
+  "aggiungi". Le azioni stanno a destra (`.admin-row-actions`), sempre
+  "Elimina", più "Copia link invito" quando la riga è in attesa.
+- **Il link d'invito è una riga di dato, rientrata** (`.admin-invite`): sotto
+  la riga principale, oltre la pedina, in mono e troncato con ellissi — mai
+  a spingere il foglio più largo. Compare solo per un admin in attesa e
+  resta visibile finché l'invito non viene copiato di nuovo o eliminato:
+  il token non scade e non si rigenera, quindi il link di oggi è quello
+  valido fra una settimana.
+- **Lo slot "Aggiungi admin" a riga piena** (`.admin-add`) è la variante
+  orizzontale di `.add-card` del catalogo, stessa grammatica: bordo
+  tratteggiato 2px senza fondo proprio (il cartoncino della pagina si vede
+  attraverso), che **si chiude** in tratto continuo, accento, al passaggio
+  del mouse. Cambia solo la sagoma — una riga piena invece di una cella di
+  griglia — perché qui non c'è uno scaffale di caselle da chiudere, ma un
+  elenco. Al click diventa un form inline (`.admin-add-form`, solo campo
+  email) invece di navigare altrove: l'intera creazione di un invito è
+  un'azione, non una pagina.
+- **Nelle liste il rosso è "Rimuovi"**: la regola generale sui bottoni in
+  `<li>` vale anche qui, quindi "Copia link invito" — che non distrugge
+  niente — non può ereditarlo. Passa all'oro (`.btn-invite`, testo
+  `--gold-text`, hover `--gold-bg`/`--gold`), la stessa famiglia di colore
+  delle medaglie e dei distintivi, mai usata altrove per un'azione di
+  lista.
+
 ### Griglie su telefono
 - Sotto 560px `.game-grid` smette di tenere le celle a 230px fisse e passa
   a `repeat(auto-fill, minmax(140px, 1fr))`: il tetto fisso lasciava una

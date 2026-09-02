@@ -24,8 +24,13 @@ esterno obbligatorio.
   giocatori (nomi liberi); la classifica per gioco aggrega partite
   giocate, vittorie e punteggio medio/totale nel tempo.
 - **Amministrazione**: bootstrap del primo admin al primo avvio (come
-  n8n), gestione utenti admin, impostazioni per le chiavi API opzionali
-  (BoardGameGeek, YouTube Data API, Google/Bing Search).
+  n8n); dopo, un admin ne invita un altro inserendo solo l'email — il
+  sistema genera un link di invito che l'admin copia e recapita a mano
+  (nessuna email viene inviata), e chi lo riceve apre il link e sceglie la
+  propria password, che chi lo ha invitato non conosce. Il link non scade
+  e resta valido finché non viene usato o l'invito non viene eliminato.
+  Impostazioni per le chiavi API opzionali (BoardGameGeek, YouTube Data
+  API, Google/Bing Search).
 
 ## Stack tecnico
 
