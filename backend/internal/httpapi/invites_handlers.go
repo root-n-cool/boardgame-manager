@@ -2,11 +2,13 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 
 	"boardgames-manager/internal/auth"
+	"boardgames-manager/internal/users"
 )
 
 // minPasswordLength is the same minimum the frontend forms ask for
@@ -18,8 +20,12 @@ const minPasswordLength = 8
 // right page. A spent token and an unknown one are indistinguishable: 404.
 func (s *Server) getInviteHandler(w http.ResponseWriter, r *http.Request) {
 	user, err := s.Users.GetByInviteToken(r.Context(), chi.URLParam(r, "token"))
-	if err != nil {
+	if errors.Is(err, users.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "invite not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not read the invite")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"email": user.Email})
@@ -44,8 +50,12 @@ func (s *Server) acceptInviteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user, err := s.Users.GetByInviteToken(r.Context(), chi.URLParam(r, "token"))
-	if err != nil {
+	if errors.Is(err, users.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "invite not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not read the invite")
 		return
 	}
 
@@ -55,10 +65,16 @@ func (s *Server) acceptInviteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Activate fails if the token was spent between the read above and now:
-	// two requests on the same link cannot set two different passwords.
+	// Activate fails with ErrNotFound if the token was spent between the read
+	// above and now: two requests on the same link cannot set two different
+	// passwords. Any other error is a genuine infrastructure failure, not a
+	// signal about the token, so it gets a 500 rather than a misleading 404.
 	if err := s.Users.Activate(r.Context(), user.ID, hash); err != nil {
-		writeError(w, http.StatusNotFound, "invite not found")
+		if errors.Is(err, users.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "invite not found")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not set the password")
 		return
 	}
 
