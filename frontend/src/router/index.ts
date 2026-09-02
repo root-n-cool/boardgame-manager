@@ -8,6 +8,7 @@ import SettingsView from '../views/SettingsView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameNewView from '../views/GameNewView.vue'
 import GameDetailView from '../views/GameDetailView.vue'
+import GameLeaderboardView from '../views/GameLeaderboardView.vue'
 import EventsView from '../views/EventsView.vue'
 import EventDetailView from '../views/EventDetailView.vue'
 import ManageBookingView from '../views/ManageBookingView.vue'
@@ -30,6 +31,7 @@ const router = createRouter({
     { path: '/events/:id', name: 'event-detail', component: EventDetailView, meta: { public: true } },
     { path: '/manage-booking', name: 'manage-booking', component: ManageBookingView, meta: { public: true } },
     { path: '/games/:id', name: 'game-detail', component: GameDetailView, meta: { public: true } },
+    { path: '/games/:id/leaderboard', name: 'game-leaderboard', component: GameLeaderboardView, meta: { public: true } },
     {
       path: '/admin',
       component: DashboardLayout,

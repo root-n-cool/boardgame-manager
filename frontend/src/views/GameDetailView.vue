@@ -204,6 +204,7 @@ onMounted(async () => {
       </form>
 
       <p v-if="game.owner">Proprietario: {{ game.owner }}</p>
+      <p><router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link></p>
       <button v-if="auth.user" type="button" @click="deleteGame">Elimina gioco</button>
 
       <nav class="language-tabs">
