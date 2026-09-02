@@ -74,9 +74,10 @@ Note:
 
 **Modifiche a endpoint esistenti (Fase 3):**
 - `POST /api/bookings/lookup` — body diventa `{bookingCode}` (rimosso
-  `email`). La risposta include un campo `hasMatchResult: bool` per
-  permettere al frontend di distinguere "inserisci" da "modifica"
-  punteggio, oltre ai campi già esistenti.
+  `email`). La risposta include un campo `matchResult`, `null` se non
+  ancora inserito oppure `{players: [{name, score}, ...]}`, che
+  permette al frontend sia di distinguere "inserisci" da "modifica"
+  punteggio sia di precompilare le righe con i valori già salvati.
 - `POST /api/bookings/{id}/cancel` — body diventa `{bookingCode}`
   (rimosso `email`).
 - Motivazione della rimozione di `email`: `booking_code` è già
@@ -119,8 +120,9 @@ registrato con lo stesso middleware di rate-limit già usato per
   ricerca (resta solo "Codice prenotazione"). Se il booking trovato ha
   `status='active'`, viene mostrata una sezione punteggio con righe
   dinamiche nome+punteggio (aggiungi/rimuovi riga, minimo 1); se
-  `hasMatchResult` è vero le righe sono precompilate e il bottone dice
-  "Aggiorna punteggio", altrimenti "Invia punteggio".
+  `matchResult` non è `null` le righe sono precompilate con i suoi
+  valori e il bottone dice "Aggiorna punteggio", altrimenti "Invia
+  punteggio".
 - **`GameDetailView.vue`**: aggiunto link/sezione verso la classifica
   del gioco.
 - **Nuova `GameLeaderboardView.vue`** (route pubblica
