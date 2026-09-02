@@ -22,16 +22,14 @@ func TestGetSettings_RequiresAuth(t *testing.T) {
 	}
 }
 
-func TestPutSettings_UpdatesLanguageAndMasksKeys(t *testing.T) {
+func TestPutSettings_UpdatesLanguageAndMasksTheToken(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
 	payload, _ := json.Marshal(map[string]string{
-		"defaultLanguage":   "en",
-		"youtubeApiKey":     "abcd1234efgh",
-		"searchApiKey":      "search-secret-key",
-		"searchApiProvider": "google",
+		"defaultLanguage": "en",
+		"bggApiToken":     "abcd1234efgh",
 	})
 	putReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(payload))
 	putReq.AddCookie(cookie)
@@ -48,9 +46,9 @@ func TestPutSettings_UpdatesLanguageAndMasksKeys(t *testing.T) {
 	router.ServeHTTP(getRec, getReq)
 
 	var body struct {
-		DefaultLanguage     string `json:"defaultLanguage"`
-		YouTubeAPIKeySet    bool   `json:"youtubeApiKeySet"`
-		YouTubeAPIKeyMasked string `json:"youtubeApiKeyMasked"`
+		DefaultLanguage   string `json:"defaultLanguage"`
+		BGGAPITokenSet    bool   `json:"bggApiTokenSet"`
+		BGGAPITokenMasked string `json:"bggApiTokenMasked"`
 	}
 	if err := json.NewDecoder(getRec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -58,22 +56,22 @@ func TestPutSettings_UpdatesLanguageAndMasksKeys(t *testing.T) {
 	if body.DefaultLanguage != "en" {
 		t.Fatalf("expected language 'en', got %q", body.DefaultLanguage)
 	}
-	if !body.YouTubeAPIKeySet {
-		t.Fatal("expected youtubeApiKeySet to be true")
+	if !body.BGGAPITokenSet {
+		t.Fatal("expected bggApiTokenSet to be true")
 	}
-	if body.YouTubeAPIKeyMasked == "abcd1234efgh" {
-		t.Fatal("expected youtube key to be masked, not returned in clear")
+	if body.BGGAPITokenMasked == "abcd1234efgh" {
+		t.Fatal("expected the token to be masked, not returned in clear")
 	}
 }
 
-func TestPutSettings_EmptyKeyPreservesExistingKey(t *testing.T) {
+func TestPutSettings_EmptyTokenPreservesExistingToken(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
 	firstPayload, _ := json.Marshal(map[string]string{
 		"defaultLanguage": "en",
-		"youtubeApiKey":   "first-key-value",
+		"bggApiToken":     "first-key-value",
 	})
 	firstReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(firstPayload))
 	firstReq.AddCookie(cookie)
@@ -83,7 +81,7 @@ func TestPutSettings_EmptyKeyPreservesExistingKey(t *testing.T) {
 		t.Fatalf("expected 200 on first PUT, got %d: %s", firstRec.Code, firstRec.Body.String())
 	}
 
-	// Second PUT: different defaultLanguage, youtubeApiKey field omitted entirely
+	// Second PUT: different defaultLanguage, bggApiToken field omitted entirely
 	// (decodes to the empty string, same as explicit ""), meaning "don't change this key".
 	secondPayload, _ := json.Marshal(map[string]string{
 		"defaultLanguage": "it",
@@ -102,9 +100,9 @@ func TestPutSettings_EmptyKeyPreservesExistingKey(t *testing.T) {
 	router.ServeHTTP(getRec, getReq)
 
 	var body struct {
-		DefaultLanguage     string `json:"defaultLanguage"`
-		YouTubeAPIKeySet    bool   `json:"youtubeApiKeySet"`
-		YouTubeAPIKeyMasked string `json:"youtubeApiKeyMasked"`
+		DefaultLanguage   string `json:"defaultLanguage"`
+		BGGAPITokenSet    bool   `json:"bggApiTokenSet"`
+		BGGAPITokenMasked string `json:"bggApiTokenMasked"`
 	}
 	if err := json.NewDecoder(getRec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
@@ -114,14 +112,14 @@ func TestPutSettings_EmptyKeyPreservesExistingKey(t *testing.T) {
 	if body.DefaultLanguage != "it" {
 		t.Fatalf("expected language to reflect second PUT ('it'), got %q", body.DefaultLanguage)
 	}
-	// youtubeApiKey did NOT change (proves the empty field preserved the existing key
-	// rather than clearing it).
-	if !body.YouTubeAPIKeySet {
-		t.Fatal("expected youtubeApiKeySet to still be true after second PUT with empty key field")
+	// bggApiToken did NOT change (proves the empty field preserved the existing
+	// token rather than clearing it).
+	if !body.BGGAPITokenSet {
+		t.Fatal("expected bggApiTokenSet to still be true after second PUT with empty token field")
 	}
 	expectedMasked := maskedSuffix("first-key-value")
-	if body.YouTubeAPIKeyMasked != expectedMasked {
-		t.Fatalf("expected youtube key to still be masked from original value (suffix %q), got %q", expectedMasked, body.YouTubeAPIKeyMasked)
+	if body.BGGAPITokenMasked != expectedMasked {
+		t.Fatalf("expected the token to still be masked from original value (suffix %q), got %q", expectedMasked, body.BGGAPITokenMasked)
 	}
 }
 
@@ -169,5 +167,111 @@ func TestPutSettings_HandlesBGGToken(t *testing.T) {
 	}
 	if body.BGGAPITokenMasked == "abcd1234efgh" {
 		t.Fatal("expected bgg token to be masked, not returned in clear")
+	}
+}
+
+// putSettings is the shortest way to say "save these settings" in a test.
+func putSettings(t *testing.T, router http.Handler, cookie *http.Cookie, payload map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// getSettings returns the settings response as a raw map, so a test can assert
+// that a field is absent — not merely empty.
+func getSettings(t *testing.T, router http.Handler, cookie *http.Cookie) map[string]any {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("get settings: %d %s", rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&out); err != nil {
+		t.Fatalf("decode settings: %v", err)
+	}
+	return out
+}
+
+func TestPutSettings_StoresThePublicBaseURLWithoutItsTrailingSlash(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"publicBaseUrl":   "  https://giochi.example.org/  ",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Trimmed and without the trailing slash, so a caller can concatenate a path
+	// without producing a double slash.
+	if got := getSettings(t, router, cookie)["publicBaseUrl"]; got != "https://giochi.example.org" {
+		t.Fatalf("expected the normalised base URL, got %v", got)
+	}
+}
+
+func TestPutSettings_RejectsAPublicBaseURLThatIsNotAnAbsoluteHTTPURL(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	for _, invalid := range []string{"giochi.example.org", "/invito", "ftp://giochi.example.org", "https://"} {
+		rec := putSettings(t, router, cookie, map[string]string{
+			"defaultLanguage": "it",
+			"publicBaseUrl":   invalid,
+		})
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for %q, got %d: %s", invalid, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// An empty value is how the admin says "not configured": the frontend then falls
+// back to the address the browser is already on, which is what makes a local
+// install work with no settings at all.
+func TestPutSettings_EmptyPublicBaseURLClearsIt(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	if rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"publicBaseUrl":   "https://giochi.example.org",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("first put: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"publicBaseUrl":   "",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("second put: %d %s", rec.Code, rec.Body.String())
+	}
+
+	if got := getSettings(t, router, cookie)["publicBaseUrl"]; got != "" {
+		t.Fatalf("expected the base URL to be cleared, got %v", got)
+	}
+}
+
+// The enrichment feature these keys were meant for was never built, so the
+// fields must be gone from the API too — not just hidden in the UI.
+func TestGetSettings_NoLongerExposesTheUnusedAPIKeyFields(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	body := getSettings(t, router, cookie)
+	for _, gone := range []string{"youtubeApiKeySet", "youtubeApiKeyMasked", "searchApiKeySet", "searchApiKeyMasked", "searchApiProvider"} {
+		if _, present := body[gone]; present {
+			t.Errorf("expected %q to be gone from the settings response", gone)
+		}
 	}
 }

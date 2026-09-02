@@ -3,19 +3,19 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
+	"strings"
 
 	"boardgames-manager/internal/settings"
 )
 
 type settingsResponse struct {
-	DefaultLanguage     string `json:"defaultLanguage"`
-	YouTubeAPIKeySet    bool   `json:"youtubeApiKeySet"`
-	YouTubeAPIKeyMasked string `json:"youtubeApiKeyMasked,omitempty"`
-	SearchAPIKeySet     bool   `json:"searchApiKeySet"`
-	SearchAPIKeyMasked  string `json:"searchApiKeyMasked,omitempty"`
-	SearchAPIProvider   string `json:"searchApiProvider"`
-	BGGAPITokenSet      bool   `json:"bggApiTokenSet"`
-	BGGAPITokenMasked   string `json:"bggApiTokenMasked,omitempty"`
+	DefaultLanguage string `json:"defaultLanguage"`
+	// PublicBaseURL goes out in clear on purpose: it is an address the admin has
+	// to read back and check, not a credential like the token below.
+	PublicBaseURL     string `json:"publicBaseUrl"`
+	BGGAPITokenSet    bool   `json:"bggApiTokenSet"`
+	BGGAPITokenMasked string `json:"bggApiTokenMasked,omitempty"`
 }
 
 func maskKey(key string) string {
@@ -33,17 +33,9 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := settingsResponse{
-		DefaultLanguage:   cfg.DefaultLanguage,
-		SearchAPIProvider: cfg.SearchAPIProvider,
-		YouTubeAPIKeySet:  cfg.YouTubeAPIKey != "",
-		SearchAPIKeySet:   cfg.SearchAPIKey != "",
-		BGGAPITokenSet:    cfg.BGGAPIToken != "",
-	}
-	if resp.YouTubeAPIKeySet {
-		resp.YouTubeAPIKeyMasked = maskKey(cfg.YouTubeAPIKey)
-	}
-	if resp.SearchAPIKeySet {
-		resp.SearchAPIKeyMasked = maskKey(cfg.SearchAPIKey)
+		DefaultLanguage: cfg.DefaultLanguage,
+		PublicBaseURL:   cfg.PublicBaseURL,
+		BGGAPITokenSet:  cfg.BGGAPIToken != "",
 	}
 	if resp.BGGAPITokenSet {
 		resp.BGGAPITokenMasked = maskKey(cfg.BGGAPIToken)
@@ -52,11 +44,25 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateSettingsRequest struct {
-	DefaultLanguage   string `json:"defaultLanguage"`
-	YouTubeAPIKey     string `json:"youtubeApiKey"`
-	SearchAPIKey      string `json:"searchApiKey"`
-	SearchAPIProvider string `json:"searchApiProvider"`
-	BGGAPIToken       string `json:"bggApiToken"`
+	DefaultLanguage string `json:"defaultLanguage"`
+	PublicBaseURL   string `json:"publicBaseUrl"`
+	BGGAPIToken     string `json:"bggApiToken"`
+}
+
+// normalizePublicBaseURL accepts an empty value — that is how the admin says
+// "not configured" — and otherwise requires an absolute http(s) URL. It returns
+// the value without its trailing slash so callers can append a path without
+// producing a double one.
+func normalizePublicBaseURL(raw string) (string, bool) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", true
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", false
+	}
+	return strings.TrimRight(trimmed, "/"), true
 }
 
 func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -66,24 +72,24 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	baseURL, ok := normalizePublicBaseURL(req.PublicBaseURL)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "publicBaseUrl must be an absolute http or https address")
+		return
+	}
+
 	current, err := s.Settings.Get(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load settings")
 		return
 	}
 
+	// The base URL is not a secret, so unlike the token an empty value clears it
+	// rather than meaning "leave what is there".
 	next := settings.Settings{
-		DefaultLanguage:   req.DefaultLanguage,
-		YouTubeAPIKey:     current.YouTubeAPIKey,
-		SearchAPIKey:      current.SearchAPIKey,
-		SearchAPIProvider: req.SearchAPIProvider,
-		BGGAPIToken:       current.BGGAPIToken,
-	}
-	if req.YouTubeAPIKey != "" {
-		next.YouTubeAPIKey = req.YouTubeAPIKey
-	}
-	if req.SearchAPIKey != "" {
-		next.SearchAPIKey = req.SearchAPIKey
+		DefaultLanguage: req.DefaultLanguage,
+		PublicBaseURL:   baseURL,
+		BGGAPIToken:     current.BGGAPIToken,
 	}
 	if req.BGGAPIToken != "" {
 		next.BGGAPIToken = req.BGGAPIToken

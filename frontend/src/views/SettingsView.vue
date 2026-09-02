@@ -4,22 +4,14 @@ import { api } from '../api/client'
 
 interface SettingsResponse {
   defaultLanguage: string
-  youtubeApiKeySet: boolean
-  youtubeApiKeyMasked?: string
-  searchApiKeySet: boolean
-  searchApiKeyMasked?: string
-  searchApiProvider: string
+  publicBaseUrl: string
   bggApiTokenSet: boolean
   bggApiTokenMasked?: string
 }
 
 const defaultLanguage = ref('it')
-const youtubeApiKey = ref('')
-const searchApiKey = ref('')
-const searchApiProvider = ref('google')
+const publicBaseUrl = ref('')
 const bggApiToken = ref('')
-const youtubeApiKeyMasked = ref('')
-const searchApiKeyMasked = ref('')
 const bggApiTokenMasked = ref('')
 const message = ref('')
 const error = ref('')
@@ -27,9 +19,7 @@ const error = ref('')
 async function load() {
   const s = await api.get<SettingsResponse>('/settings')
   defaultLanguage.value = s.defaultLanguage
-  searchApiProvider.value = s.searchApiProvider || 'google'
-  youtubeApiKeyMasked.value = s.youtubeApiKeyMasked || ''
-  searchApiKeyMasked.value = s.searchApiKeyMasked || ''
+  publicBaseUrl.value = s.publicBaseUrl || ''
   bggApiTokenMasked.value = s.bggApiTokenMasked || ''
 }
 
@@ -39,18 +29,20 @@ async function save() {
   try {
     await api.put('/settings', {
       defaultLanguage: defaultLanguage.value,
-      youtubeApiKey: youtubeApiKey.value,
-      searchApiKey: searchApiKey.value,
-      searchApiProvider: searchApiProvider.value,
+      publicBaseUrl: publicBaseUrl.value,
       bggApiToken: bggApiToken.value,
     })
-    youtubeApiKey.value = ''
-    searchApiKey.value = ''
+    // Il token è un segreto e si riscrive solo per sostituirlo: il campo torna
+    // vuoto. L'indirizzo pubblico invece è un dato da rileggere, quindi resta.
     bggApiToken.value = ''
     message.value = 'Impostazioni salvate'
     await load()
   } catch (e) {
-    error.value = (e as Error).message
+    const raw = (e as Error).message
+    error.value =
+      raw === 'publicBaseUrl must be an absolute http or https address'
+        ? "L'indirizzo pubblico deve essere completo, per esempio https://giochi.example.org"
+        : raw
   }
 }
 
@@ -81,22 +73,13 @@ onMounted(async () => {
       </label>
 
       <label>
-        YouTube Data API key
-        <input v-model="youtubeApiKey" type="password" :placeholder="youtubeApiKeyMasked || 'non configurata'" />
+        Indirizzo pubblico
+        <input v-model="publicBaseUrl" type="url" inputmode="url" placeholder="https://giochi.example.org" />
       </label>
-
-      <label>
-        Provider ricerca web
-        <select v-model="searchApiProvider">
-          <option value="google">Google Custom Search</option>
-          <option value="bing">Bing Search</option>
-        </select>
-      </label>
-
-      <label>
-        Search API key
-        <input v-model="searchApiKey" type="password" :placeholder="searchApiKeyMasked || 'non configurata'" />
-      </label>
+      <p class="field-hint">
+        Serve a comporre i link che mandi fuori dall'app, come l'invito di un
+        amministratore. Se lo lasci vuoto si usa l'indirizzo da cui stai navigando.
+      </p>
 
       <button type="submit">Salva</button>
       <p v-if="message" class="success">{{ message }}</p>

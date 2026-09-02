@@ -29,8 +29,8 @@ esterno obbligatorio.
   (nessuna email viene inviata), e chi lo riceve apre il link e sceglie la
   propria password, che chi lo ha invitato non conosce. Il link non scade
   e resta valido finché non viene usato o l'invito non viene eliminato.
-  Impostazioni per le chiavi API opzionali (BoardGameGeek, YouTube Data
-  API, Google/Bing Search).
+  Impostazioni per la lingua di default, l'indirizzo pubblico dell'app e
+  il token BoardGameGeek.
 
 ## Stack tecnico
 
@@ -107,14 +107,22 @@ numerato, mai si modifica uno esistente.
 
 ## Configurazione opzionale
 
-Dalla pagina "Impostazioni" (da admin autenticato) si possono configurare
-chiavi API opzionali — se assenti, le relative funzioni di arricchimento
-automatico sono disabilitate senza bloccare il resto dell'app:
+Dalla pagina "Impostazioni" (da admin autenticato):
 
-- **BoardGameGeek API token**: per l'import di giochi da BGG.
-- **YouTube Data API key**: ricerca automatica di tutorial video.
-- **Google Custom Search / Bing Search API key**: ricerca automatica di
-  manuali PDF.
+- **Indirizzo pubblico**: l'URL da cui l'associazione raggiunge l'app, per
+  esempio `https://giochi.example.org`. Serve a comporre i link che escono
+  dall'app — oggi l'invito di un amministratore — quando chi li genera non
+  sta navigando dallo stesso indirizzo (dietro un proxy, o da `localhost`
+  mentre gli altri usano il dominio). Se lo lasci vuoto si usa l'indirizzo
+  da cui stai navigando, quindi un'installazione locale funziona senza
+  configurare niente.
+- **BoardGameGeek API token**: per la ricerca e l'import di giochi da BGG.
+  Se assente, l'import automatico è disabilitato senza bloccare il resto
+  dell'app: i giochi si inseriscono a mano.
+
+Il link di invito contiene un token che vale un accesso da amministratore:
+mandalo su un canale privato, e cancella dalla lista un invito che non
+serve più. Come ogni URL, finisce anche nei log del container.
 
 ## Documentazione di progetto
 

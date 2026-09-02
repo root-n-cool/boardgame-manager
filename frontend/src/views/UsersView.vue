@@ -25,6 +25,10 @@ function toItalian(message: string) {
 }
 
 const users = ref<AdminUser[]>([])
+// Indirizzo pubblico configurato in Impostazioni: se c'è vince, perché chi
+// genera l'invito può stare su localhost o dietro un proxy mentre chi lo
+// riceve deve raggiungere l'app dal dominio dell'associazione.
+const publicBaseUrl = ref('')
 const error = ref('')
 const adding = ref(false)
 const newEmail = ref('')
@@ -41,14 +45,26 @@ function initial(email: string) {
   return email.trim().charAt(0) || '?'
 }
 
-// Il link lo compone il browser: il backend non conosce il proprio URL
-// pubblico e non vogliamo una variabile d'ambiente in più per il selfhost.
+// Il link lo compone il browser, con l'indirizzo pubblico se configurato e
+// altrimenti l'origine da cui stiamo navigando: così un'installazione locale
+// funziona senza impostare niente.
 function inviteUrl(user: AdminUser) {
-  return `${window.location.origin}/invito/${user.inviteToken}`
+  return `${publicBaseUrl.value || window.location.origin}/invito/${user.inviteToken}`
 }
 
 async function loadUsers() {
   users.value = await api.get<AdminUser[]>('/users')
+}
+
+// Un indirizzo pubblico non configurato non è un errore: il link ripiega
+// sull'origine del browser, quindi un fallimento qui non deve rompere la pagina.
+async function loadPublicBaseUrl() {
+  try {
+    const s = await api.get<{ publicBaseUrl: string }>('/settings')
+    publicBaseUrl.value = s.publicBaseUrl || ''
+  } catch {
+    publicBaseUrl.value = ''
+  }
 }
 
 async function startAdding() {
@@ -114,7 +130,7 @@ onMounted(async () => {
   // Senza il try questa diventa una unhandled rejection e una pagina vuota
   // ogni volta che la richiesta fallisce per un motivo diverso dal 401.
   try {
-    await loadUsers()
+    await Promise.all([loadUsers(), loadPublicBaseUrl()])
   } catch (e) {
     error.value = toItalian((e as Error).message)
   }
