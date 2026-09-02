@@ -34,6 +34,7 @@ async function lookup() {
   error.value = ''
   cancelMessage.value = ''
   scoreMessage.value = ''
+  scoreError.value = ''
   try {
     booking.value = await api.post<BookingResult>('/bookings/lookup', {
       bookingCode: bookingCode.value,
