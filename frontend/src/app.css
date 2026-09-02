@@ -1921,3 +1921,174 @@ tbody tr:nth-child(3) .rank-medal {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
+
+/* ---------- Amministratori (/users) ---------- */
+
+/* Una riga per admin dentro un foglio: la pedina con l'iniziale al posto
+   della copertina, il badge di stato dove il catalogo mette l'anno. Il
+   filetto fra le righe arriva dalla regola globale su li. */
+/* La regola globale `ul` in questo foglio veste ogni lista da card (fondo,
+   bordo, raggio, ombra) e `li` è una flex-row con padding proprio: qui la
+   card è già il .panel-card che contiene la lista, quindi la lista si
+   spoglia — come fa .event-list — e la riga lascia il layout a .admin-row. */
+.admin-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.admin-list li {
+  display: block;
+  padding: 0;
+}
+
+.admin-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  padding: 0.7rem 0;
+}
+
+.admin-pawn {
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  font-family: 'Display', system-ui, sans-serif;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Chi non è ancora entrato è una pedina non ancora posata: tratteggiata. */
+.admin-row.is-pending .admin-pawn {
+  background: none;
+  border-style: dashed;
+}
+
+.admin-email {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.admin-row-actions {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.admin-list li button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.admin-list li button svg {
+  flex: none;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+/* Nella lista il rosso è il colore di "Rimuovi" (regola globale su li
+   button): copiare un link non è un'azione d'allarme, quindi passa all'oro. */
+.admin-list li button.btn-invite {
+  color: var(--gold-text);
+}
+
+.admin-list li button.btn-invite:hover {
+  background: var(--gold-bg);
+  border-color: var(--gold);
+}
+
+/* Il link vive sotto la riga, rientrato oltre la pedina: è un dato da
+   copiare, quindi mono, e non deve mai allargare il foglio. */
+.admin-invite {
+  flex: 1 1 100%;
+  /* Senza questo, il min-width automatico del flex item resta quello del
+     link non troncato: la riga sfonda il foglio a schermi stretti anche se
+     il <code> dentro sa già restringersi (min-width:0 + ellissi). */
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-left: 2.95rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+}
+
+.admin-invite code {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-family: 'Data', monospace;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
+.admin-invite-copied {
+  flex: none;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--success);
+}
+
+/* Lo slot vuoto in fondo alla lista, come la cella "Aggiungi gioco" del
+   catalogo: tratteggio che si chiude al passaggio. */
+.admin-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  margin-top: 0.9rem;
+  padding: 0.75rem 0.9rem;
+  border: 2px dashed color-mix(in srgb, var(--ink-muted) 70%, var(--card-line));
+  border-radius: var(--radius);
+  background: none;
+  color: var(--ink-muted);
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  transition: border-color 0.15s ease, background-color 0.15s ease, color 0.15s ease;
+}
+
+.admin-add:hover {
+  border-style: solid;
+  border-color: var(--accent);
+  background: var(--card-alt);
+  color: var(--accent);
+}
+
+.admin-add svg {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+.admin-add-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.9rem;
+}
+
+.admin-add-form input {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
