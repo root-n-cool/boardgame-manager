@@ -8,15 +8,29 @@ const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
+// Il backend distingue apposta un token morto (404 "invite not found") da un
+// guasto infrastrutturale (500): solo il primo caso è un invito da
+// rifiutare, il secondo è un problema temporaneo da far riprovare.
+const MESSAGES: Record<string, string> = {
+  'invite not found': 'Questo invito non è più valido: la password è già stata impostata.',
+  'password must be at least 8 characters': 'La password deve essere di almeno 8 caratteri.',
+  'password is required': 'Inserisci una password.',
+}
+
+function toItalian(message: string) {
+  return MESSAGES[message] ?? 'Si è verificato un errore, riprova.'
+}
+
 const token = String(route.params.token)
-const state = ref<'loading' | 'ready' | 'invalid'>('loading')
+const state = ref<'loading' | 'ready' | 'invalid' | 'unavailable'>('loading')
 const email = ref('')
 const password = ref('')
 const confirmation = ref('')
 const error = ref('')
 const saving = ref(false)
 
-onMounted(async () => {
+async function loadInvite() {
+  state.value = 'loading'
   try {
     // skipAuthRedirect non serve (un token invalido risponde 404, non 401) ma
     // vale come dichiarazione: questa pagina non deve mai finire su /login
@@ -24,10 +38,15 @@ onMounted(async () => {
     const invite = await api.get<{ email: string }>(`/invites/${token}`, { skipAuthRedirect: true })
     email.value = invite.email
     state.value = 'ready'
-  } catch {
-    state.value = 'invalid'
+  } catch (e) {
+    // Solo un token morto o già usato è "invalid": qualsiasi altro errore
+    // (es. un 500 momentaneo) non deve dire all'invitato che il link non
+    // funziona più, quando probabilmente basta riprovare.
+    state.value = (e as Error).message === 'invite not found' ? 'invalid' : 'unavailable'
   }
-})
+}
+
+onMounted(loadInvite)
 
 async function submit() {
   error.value = ''
@@ -40,13 +59,7 @@ async function submit() {
     await auth.acceptInvite(token, password.value)
     router.push({ name: 'users' })
   } catch (e) {
-    const message = (e as Error).message
-    error.value =
-      message === 'invite not found'
-        ? 'Questo invito non è più valido: la password è già stata impostata.'
-        : message === 'password must be at least 8 characters'
-          ? 'La password deve essere di almeno 8 caratteri.'
-          : message
+    error.value = toItalian((e as Error).message)
   } finally {
     saving.value = false
   }
@@ -67,6 +80,15 @@ async function submit() {
         l'invito è stato annullato. Chiedi a chi ti ha invitato di generarne uno nuovo.
       </p>
       <p><router-link to="/login">Vai all'accesso</router-link></p>
+    </template>
+
+    <template v-else-if="state === 'unavailable'">
+      <h1>Non riesco a verificare l'invito</h1>
+      <p>
+        Sembra un problema temporaneo di connessione: il link è probabilmente
+        ancora valido. Riprova fra qualche istante.
+      </p>
+      <button type="button" @click="loadInvite">Riprova</button>
     </template>
 
     <template v-else>
