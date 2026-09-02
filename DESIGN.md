@@ -195,6 +195,12 @@ cliccabili come intere unità (solo il bottone "Prenota" lo è).
 link/azione (griglia giochi, griglia eventi) sollevano al passaggio del
 mouse. Le card informative (righe di lista, risultati) restano ferme.
 
+**La regola del segnale senza movimento.** Sotto
+`prefers-reduced-motion: reduce` il sollevamento sparisce, non il feedback:
+ombra, bordo e fondo continuano a cambiare stato, solo senza spostamento.
+Mai azzerare tutte le transizioni in blocco. Applicata su `.game-grid`;
+`.event-grid` la eredita quando quella pagina verrà rivista.
+
 ## Shapes
 
 Due raggi: `10px` (card, form, tabelle, pillole del tavolo in feltro) e
@@ -226,6 +232,39 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
 - **Cover mancante:** placeholder disegnato (`.cover-placeholder`) — feltro
   verde con trama a puntini e un dado a 5 centrato, mai un riquadro vuoto
   o un'icona generica (e mai iconografia da carte da gioco).
+- **Card d'azione** (`.add-card`, ultima cella di una griglia): la stessa
+  sagoma delle card vicine, ma **senza fondo proprio** — il cartoncino della
+  pagina si vede attraverso — tenuta insieme da un bordo tratteggiato 2px in
+  `color-mix(in srgb, var(--ink-muted) 70%, var(--card-line))`, che sta a
+  3.1:1 sul fondo e quindi supera la soglia WCAG 1.4.11 per un confine di
+  componente (`--card-line` da solo è 1.3:1: invisibile). È il posto dove
+  una scatola manca, non una scatola più chiara. Al passaggio del mouse il
+  tratteggio **si chiude** (`border-style: solid`, accento), il fondo
+  diventa `--card-alt` e la card prende il lift delle vicine: lo slot si fa
+  scatola. L'etichetta usa il font Display alla misura di un titolo di card
+  ma **non** è un heading (`.add-label`): nomina un'azione.
+- **La card d'azione è il link, non lo contiene.** Se il contenitore è la
+  card e il link vive dentro, il link non si stira all'altezza della riga di
+  griglia e resta una fascia in basso non cliccabile e fuori dall'anello di
+  focus (bug reale trovato in audit). L'`<a>` è la cella, in flex-column,
+  con lo slot dell'icona in `flex: 1 1 auto`.
+- **La card d'azione sta fuori dalla lista.** La `<ul>` dei contenuti porta
+  `role="list"` e `display: contents` (`.game-grid-items`), così le sue
+  `<li>` restano celle della griglia e la card d'azione le sta accanto senza
+  farsi contare come un elemento in più da uno screen reader. Il `role`
+  esplicito è obbligatorio: `display: contents` rimuove la semantica di
+  lista in Chrome e Safari.
+
+### Testa di pagina (`.page-head`)
+- Titolo + `.page-meta` a sinistra, **azione primaria in alto a destra**
+  come `.action-link.is-compact` (icona `+` e testo, misura ridotta).
+- Serve quando la pagina è una griglia o una lista lunga: la card d'azione
+  in fondo alla griglia non basta da sola, perché scorre sotto la piega.
+  Le due entrate puntano allo stesso posto ed è voluto.
+- Su viewport stretto la riga va a capo e l'azione scende sotto il titolo.
+- L'azione compatta si alleggerisce nel testo (0.88rem) e nel padding
+  orizzontale, **mai nell'altezza**: `min-height: 44px`, il minimo per un
+  bersaglio da dito.
 
 ### Inputs / Fields
 - **Style:** fondo cartoncino, bordo `#ddd0ab`, radius 6px.
@@ -271,6 +310,14 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   cartoncino/fondo neutro.
 - **Do** avvolgere ogni tabella larga in `.table-scroll` prima di
   aggiungere colonne: la pagina non scorre mai in orizzontale.
+- **Do** portare l'anello di focus **dentro** la card
+  (`outline-offset: -2px`) su ogni contenitore con `overflow: hidden`: la
+  regola globale lo disegna 2px fuori dal link, dove viene ritagliato e la
+  navigazione da tastiera resta senza indicatore (bug reale trovato in
+  audit su `.game-grid`).
+- **Do** dare `loading="lazy"` e `decoding="async"` alle copertine in
+  griglia, più `width`/`height` intrinseci: il catalogo cresce e non deve
+  scaricare l'intero scaffale al primo paint.
 
 ### Don't:
 - **Don't** usare iconografia da carte da gioco/poker (semi, dorsi a righe,
