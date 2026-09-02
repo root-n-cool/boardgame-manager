@@ -1998,6 +1998,13 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 /* Chi non è ancora entrato è una pedina non ancora posata: tratteggiata. */
+/* La regola globale di .status-badge lo àncora in alto (align-self: flex-start),
+   utile dove sta in una colonna di testo; qui la riga è una fila di elementi
+   centrati e quei 5px di scarto si vedono contro il bottone accanto. */
+.admin-row .status-badge {
+  align-self: center;
+}
+
 /* "In attesa" non è "annullato": la resa quieta è la stessa, ma riusare
    .status-cancelled per un invito da accettare fa mentire il nome della classe
    a chi legge il markup dopo di noi. */
