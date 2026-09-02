@@ -3,6 +3,11 @@ import { ref } from 'vue'
 import { api } from '../api/client'
 import PublicHeader from '../components/PublicHeader.vue'
 
+interface PlayerScore {
+  name: string
+  score: number
+}
+
 interface BookingResult {
   id: number
   eventId: number
@@ -14,22 +19,28 @@ interface BookingResult {
   eventDate: string
   startTime: string
   gameName: string
+  matchResult: { players: PlayerScore[] } | null
 }
 
-const email = ref('')
 const bookingCode = ref('')
 const booking = ref<BookingResult | null>(null)
 const error = ref('')
 const cancelMessage = ref('')
+const scoreError = ref('')
+const scoreMessage = ref('')
+const players = ref<PlayerScore[]>([{ name: '', score: 0 }])
 
 async function lookup() {
   error.value = ''
   cancelMessage.value = ''
+  scoreMessage.value = ''
   try {
     booking.value = await api.post<BookingResult>('/bookings/lookup', {
-      email: email.value,
       bookingCode: bookingCode.value,
     })
+    players.value = booking.value.matchResult
+      ? booking.value.matchResult.players.map((p) => ({ ...p }))
+      : [{ name: '', score: 0 }]
   } catch (e) {
     booking.value = null
     error.value = (e as Error).message
@@ -43,12 +54,39 @@ async function cancel() {
   error.value = ''
   try {
     booking.value = await api.post<BookingResult>(`/bookings/${booking.value.id}/cancel`, {
-      email: email.value,
       bookingCode: bookingCode.value,
     })
     cancelMessage.value = 'Prenotazione annullata.'
   } catch (e) {
     error.value = (e as Error).message
+  }
+}
+
+function addPlayerRow() {
+  players.value.push({ name: '', score: 0 })
+}
+
+function removePlayerRow(index: number) {
+  if (players.value.length > 1) {
+    players.value.splice(index, 1)
+  }
+}
+
+async function submitScore() {
+  if (!booking.value) {
+    return
+  }
+  scoreError.value = ''
+  scoreMessage.value = ''
+  try {
+    const result = await api.post<{ players: PlayerScore[] }>(
+      `/bookings/${booking.value.id}/match-result`,
+      { bookingCode: bookingCode.value, players: players.value },
+    )
+    booking.value.matchResult = result
+    scoreMessage.value = 'Punteggio salvato.'
+  } catch (e) {
+    scoreError.value = (e as Error).message
   }
 }
 </script>
@@ -60,10 +98,6 @@ async function cancel() {
       <h1>Gestisci prenotazione</h1>
 
       <form @submit.prevent="lookup">
-        <label>
-          Email
-          <input v-model="email" type="email" required />
-        </label>
         <label>
           Codice prenotazione
           <input v-model="bookingCode" required />
@@ -82,6 +116,21 @@ async function cancel() {
           Annulla prenotazione
         </button>
         <p v-if="cancelMessage" class="success">{{ cancelMessage }}</p>
+
+        <form v-if="booking.status === 'active'" @submit.prevent="submitScore">
+          <h2>Punteggio finale</h2>
+          <div v-for="(p, index) in players" :key="index" class="player-score-row">
+            <input v-model="p.name" placeholder="Nome giocatore" required />
+            <input v-model.number="p.score" type="number" required />
+            <button type="button" @click="removePlayerRow(index)">Rimuovi</button>
+          </div>
+          <button type="button" @click="addPlayerRow">Aggiungi giocatore</button>
+          <button type="submit">
+            {{ booking.matchResult ? 'Aggiorna punteggio' : 'Invia punteggio' }}
+          </button>
+          <p v-if="scoreMessage" class="success">{{ scoreMessage }}</p>
+          <p v-if="scoreError" class="error">{{ scoreError }}</p>
+        </form>
       </div>
     </div>
   </div>
