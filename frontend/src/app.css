@@ -283,6 +283,33 @@ a {
   color: var(--felt-text);
 }
 
+/* Sulle schermate di autenticazione il form porta il suo cartoncino, ma le
+   schermate senza form (invito non valido, invito non verificabile) mettono il
+   testo direttamente sul feltro: senza queste regole erediterebbe l'inchiostro
+   del cartoncino e scenderebbe a 1.7:1, e il link all'accento rosso a 1.28:1 —
+   illeggibili entrambi (difetto reale trovato in passata visiva). */
+.auth-page > p {
+  max-width: 24rem;
+  text-align: center;
+  color: var(--felt-text-muted);
+}
+
+.auth-page > p a {
+  color: var(--felt-text);
+  text-underline-offset: 3px;
+}
+
+.auth-page > p a:hover {
+  color: #fff;
+}
+
+/* Un'azione fuori dal cartoncino tiene il fondo accento (testo bianco a 6.5:1)
+   ma il suo confine su feltro sta a 1.28:1: sotto la soglia 1.4.11 per il bordo
+   di un componente. Il filetto chiaro è quel confine. */
+.auth-page > button {
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 35%);
+}
+
 .auth-page form {
   width: 100%;
   max-width: 22rem;
@@ -1971,6 +1998,14 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 /* Chi non è ancora entrato è una pedina non ancora posata: tratteggiata. */
+/* "In attesa" non è "annullato": la resa quieta è la stessa, ma riusare
+   .status-cancelled per un invito da accettare fa mentire il nome della classe
+   a chi legge il markup dopo di noi. */
+.status-badge.status-pending {
+  color: var(--ink-muted);
+  background: var(--card-alt);
+}
+
 .admin-row.is-pending .admin-pawn {
   background: none;
   border-style: dashed;
@@ -2091,4 +2126,13 @@ tbody tr:nth-child(3) .rank-medal {
 .admin-add-form input {
   flex: 1 1 14rem;
   min-width: 0;
+}
+
+/* Il rientro allinea il link sotto l'email quando c'è spazio; su telefono quei
+   47px sono larghezza che serve al token, e la riga è già identificata da
+   quella sopra. */
+@media (max-width: 560px) {
+  .admin-invite {
+    margin-left: 0;
+  }
 }

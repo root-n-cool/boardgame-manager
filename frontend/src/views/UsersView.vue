@@ -138,12 +138,12 @@ onMounted(async () => {
           <div class="admin-row" :class="{ 'is-pending': u.pending }">
             <span class="admin-pawn" aria-hidden="true">{{ initial(u.email) }}</span>
             <span class="admin-email">{{ u.email }}</span>
-            <span class="status-badge" :class="u.pending ? 'status-cancelled' : 'status-active'">
+            <span class="status-badge" :class="u.pending ? 'status-pending' : 'status-active'">
               {{ u.pending ? 'In attesa' : 'Attivo' }}
             </span>
             <div class="admin-row-actions">
               <button
-                v-if="u.pending"
+                v-if="u.pending && u.inviteToken"
                 type="button"
                 class="btn-invite"
                 @click="copyInvite(u)"
@@ -210,7 +210,7 @@ onMounted(async () => {
       </p>
       <div class="form-actions">
         <button type="button" class="btn-secondary" @click="pendingDelete = null">Annulla</button>
-        <button type="button" @click="confirmDelete">Elimina</button>
+        <button type="button" class="btn-danger" @click="confirmDelete">Elimina</button>
       </div>
     </ModalDialog>
   </div>

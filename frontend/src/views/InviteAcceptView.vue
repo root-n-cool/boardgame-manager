@@ -93,6 +93,10 @@ async function submit() {
 
     <template v-else>
       <h1>Imposta la tua password</h1>
+      <p>
+        Sei stato invitato come amministratore di BoardGames Manager. La password
+        la scegli tu: chi ti ha invitato non la conoscerà.
+      </p>
       <form @submit.prevent="submit">
         <label>
           Email
@@ -102,6 +106,7 @@ async function submit() {
           Password
           <input v-model="password" type="password" required minlength="8" autocomplete="new-password" />
         </label>
+        <p class="field-hint">Almeno 8 caratteri.</p>
         <label>
           Conferma password
           <input v-model="confirmation" type="password" required minlength="8" autocomplete="new-password" />
