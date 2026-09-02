@@ -95,7 +95,7 @@ Booking (prenotazione di UNA copia di un gioco per un evento)
   - vincolo: un solo booking con status=active per
     (event_id, participant_phone)
 
-MatchResult (inserito a fine partita tramite email + booking_code)
+MatchResult (inserito a fine partita tramite booking_code)
   - id, booking_id, submitted_at
 
 MatchPlayerScore
@@ -180,12 +180,12 @@ quantità di copie disponibili per quell'evento (`EventGame`).
    v1).
 
 ### 5.6 Cancellazione prenotazione
-Pagina pubblica "gestisci prenotazione": inserendo email +
-`booking_code` corrispondenti a un booking attivo, l'utente può
-annullarlo, liberando la disponibilità per l'evento.
+Pagina pubblica "gestisci prenotazione": inserendo il `booking_code`
+corrispondente a un booking attivo, l'utente può annullarlo,
+liberando la disponibilità per l'evento.
 
 ### 5.7 Inserimento punteggio
-Stesso meccanismo email + `booking_code`: se il booking è valido,
+Stesso meccanismo del `booking_code`: se il booking è valido,
 form per inserire N giocatori (nome libero) e il punteggio numerico di
 ciascuno → crea `MatchResult` + `MatchPlayerScore`. Il vincitore è
 implicito (punteggio più alto vince).
@@ -202,7 +202,7 @@ Pagina pubblica per gioco che mostra tutte le `MatchResult` storiche
 - Sessioni via cookie httpOnly + secure (se HTTPS) + SameSite=Lax,
   invalidabili lato server.
 - `booking_code` generato con RNG crittografico; rate-limit sui
-  tentativi di accesso via email+codice per evitare brute force.
+  tentativi di accesso via booking_code per evitare brute force.
 - Chiavi API esterne salvate in DB, mai esposte al frontend pubblico.
 - Upload manuali: validazione tipo file (solo PDF) e dimensione
   massima, serviti tramite endpoint controllato (non path statico

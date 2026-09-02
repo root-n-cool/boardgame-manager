@@ -47,7 +47,7 @@ risultato di una sessione di brainstorming con l'utente:
   solo booking attivo per coppia `(event_id, telefono)`.
 - Alla prenotazione viene generato un `booking_code` mostrato a
   schermo. Non si invia nessuna email (niente SMTP richiesto in v1).
-- Email + `booking_code` permettono in seguito di: cancellare la
+- Il `booking_code` da solo permette in seguito di: cancellare la
   prenotazione, oppure inserire il punteggio finale (nomi giocatori
   liberi + punteggio numerico per ciascuno, vince chi ha il punteggio
   più alto).
