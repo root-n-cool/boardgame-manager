@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/httpapi"
@@ -185,6 +186,34 @@ func TestGetLeaderboard_ReturnsAggregatedStats(t *testing.T) {
 	}
 	if len(body.Players) != 2 || len(body.Matches) != 1 {
 		t.Fatalf("unexpected body: %+v", body)
+	}
+}
+
+func TestGetLeaderboard_ReturnsEmptyArraysWhenNoResults(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d/leaderboard", gameID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := strings.TrimSpace(rec.Body.String()); got != `{"matches":[],"players":[]}` {
+		t.Fatalf(`expected literal {"matches":[],"players":[]}, got: %s`, got)
+	}
+	var body struct {
+		Players []any `json:"players"`
+		Matches []any `json:"matches"`
+	}
+	if err := json.NewDecoder(strings.NewReader(rec.Body.String())).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Players == nil || len(body.Players) != 0 {
+		t.Fatalf("expected non-nil empty players slice, got: %+v", body.Players)
+	}
+	if body.Matches == nil || len(body.Matches) != 0 {
+		t.Fatalf("expected non-nil empty matches slice, got: %+v", body.Matches)
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
+	"boardgames-manager/internal/leaderboard"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
@@ -43,13 +44,14 @@ func main() {
 	}
 
 	server := &httpapi.Server{
-		Users:    users.NewStore(conn),
-		Sessions: auth.NewSessionStore(conn),
-		Settings: settings.NewStore(conn),
-		Games:    games.NewStore(conn),
-		Events:   events.NewStore(conn),
-		Storage:  storage.NewStore(dataDir + "/uploads"),
-		BGG:      bgg.NewHTTPClient(),
+		Users:       users.NewStore(conn),
+		Sessions:    auth.NewSessionStore(conn),
+		Settings:    settings.NewStore(conn),
+		Games:       games.NewStore(conn),
+		Events:      events.NewStore(conn),
+		Leaderboard: leaderboard.NewStore(conn),
+		Storage:     storage.NewStore(dataDir + "/uploads"),
+		BGG:         bgg.NewHTTPClient(),
 	}
 
 	apiRouter := httpapi.NewRouter(server)
