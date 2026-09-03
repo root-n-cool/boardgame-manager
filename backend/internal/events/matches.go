@@ -53,27 +53,32 @@ func (s *Store) SubmitMatchResult(ctx context.Context, bookingID int64, code str
 	}
 	defer tx.Rollback()
 
-	var matchResultID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM match_results WHERE event_game_id = ?`, b.EventGameID).Scan(&matchResultID)
-	switch {
-	case errors.Is(err, sql.ErrNoRows):
-		res, err := tx.ExecContext(ctx, `INSERT INTO match_results (event_game_id) VALUES (?)`, b.EventGameID)
-		if err != nil {
-			return MatchResult{}, err
-		}
-		matchResultID, err = res.LastInsertId()
-		if err != nil {
-			return MatchResult{}, err
-		}
-	case err != nil:
+	// Single upsert instead of "SELECT, then INSERT if missing": two
+	// table-mates submitting at the same instant could both run the SELECT
+	// before either had written a row, so both took the "missing" branch and
+	// the loser's INSERT blew up on the event_game_id UNIQUE constraint,
+	// surfacing as a 500 — busy_timeout does not help there, since the first
+	// transaction has already committed and released the lock by the time
+	// the second writes, so there is no contention left to wait out, just a
+	// row that already exists. ON CONFLICT DO UPDATE makes the statement
+	// succeed either way, and always refreshes submitted_at in the same
+	// write "il punteggio è sempre modificabile" needs.
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO match_results (event_game_id) VALUES (?)
+		 ON CONFLICT(event_game_id) DO UPDATE SET submitted_at = datetime('now')`,
+		b.EventGameID,
+	); err != nil {
 		return MatchResult{}, err
-	default:
-		if _, err := tx.ExecContext(ctx, `UPDATE match_results SET submitted_at = datetime('now') WHERE id = ?`, matchResultID); err != nil {
-			return MatchResult{}, err
-		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM match_player_scores WHERE match_result_id = ?`, matchResultID); err != nil {
-			return MatchResult{}, err
-		}
+	}
+
+	var matchResultID int64
+	if err := tx.QueryRowContext(ctx,
+		`SELECT id FROM match_results WHERE event_game_id = ?`, b.EventGameID,
+	).Scan(&matchResultID); err != nil {
+		return MatchResult{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM match_player_scores WHERE match_result_id = ?`, matchResultID); err != nil {
+		return MatchResult{}, err
 	}
 
 	for _, p := range players {
