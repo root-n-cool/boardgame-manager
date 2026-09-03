@@ -57,3 +57,38 @@ func TestUpdate_PersistsChanges(t *testing.T) {
 		t.Fatalf("unexpected settings after update: %+v", cfg)
 	}
 }
+
+func TestGet_AIProviderEmptyAfterMigration(t *testing.T) {
+	store := newTestStore(t)
+	cfg, err := store.Get(context.Background())
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if cfg.AIBaseURL != "" || cfg.AIAPIKey != "" || cfg.AIModel != "" {
+		t.Fatalf("expected an unconfigured AI provider, got %+v", cfg)
+	}
+}
+
+func TestUpdate_PersistsAIProvider(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	err := store.Update(ctx, settings.Settings{
+		DefaultLanguage: "it",
+		AIBaseURL:       "https://api.example.org/v1",
+		AIAPIKey:        "sk-test",
+		AIModel:         "gemini-flash-lite-latest",
+	})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	cfg, err := store.Get(ctx)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if cfg.AIBaseURL != "https://api.example.org/v1" || cfg.AIAPIKey != "sk-test" ||
+		cfg.AIModel != "gemini-flash-lite-latest" {
+		t.Fatalf("unexpected AI settings after update: %+v", cfg)
+	}
+}

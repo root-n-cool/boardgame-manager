@@ -344,3 +344,36 @@ func TestGameWeight_DefaultsToUnknown(t *testing.T) {
 		t.Fatalf("expected no weight, got %v", *created.Weight)
 	}
 }
+
+func TestCreateGame_PersistsBGGDescription(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	raw := "A worker placement game about birds."
+	created, err := store.CreateGame(ctx, games.Game{Name: "Wingspan", BGGDescription: &raw})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.BGGDescription == nil || *created.BGGDescription != raw {
+		t.Fatalf("expected the raw BGG description to survive the round trip, got %v", created.BGGDescription)
+	}
+
+	fetched, err := store.GetGame(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if fetched.BGGDescription == nil || *fetched.BGGDescription != raw {
+		t.Fatalf("expected GetGame to return the raw description, got %v", fetched.BGGDescription)
+	}
+}
+
+func TestCreateGame_WithoutBGGDescription(t *testing.T) {
+	store := newTestStore(t)
+	created, err := store.CreateGame(context.Background(), games.Game{Name: "Gioco a mano"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.BGGDescription != nil {
+		t.Fatalf("expected no raw description for a manual game, got %q", *created.BGGDescription)
+	}
+}
