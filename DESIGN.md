@@ -219,10 +219,14 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   manualmente").
 - **`.btn-danger`:** trasparente, testo/bordo color danger (`#ad4a22`) —
   cancellazioni, rimozioni, annullamenti fuori da una lista.
-- **`.btn-select`:** trasparente, bordo e testo accento — selezione da un
-  risultato di ricerca (import BGG), esplicitamente non distruttiva.
 - **Bottoni in una `<li>`:** rosso danger di default (la maggioranza dei
-  bottoni in lista sono "Rimuovi"); `.btn-select` è l'eccezione esplicita.
+  bottoni in lista sono "Rimuovi"). Una lista che non è fatta di azioni
+  distruttive — i risultati BGG, dove la riga *è* la selezione — non mette
+  bottoni nelle righe: si sceglie la riga, non un bottone dentro la riga.
+- **`.link-button`:** nessun fondo né bordo, testo accento sottolineato —
+  una deviazione dal percorso principale citata dentro una nota
+  ("Inseriscilo a mano"), dove un bottone vero peserebbe quanto l'azione
+  che si sta scavalcando.
 
 ### Cards / Containers
 - **Corner Style:** 10px.
@@ -336,12 +340,123 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   delle medaglie e dei distintivi, mai usata altrove per un'azione di
   lista.
 
+### Eventi (`/admin/events` e lista pubblica)
+- **Tessere larghe** (`.event-card-grid`, riuso di `.game-grid`): un evento
+  non è una scatola, è una serata — l'immagine è **16/9**, le colonne vanno
+  a `minmax(260px, 340px)`. Sotto l'immagine: titolo, data e ora, numero di
+  giochi al tavolo.
+- **L'immagine dell'evento è opzionale** e quando manca vale la stessa
+  regola delle copertine: dado su feltro (`.event-image-placeholder`), mai
+  un riquadro vuoto. Si carica con lo stesso gesto della copertina di un
+  gioco (`EventImagePicker`, che riusa `.cover-uploader`): si clicca
+  l'immagine, si sceglie il file, parte da sé. Nel form di creazione
+  l'upload aspetta il salvataggio — l'evento deve esistere prima — e intanto
+  si vede l'anteprima da un object URL.
+- **La data si legge in italiano** (`formatEventDateTime`): "gio 1 ott 2026
+  · 21:00", con il giorno della settimana, in mono con l'icona calendario a
+  fare da insegna. Mai la data grezza dell'API (`2026-10-01`).
+- **Due insiemi, non due filtri** (`.tab-bar`): "In programma" e "Passati"
+  sono linguette, non checkbox — se ne guarda uno per volta. In programma
+  ordina dal più vicino, i passati dal più recente: in entrambi i casi in
+  cima c'è la serata di cui importa.
+- **Lo slot "Crea evento" chiude solo la griglia dei futuri**: nell'archivio
+  non si aggiunge niente.
+- **Il pager sfoglia, non indirizza** (`.pager`): Precedente / posizione /
+  Successiva, mai una fila di numeri di pagina. Compare solo quando le
+  pagine sono più d'una.
+
+### Copie numerate
+Quando un evento porta più copie dello stesso gioco, il nome prende il
+suffisso `#1`, `#2`. Il numero compare **solo** se le copie sono più
+d'una: su un evento con una copia per gioco sarebbe rumore. I numeri
+sono etichette stabili, non posizioni: eliminando una copia di mezzo
+resta un buco, perché chi ha letto "#2" al momento di prenotare deve
+ritrovare "#2".
+
+### Posti prenotabili
+La dicitura è sempre "posti prenotabili", mai "posti" da solo: un
+"posto" si confonderebbe con la sedia intorno al tavolo o con il numero
+di giocatori del gioco. Una copia con un solo posto prenotabile non
+mostra nulla — resta la dicitura di disponibilità di sempre; da due in
+su compare `Posti prenotabili liberi: 3 di 5`.
+
+### Scheda evento admin (`/admin/events/:id`) e creazione (`/admin/events/new`)
+- **Il titolo dell'evento è il titolo della pagina**, non "Modifica evento":
+  la `.page-head` porta il nome salvato, la data formattata come `page-meta`
+  e, a destra, `.page-head-actions` — "Vedi pagina pubblica"
+  (`.action-link.is-compact`) e "Elimina" (`.btn-danger.is-compact`). È il
+  primo posto in cui la testa regge **due** azioni: vanno a capo insieme,
+  come blocco, non una per volta.
+- **Fogli impilati, non una pagina sola** (`.panel-card`): Dettagli, Giochi
+  dell'evento, Prenotazioni, Risultati. Il conteggio di una sezione sta
+  nell'intestazione come `.section-count`, mono, all'altro capo del titolo —
+  dove nelle altre sezioni stanno le azioni.
+- **In un form fatto di pannelli i campi tengono il tetto di 30rem.** La
+  regola opposta ("dentro un `.panel-card` il campo è largo quanto il
+  foglio") vale quando è il pannello a contenere un form dedicato di un
+  campo o due; qui i fogli sono le sezioni di un form lungo, e un titolo
+  largo quanto il foglio si legge peggio.
+- **Selezione giochi** (`EventGamesPicker`, condiviso tra creazione e
+  scheda): i giochi già scelti si staccano in cima su `--card-alt` col
+  campo **copie** in mono; sotto, la ricerca per nome (che compare solo
+  oltre i 6 giochi in catalogo) e il resto del catalogo in un'area con
+  scroll proprio (18rem), perché un form non deve allungarsi a fisarmonica
+  quanto è grande lo scaffale. Un gioco con prenotazioni attive mostra
+  "N prenotate", non si può togliere e il campo copie non scende sotto
+  quel numero: il backend rifiuterebbe, e un campo che non scende è più
+  onesto di un 409 dopo il salvataggio.
+- **Prenotazioni e risultati riusano la lista di `/users`** (`.admin-list`
+  + `.admin-row` + `.admin-pawn`): pedina con l'iniziale, nome e contatti,
+  il gioco come pastiglia quieta (`.booking-game` — dice a cosa si
+  riferisce la riga, non come sta, quindi non è uno `.status-badge`), e
+  l'azione in fondo. I punteggi sono un dato: mono (`.match-scores`).
+- **Annullare una prenotazione è l'azione del partecipante, fatta
+  dall'admin**: stessa transazione (copia liberata, punteggio eliminato,
+  codice non più valido), quindi si chiama "Annulla" e non "Elimina". Il
+  bottone eredita il rosso dalla regola dei bottoni in `<li>`, con
+  conferma che nomina partecipante e gioco.
+
+### Aggiungi gioco (`/games/new`)
+- **Un form solo, due fogli** (`.panel-form` + `.panel-card`): *Gioco* e
+  *Dettagli* (lingua base, proprietario), un unico submit in fondo,
+  disabilitato finché non c'è un gioco. Stessa impalcatura di
+  `/admin/events/new`: `.back-link`, `.page-head`, fogli, `.form-actions`.
+- **Cercare su BGG è scrivere, non premere "Cerca"** (`BggSearchSelect`):
+  combobox che parte da sola dopo tre caratteri e una pausa di 350ms. Il
+  bottone di ricerca era un passo in più per un gesto che si ripete finché
+  il nome giusto non compare. Sotto i tre caratteri la nota dice cosa manca,
+  durante la chiamata dice che sta cercando: la stessa riga (`.field-hint`
+  con `role="status"`) porta tutti gli stati, invece di comparire e sparire.
+- **Ogni riga ha la copertina** (`.bgg-thumb`, riquadro fisso 3rem con
+  `object-fit: contain` su `--card-alt`): le copertine di BGG arrivano in
+  proporzioni qualsiasi e un riquadro fisso tiene ferma la colonna. Manca
+  la miniatura, o il browser non la carica: torna il segnaposto a dado.
+- **Il peso BGG è una pastiglia oro all'estremo opposto del nome**
+  (`.bgg-weight`, mono): si scorre la colonna dei numeri per capire se la
+  serata regge il gioco, senza rileggere i titoli. È lo stesso dato che
+  nella scheda gioco compare come fact "Complessità" — un decimale, non i
+  quattro della media BGG.
+- **La lista galleggia** (`position: absolute`) e si ferma alla misura del
+  campo, non del pannello: è la continuazione dell'input, e spingendo i
+  campi in basso muoverebbe il form a ogni tasto. Tastiera e mouse
+  condividono **una sola** riga attiva (`.is-active`): il puntatore la
+  sposta invece di accenderne una seconda.
+- **Scelto il gioco la ricerca sparisce** e resta la riga di conferma
+  (`.bgg-chosen`, `--card-alt`) con copertina, nome, anno, complessità e
+  "Cambia": quel che resta da decidere è lingua e proprietario.
+- **L'inserimento a mano è la riserva, non un percorso alla pari**: un
+  `.link-button` dentro la nota sotto la ricerca, non una scheda o un
+  segmented control. Quel che BGG non ha si scrive a mano, ma è
+  l'eccezione.
+
 ### Griglie su telefono
 - Sotto 560px `.game-grid` smette di tenere le celle a 230px fisse e passa
   a `repeat(auto-fill, minmax(140px, 1fr))`: il tetto fisso lasciava una
   colonna sola con mezzo schermo vuoto accanto. `.media-grid` fa eccezione
   e scende a una colonna piena — una miniatura video e un titolo che è un
-  URL hanno bisogno di tutta la riga.
+  URL hanno bisogno di tutta la riga, e lo stesso vale per
+  `.event-card-grid`: due tessere 16/9 per riga ridurrebbero l'immagine di
+  una serata a una striscia.
 
 ### Inputs / Fields
 - **Style:** fondo cartoncino, bordo `#ddd0ab`, radius 6px.
@@ -355,6 +470,11 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   testo feltro per il link attivo (pillola). Logout/Esci resta un
   bottone-ghost sul feltro, mai un bottone pieno rosso. Sotto 640px: vedi
   Layout.
+- **Linguette** (`.tab-bar`): pastiglie mono maiuscoletto su una barra in
+  feltro, angoli tondi su tutti i lati (mai linguette tagliate in basso).
+  La barra è una sola grammatica per casi diversi — le lingue di un gioco
+  (`.language-tabs`, che ci aggiunge solo l'azione "Aggiungi lingua" in
+  fondo) e il periodo degli eventi.
 
 ### Tabelle / Scoreboard
 - **Header:** feltro verde, testo cartoncino uppercase tracciato — lo
@@ -404,8 +524,12 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
 - **Don't** usare l'oro (`#b8842a`) come colore di testo corrente su
   cartoncino: sotto la soglia AA per testo normale (3.05:1).
 - **Don't** lasciare un `<li>` di lista ereditare lo stile "Rimuovi" di
-  default per un'azione non distruttiva — serve sempre `.btn-select` o
-  equivalente esplicito.
+  default per un'azione non distruttiva — serve sempre una classe esplicita
+  (`.btn-invite` per l'oro, `.link-button` per una deviazione citata).
+- **Don't** dare per scontato il `justify-content` di un `<li>`: la regola
+  base delle liste li distribuisce agli estremi, e una riga a cui manca
+  l'ultimo elemento (una pastiglia opzionale) si ritrova il testo appiccicato
+  al bordo destro. Chi costruisce una riga nuova lo dichiara.
 - **Don't** dimenticare `display: block` su un `<li>` di griglia-carta:
   eredita altrimenti il flex-row di default della lista base e la card
   collassa (bug reale trovato e corretto in questa sessione, su

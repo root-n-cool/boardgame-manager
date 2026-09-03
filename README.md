@@ -15,14 +15,28 @@ esterno obbligatorio.
 - **Catalogo giochi**: import da BoardGameGeek (nome, anno, numero
   giocatori, copertina) o inserimento manuale; ogni gioco ha una o più
   lingue, ciascuna con i propri media (manuale PDF, link, video YouTube).
-- **Eventi**: un evento include più giochi, ciascuno con una quantità di
-  copie disponibili.
+  Ogni gioco ha anche un numero di **posti prenotabili per copia**: `1`
+  per un gioco da tavolo normale, dove chi prenota si prende la copia e
+  si porta i suoi; più di 1 per un tavolo aperto — una partita a D&D, un
+  gioco di ruolo, un torneo — dove ci si iscrive uno alla volta, ognuno
+  con il proprio codice, e ognuno può disdire senza far saltare la
+  serata agli altri.
+- **Eventi**: un evento porta più copie dello stesso gioco, ognuna con i
+  propri posti prenotabili presi dal catalogo al momento in cui la copia
+  entra nell'evento. Nella pagina pubblica le copie compaiono numerate
+  (`Carcassonne #1`, `Carcassonne #2`) quando sono più d'una, e si
+  prenotano separatamente.
 - **Prenotazioni anonime**: nome, email, telefono — nessun account
   richiesto. Alla prenotazione viene generato un codice che permette in
-  seguito di cancellarla o di inserire il punteggio finale.
+  seguito di cancellarla o di inserire il punteggio finale. Su un tavolo
+  a più posti il punteggio è **uno per copia**: lo inserisce o lo
+  corregge chiunque abbia prenotato lì, e resta finché la copia ha
+  almeno una prenotazione attiva.
 - **Punteggi e classifiche**: a fine partita si registrano i punteggi dei
   giocatori (nomi liberi); la classifica per gioco aggrega partite
-  giocate, vittorie e punteggio medio/totale nel tempo.
+  giocate, vittorie e punteggio medio/totale nel tempo — ogni copia
+  conta come una partita sola, indipendentemente da quanti hanno
+  prenotato quel tavolo.
 - **Amministrazione**: bootstrap del primo admin al primo avvio (come
   n8n); dopo, un admin ne invita un altro inserendo solo l'email — il
   sistema genera un link di invito che l'admin copia e recapita a mano
@@ -62,6 +76,48 @@ Variabili d'ambiente (già impostate in `docker-compose.yml`):
 | ---------- | ------------------------------------- | --------- |
 | `PORT`     | Porta HTTP del server                 | `8080`    |
 | `DATA_DIR` | Cartella per database SQLite e upload | `/data`   |
+
+## Immagine pubblicata
+
+Ogni tag `vX.Y.Z` pubblica su Docker Hub un'immagine multi-architettura
+(`linux/amd64` e `linux/arm64`), quindi gira anche su un Raspberry Pi con
+sistema a 64 bit:
+
+```bash
+docker run -d --name boardgames-manager \
+  -p 8080:8080 \
+  -v "$PWD/data:/data" \
+  --restart unless-stopped \
+  <utente-dockerhub>/boardgame-manager:latest
+```
+
+Con docker-compose, basta sostituire `build: .` con l'immagine:
+
+```yaml
+services:
+  app:
+    image: <utente-dockerhub>/boardgame-manager:latest
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+```
+
+Per pubblicare una nuova versione serve un tag git:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+Il workflow `.github/workflows/docker-publish.yml` costruisce e carica
+l'immagine, taggandola `1.0.0`, `1.0`, `1` e `latest`. Richiede due
+secret nel repository GitHub (*Settings → Secrets and variables →
+Actions*): `DOCKERHUB_USERNAME` e `DOCKERHUB_TOKEN` (un access token
+Docker Hub con permessi di scrittura).
+
+Se i due secret non sono configurati il workflow non costruisce nulla: si
+chiude senza errori e riporta nel riepilogo del run quali secret mancano.
 
 ## Sviluppo locale
 
@@ -104,6 +160,14 @@ ordine alfabetico all'avvio del server, ognuno in una transazione, e
 tracciati in una tabella `schema_migrations` (idempotente). Solo
 migrazioni forward: per un cambio di schema si aggiunge un nuovo file
 numerato, mai si modifica uno esistente.
+
+**Attenzione se aggiorni un'installazione esistente**: la migrazione
+`0008_seats_and_copies.sql` (posti prenotabili per copia) ricrea vuote le
+tabelle di prenotazioni, punteggi e giochi-evento — SQLite non permette
+di rimuovere il vecchio vincolo `UNIQUE(event_id, game_id)` con un
+`ALTER TABLE`. Il catalogo giochi e gli eventi restano intatti, ma **gli
+eventi creati prima dell'aggiornamento perdono i giochi collegati** e
+vanno ripopolati dalla pagina dell'evento stesso.
 
 ## Configurazione opzionale
 
