@@ -18,7 +18,11 @@ type Game struct {
 	PlaytimeMinutes *int
 	Owner           *string
 	CoverPath       *string
-	CreatedAt       time.Time
+	// Seats è quante prenotazioni distinte accetta una copia di questo
+	// gioco: 1 per un gioco da tavolo normale, N per un tavolo aperto
+	// (D&D, giochi di ruolo). In UI si chiama "posti prenotabili".
+	Seats     int
+	CreatedAt time.Time
 }
 
 type GameLanguage struct {
@@ -36,6 +40,7 @@ type GameUpdate struct {
 	MinPlayers      *int
 	MaxPlayers      *int
 	PlaytimeMinutes *int
+	Seats           *int
 }
 
 var ErrNotFound = errors.New("not found")
@@ -51,10 +56,15 @@ func NewStore(conn *sql.DB) *Store {
 }
 
 func (s *Store) CreateGame(ctx context.Context, g Game) (Game, error) {
+	// Lo zero value di un int non è un numero di posti valido: i chiamanti
+	// che non se ne curano (creazione da BGG, test) ottengono il default.
+	if g.Seats < 1 {
+		g.Seats = 1
+	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO games (bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		g.BGGID, g.Name, g.Year, g.MinPlayers, g.MaxPlayers, g.PlaytimeMinutes, g.Owner, g.CoverPath,
+		`INSERT INTO games (bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.BGGID, g.Name, g.Year, g.MinPlayers, g.MaxPlayers, g.PlaytimeMinutes, g.Owner, g.CoverPath, g.Seats,
 	)
 	if err != nil {
 		return Game{}, err
@@ -70,9 +80,9 @@ func (s *Store) GetGame(ctx context.Context, id int64) (Game, error) {
 	var g Game
 	var createdAt string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, created_at
+		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, created_at
 		 FROM games WHERE id = ?`, id,
-	).Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &createdAt)
+	).Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Game{}, ErrNotFound
 	}
@@ -85,7 +95,7 @@ func (s *Store) GetGame(ctx context.Context, id int64) (Game, error) {
 
 func (s *Store) ListGames(ctx context.Context) ([]Game, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, created_at
+		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, created_at
 		 FROM games ORDER BY id`,
 	)
 	if err != nil {
@@ -97,7 +107,7 @@ func (s *Store) ListGames(ctx context.Context) ([]Game, error) {
 	for rows.Next() {
 		var g Game
 		var createdAt string
-		if err := rows.Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &createdAt); err != nil {
+		if err := rows.Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &createdAt); err != nil {
 			return nil, err
 		}
 		g.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
@@ -126,10 +136,13 @@ func (s *Store) UpdateGame(ctx context.Context, id int64, upd GameUpdate) (Game,
 	if upd.PlaytimeMinutes != nil {
 		current.PlaytimeMinutes = upd.PlaytimeMinutes
 	}
+	if upd.Seats != nil {
+		current.Seats = *upd.Seats
+	}
 
 	_, err = s.db.ExecContext(ctx,
-		`UPDATE games SET owner = ?, year = ?, min_players = ?, max_players = ?, playtime_minutes = ? WHERE id = ?`,
-		current.Owner, current.Year, current.MinPlayers, current.MaxPlayers, current.PlaytimeMinutes, id,
+		`UPDATE games SET owner = ?, year = ?, min_players = ?, max_players = ?, playtime_minutes = ?, seats = ? WHERE id = ?`,
+		current.Owner, current.Year, current.MinPlayers, current.MaxPlayers, current.PlaytimeMinutes, current.Seats, id,
 	)
 	if err != nil {
 		return Game{}, err

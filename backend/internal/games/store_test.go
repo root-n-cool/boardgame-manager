@@ -145,7 +145,7 @@ func TestDeleteGame_UsedByEventReturnsErrGameInUse(t *testing.T) {
 		t.Fatalf("event id: %v", err)
 	}
 	if _, err := conn.ExecContext(ctx,
-		`INSERT INTO event_games (event_id, game_id, quantity) VALUES (?, ?, 1)`, eventID, created.ID); err != nil {
+		`INSERT INTO event_games (event_id, game_id, copy_index, seats) VALUES (?, ?, 1, 1)`, eventID, created.ID); err != nil {
 		t.Fatalf("insert event_games: %v", err)
 	}
 
@@ -246,5 +246,68 @@ func TestUpdateLanguage_ChangesNameAndDescription(t *testing.T) {
 	}
 	if updated.Name != "I Coloni di Catan" || *updated.Description != "Descrizione aggiornata." {
 		t.Fatalf("unexpected updated language: %+v", updated)
+	}
+}
+
+func TestCreateGame_DefaultsSeatsToOne(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	game, err := store.CreateGame(ctx, games.Game{Name: "Catan"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if game.Seats != 1 {
+		t.Fatalf("expected seats 1, got %d", game.Seats)
+	}
+}
+
+func TestCreateGame_KeepsExplicitSeats(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	game, err := store.CreateGame(ctx, games.Game{Name: "D&D", Seats: 5})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if game.Seats != 5 {
+		t.Fatalf("expected seats 5, got %d", game.Seats)
+	}
+
+	found, err := store.GetGame(ctx, game.ID)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if found.Seats != 5 {
+		t.Fatalf("expected persisted seats 5, got %d", found.Seats)
+	}
+}
+
+func TestUpdateGame_ChangesSeats(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	game, err := store.CreateGame(ctx, games.Game{Name: "D&D"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	seats := 7
+	updated, err := store.UpdateGame(ctx, game.ID, games.GameUpdate{Seats: &seats})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Seats != 7 {
+		t.Fatalf("expected seats 7, got %d", updated.Seats)
+	}
+
+	// Un update che non menziona i posti non li tocca.
+	owner := "Danilo"
+	untouched, err := store.UpdateGame(ctx, game.ID, games.GameUpdate{Owner: &owner})
+	if err != nil {
+		t.Fatalf("second update: %v", err)
+	}
+	if untouched.Seats != 7 {
+		t.Fatalf("expected seats to stay 7, got %d", untouched.Seats)
 	}
 }
