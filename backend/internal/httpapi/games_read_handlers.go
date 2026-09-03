@@ -78,7 +78,7 @@ func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Seats != nil && *req.Seats < 1 {
-		writeError(w, http.StatusBadRequest, "seats must be at least 1")
+		writeError(w, http.StatusBadRequest, "i posti prenotabili devono essere almeno 1")
 		return
 	}
 	game, err := s.Games.UpdateGame(r.Context(), id, games.GameUpdate{

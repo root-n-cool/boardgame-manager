@@ -44,7 +44,7 @@ func (s *Server) createGameHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.Seats != nil && *req.Seats < 1 {
-		writeError(w, http.StatusBadRequest, "seats must be at least 1")
+		writeError(w, http.StatusBadRequest, "i posti prenotabili devono essere almeno 1")
 		return
 	}
 
