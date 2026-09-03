@@ -38,6 +38,42 @@ const editSeats = ref(1)
 const seatsSaving = ref(false)
 const seatsError = ref('')
 
+const aiConfigured = ref(false)
+const translating = ref(false)
+const translateError = ref('')
+
+// Il nome esteso della lingua rende il bottone leggibile: "Traduci in
+// italiano" invece di "Traduci in it".
+const languageNames: Record<string, string> = {
+  it: 'italiano',
+  en: 'inglese',
+  fr: 'francese',
+  de: 'tedesco',
+  es: 'spagnolo',
+}
+
+function languageName(code: string): string {
+  return languageNames[code] || code
+}
+
+async function translateDescription() {
+  if (!window.confirm(`Ritradurre la descrizione in ${languageName(activeLangCode.value)}? Il testo attuale viene sostituito.`)) {
+    return
+  }
+  translateError.value = ''
+  translating.value = true
+  try {
+    await api.post(`/games/${gameId}/languages/${activeLangCode.value}/translate`, {})
+    await load()
+    selectLanguage(activeLangCode.value)
+    saveMessage.value = 'Descrizione tradotta'
+  } catch (e) {
+    translateError.value = (e as Error).message
+  } finally {
+    translating.value = false
+  }
+}
+
 function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
 }
@@ -45,6 +81,12 @@ function activeLanguage(): GameLanguageInfo | undefined {
 async function load() {
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
   editSeats.value = game.value.seats
+  try {
+    const s = await api.get<{ aiConfigured: boolean }>('/settings')
+    aiConfigured.value = s.aiConfigured
+  } catch {
+    aiConfigured.value = false
+  }
 }
 
 function selectLanguage(code: string) {
@@ -393,6 +435,19 @@ onMounted(async () => {
             Descrizione
             <textarea v-model="editDescription" rows="4"></textarea>
           </label>
+          <p v-if="game.canTranslate && aiConfigured" class="field-hint">
+            <button
+              type="button"
+              class="link-button"
+              :disabled="translating"
+              @click="translateDescription"
+            >
+              {{ translating ? 'Traduzione in corso…' : `Traduci in ${languageName(activeLangCode)} da BoardGameGeek` }}
+            </button>
+            — sostituisce il testo qui sopra con una nuova traduzione della
+            descrizione originale.
+          </p>
+          <p v-if="translateError" class="error">{{ translateError }}</p>
           <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
           <div class="form-actions">
             <button type="submit">

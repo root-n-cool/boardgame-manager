@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/client'
 import BggSearchSelect, { type BggResult } from '../components/BggSearchSelect.vue'
@@ -28,6 +28,11 @@ const seats = ref(1)
 
 const error = ref('')
 const saving = ref(false)
+
+// La creazione da BGG passa dal traduttore: può durare qualche secondo, e
+// uno spinner muto su un salvataggio di solito istantaneo si legge come un
+// blocco.
+const aiConfigured = ref(false)
 
 const ready = computed(() => (manual.value ? manualName.value.trim() !== '' : selected.value !== null))
 
@@ -76,6 +81,15 @@ async function createGame() {
     saving.value = false
   }
 }
+
+onMounted(async () => {
+  try {
+    const s = await api.get<{ aiConfigured: boolean }>('/settings')
+    aiConfigured.value = s.aiConfigured
+  } catch {
+    // Non sapere se l'AI è attiva costa solo un'etichetta meno precisa.
+  }
+})
 </script>
 
 <template>
@@ -167,7 +181,7 @@ async function createGame() {
 
       <div class="form-actions">
         <button type="submit" :disabled="!ready || saving">
-          {{ saving ? 'Aggiunta…' : 'Aggiungi gioco' }}
+          {{ saving && aiConfigured && !manual ? 'Traduzione in corso…' : saving ? 'Aggiunta…' : 'Aggiungi gioco' }}
         </button>
       </div>
       <p v-if="error" class="error">{{ error }}</p>

@@ -31,5 +31,7 @@ export interface GameDetail {
   owner: string | null
   coverPath: string | null
   seats: number
+  /** Vero quando esiste una descrizione BGG originale da cui ritradurre. */
+  canTranslate: boolean
   languages: GameLanguageInfo[]
 }
