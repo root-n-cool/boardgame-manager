@@ -3,12 +3,15 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import PublicHeader from '../components/PublicHeader.vue'
+import { formatEventDateTime } from '../utils/dates'
 
 interface EventGameInfo {
   eventGameId: number
   gameId: number
   name: string
   coverPath: string | null
+  copyIndex: number
+  seats: number
   remaining: number
 }
 
@@ -18,6 +21,7 @@ interface EventDetail {
   description: string | null
   eventDate: string
   startTime: string
+  imagePath: string | null
   games: EventGameInfo[]
 }
 
@@ -61,6 +65,35 @@ const selectedGame = computed(
   () => event.value?.games.find((g) => g.eventGameId === selectedEventGameId.value) ?? null,
 )
 
+/** Quante copie ha ogni gioco in questo evento. */
+const copiesByGame = computed(() => {
+  const counts: Record<number, number> = {}
+  for (const g of event.value?.games ?? []) {
+    counts[g.gameId] = (counts[g.gameId] ?? 0) + 1
+  }
+  return counts
+})
+
+/**
+ * L'etichetta di una copia: il numero compare solo quando quel gioco ha
+ * più di una copia nell'evento, così un evento normale non si riempie di
+ * "#1" inutili.
+ */
+function copyLabel(g: EventGameInfo) {
+  return (copiesByGame.value[g.gameId] ?? 1) > 1 ? `${g.name} #${g.copyIndex}` : g.name
+}
+
+/**
+ * Un tavolo aperto dice quanti posti prenotabili restano; una copia
+ * singola resta con la dicitura di sempre.
+ */
+function availabilityLabel(g: EventGameInfo) {
+  if (g.seats > 1) {
+    return `Posti prenotabili liberi: ${g.remaining} di ${g.seats}`
+  }
+  return `Disponibilità: ${g.remaining}`
+}
+
 async function submitBooking() {
   bookingError.value = ''
   if (selectedEventGameId.value === null) {
@@ -92,9 +125,25 @@ onMounted(async () => {
   <div>
     <PublicHeader />
     <div class="public-page" v-if="event">
+      <img
+        v-if="event.imagePath"
+        :src="`/api/uploads/${event.imagePath}`"
+        alt=""
+        class="event-banner"
+        width="880"
+        height="495"
+        decoding="async"
+      />
       <h1>{{ event.title }}</h1>
       <p v-if="event.description">{{ event.description }}</p>
-      <p>{{ event.eventDate }} · {{ event.startTime }}</p>
+      <p class="event-card-date">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6" />
+          <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
+          <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+        </svg>
+        {{ formatEventDateTime(event.eventDate, event.startTime) }}
+      </p>
 
       <ul class="event-games">
         <li v-for="g in event.games" :key="g.eventGameId">
@@ -109,8 +158,8 @@ onMounted(async () => {
               <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
             </svg>
           </div>
-          <router-link :to="`/games/${g.gameId}`">{{ g.name }}</router-link>
-          <p>Disponibilità: {{ g.remaining }}</p>
+          <router-link :to="`/games/${g.gameId}`">{{ copyLabel(g) }}</router-link>
+          <p>{{ availabilityLabel(g) }}</p>
           <button
             v-if="!hasStarted"
             type="button"
@@ -128,7 +177,7 @@ onMounted(async () => {
         v-if="selectedEventGameId !== null && !bookingResult && !hasStarted"
         @submit.prevent="submitBooking"
       >
-        <h2>Prenota: {{ selectedGame?.name }}</h2>
+        <h2>Prenota: {{ selectedGame ? copyLabel(selectedGame) : '' }}</h2>
         <label>
           Nome
           <input v-model="participantName" required />
@@ -146,12 +195,18 @@ onMounted(async () => {
       </form>
 
       <div v-if="bookingResult">
-        <p class="success">Prenotazione confermata per {{ selectedGame?.name }}!</p>
+        <p class="success">
+          Prenotazione confermata per {{ selectedGame ? copyLabel(selectedGame) : '' }}!
+        </p>
         <div class="booking-code-card">
           <span class="label">Il tuo codice</span>
           <span class="booking-code">{{ bookingResult.bookingCode }}</span>
         </div>
         <p>Conservalo per gestire la prenotazione o inserire il punteggio finale da "Gestisci prenotazione".</p>
+        <p v-if="selectedGame && selectedGame.seats > 1">
+          A questo tavolo si prenota un posto a testa: il punteggio finale è uno per tavolo e
+          chiunque sieda qui può inserirlo o correggerlo con il proprio codice.
+        </p>
       </div>
 
       <p v-if="error" class="error">{{ error }}</p>
