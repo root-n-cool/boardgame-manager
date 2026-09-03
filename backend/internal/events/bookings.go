@@ -82,7 +82,7 @@ func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, n
 
 	// Single atomic statement: the WHERE clause re-checks capacity as part of
 	// the same write, so SQLite's write-lock makes this race-safe against
-	// concurrent bookings for the last remaining copy — no separate
+	// concurrent bookings for the last remaining seat — no separate
 	// check-then-insert window. A collision on the (event_id, phone) unique
 	// index (a duplicate booking that slipped past an earlier read) surfaces
 	// here too and is mapped to ErrDuplicatePhoneBooking below.
@@ -90,7 +90,7 @@ func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, n
 		`INSERT INTO bookings (event_id, event_game_id, participant_name, participant_email, participant_phone, booking_code, status)
 		 SELECT ?, ?, ?, ?, ?, ?, 'active'
 		 WHERE (SELECT COUNT(*) FROM bookings WHERE event_game_id = ? AND status = 'active') <
-		       (SELECT quantity FROM event_games WHERE id = ?)`,
+		       (SELECT seats FROM event_games WHERE id = ?)`,
 		eventID, eventGameID, name, email, phone, code, eventGameID, eventGameID,
 	)
 	if err != nil {
@@ -157,14 +157,35 @@ func (s *Store) CancelBooking(ctx context.Context, id int64, code string) (Booki
 	if b.Status != BookingStatusActive || strings.ToUpper(strings.TrimSpace(code)) != b.BookingCode {
 		return Booking{}, ErrInvalidBookingCredentials
 	}
+	return s.cancelBooking(ctx, b)
+}
 
+// AdminCancelBooking cancels a booking on the organiser's behalf: same effect
+// as the participant cancelling with their own code, minus the code check —
+// an admin is already authenticated. A booking that does not exist or was
+// already cancelled is ErrNotFound, so the caller can answer 404 either way.
+func (s *Store) AdminCancelBooking(ctx context.Context, id int64) (Booking, error) {
+	b, err := s.getBookingByID(ctx, id)
+	if err != nil {
+		return Booking{}, err
+	}
+	if b.Status != BookingStatusActive {
+		return Booking{}, ErrNotFound
+	}
+	return s.cancelBooking(ctx, b)
+}
+
+// cancelBooking is the single cancellation path, shared by the participant's
+// code-authenticated cancel and the admin's: both must free the copy and drop
+// the score in the same transaction, so neither can drift from the other.
+func (s *Store) cancelBooking(ctx context.Context, b Booking) (Booking, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Booking{}, err
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `UPDATE bookings SET status = ? WHERE id = ?`, BookingStatusCancelled, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE bookings SET status = ? WHERE id = ?`, BookingStatusCancelled, b.ID); err != nil {
 		return Booking{}, err
 	}
 	// A cancelled booking means the participant didn't play — any match
@@ -172,7 +193,7 @@ func (s *Store) CancelBooking(ctx context.Context, id int64, code string) (Booki
 	// leaderboard or the admin's read-only results view. This also prevents
 	// double-counting if the freed (event_id, phone) slot gets re-booked and
 	// scored again.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM match_results WHERE booking_id = ?`, id); err != nil {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM match_results WHERE booking_id = ?`, b.ID); err != nil {
 		return Booking{}, err
 	}
 
@@ -185,18 +206,23 @@ func (s *Store) CancelBooking(ctx context.Context, id int64, code string) (Booki
 
 type BookingWithGame struct {
 	Booking
+	GameID   int64
 	GameName string
+	// CopyIndex e Seats servono a chi legge per tavolo: l'organizzatore
+	// vuole vedere "D&D #2 — 3 di 5 posti prenotabili", non una lista piatta.
+	CopyIndex int
+	Seats     int
 }
 
 func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]BookingWithGame, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT b.id, b.event_id, b.event_game_id, b.participant_name, b.participant_email, b.participant_phone,
-		        b.booking_code, b.status, b.created_at, g.name
+		        b.booking_code, b.status, b.created_at, g.id, g.name, eg.copy_index, eg.seats
 		 FROM bookings b
 		 JOIN event_games eg ON b.event_game_id = eg.id
 		 JOIN games g ON eg.game_id = g.id
 		 WHERE b.event_id = ? AND b.status = 'active'
-		 ORDER BY b.created_at`, eventID)
+		 ORDER BY eg.game_id, eg.copy_index, b.created_at`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -207,11 +233,22 @@ func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]Book
 		var bg BookingWithGame
 		var createdAt string
 		if err := rows.Scan(&bg.ID, &bg.EventID, &bg.EventGameID, &bg.ParticipantName, &bg.ParticipantEmail,
-			&bg.ParticipantPhone, &bg.BookingCode, &bg.Status, &createdAt, &bg.GameName); err != nil {
+			&bg.ParticipantPhone, &bg.BookingCode, &bg.Status, &createdAt, &bg.GameID, &bg.GameName,
+			&bg.CopyIndex, &bg.Seats); err != nil {
 			return nil, err
 		}
 		bg.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 		out = append(out, bg)
 	}
 	return out, rows.Err()
+}
+
+// CountActiveBookingsForEventGame dice quante persone siedono a un tavolo.
+// La pagina pubblica se ne serve per spiegare che il punteggio è condiviso.
+func (s *Store) CountActiveBookingsForEventGame(ctx context.Context, eventGameID int64) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM bookings WHERE event_game_id = ? AND status = 'active'`, eventGameID,
+	).Scan(&count)
+	return count, err
 }
