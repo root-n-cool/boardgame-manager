@@ -457,17 +457,6 @@ button.btn-danger:hover {
   color: var(--danger);
 }
 
-/* Selezione da un risultato di ricerca (import BGG): azione neutra, non distruttiva. */
-button.btn-select {
-  background: transparent;
-  color: var(--accent);
-  border-color: var(--accent);
-}
-
-button.btn-select:hover {
-  background: var(--accent-bg);
-}
-
 /* Forms fuori dalla card di auth non devono stirare il bottone submit.
    Il margine sotto è la difesa di base: due card non si toccano mai anche
    quando il markup le mette una dietro l'altra senza nulla in mezzo. */
@@ -500,6 +489,8 @@ form textarea {
 
 .layout form label,
 .public-page form label,
+.layout form .field-block,
+.public-page form .field-block,
 .layout form .error,
 .public-page form .error,
 .layout form .success,
@@ -688,6 +679,16 @@ li button.btn-select {
 /* Variante compatta di .action-link per la testa di pagina: nessun margine
    proprio, allineata alla riga del titolo. Alleggerita nel testo e nel
    padding, ma non nell'altezza: 44px è il minimo per un bersaglio da dito. */
+/* Più di un'azione nella testa di pagina (es. "Vedi pagina pubblica" +
+   "Elimina" sulla scheda evento): restano insieme a destra e vanno a capo
+   come blocco, non una per volta. */
+.page-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .action-link.is-compact {
   flex: none;
   display: inline-flex;
@@ -728,7 +729,9 @@ button.is-compact svg {
 
 /* Rimando indietro discreto (es. classifica -> scheda gioco). */
 .back-link {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   margin-bottom: 0.9rem;
   font-size: 0.85rem;
   font-weight: 500;
@@ -841,7 +844,7 @@ button.is-compact svg {
    della pagina si vede attraverso e il solo tratteggio tiene la sagoma. È il
    link stesso, non un contenitore con un link dentro, così l'area cliccabile
    coincide con la card anche quando la riga è più alta. */
-.game-grid .add-card {
+.add-card {
   display: flex;
   flex-direction: column;
   padding: 0 0 0.9rem;
@@ -857,7 +860,7 @@ button.is-compact svg {
 }
 
 /* Al passaggio il tratteggio si chiude e lo slot diventa una scatola. */
-.game-grid .add-card:hover {
+.add-card:hover {
   transform: translateY(-3px);
   border-style: solid;
   border-color: var(--accent);
@@ -882,7 +885,7 @@ button.is-compact svg {
 
 /* Etichetta dello slot: guarda come il titolo di una scatola, ma non è un
    heading — è il nome di un'azione. Il colore lo eredita dalla card. */
-.game-grid .add-label {
+.add-label {
   margin: 0 0.9rem;
   font-family: 'Display', system-ui, sans-serif;
   font-size: 1.1rem;
@@ -905,13 +908,15 @@ button.is-compact svg {
    bordo e fondo continuano a rispondere, solo senza spostamento. */
 @media (prefers-reduced-motion: reduce) {
   .game-grid li,
-  .game-grid .add-card {
+  .event-card-grid li,
+  .add-card {
     transition: box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease,
       color 0.15s ease;
   }
 
   .game-grid li:hover,
-  .game-grid .add-card:hover {
+  .event-card-grid li:hover,
+  .add-card:hover {
     transform: none;
   }
 }
@@ -1123,10 +1128,31 @@ button.is-compact svg {
   text-decoration: underline;
 }
 
-/* Le lingue come pastiglie su una barra in feltro: angoli tondi su tutti i
-   lati, non linguette tagliate in basso — la mezza curva faceva leggere la
-   barra come un pezzo staccato dal pannello sotto. */
-.language-tabs {
+/* Posti prenotabili: unico dato del gioco modificabile dalla scheda, con un
+   suo bottone "Salva" invece di un form generale che qui non esiste. */
+.game-seats-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+
+.game-seats-edit input {
+  width: 5rem;
+}
+
+.game-seats-edit .field-hint,
+.game-seats-edit .error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+/* Barra di linguette: pastiglie su una barra in feltro, angoli tondi su
+   tutti i lati e non linguette tagliate in basso — la mezza curva faceva
+   leggere la barra come un pezzo staccato dal pannello sotto. La usano le
+   lingue di un gioco e il periodo degli eventi (in programma / passati). */
+.tab-bar {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -1137,7 +1163,15 @@ button.is-compact svg {
   border-radius: var(--radius);
 }
 
-.language-tabs button {
+/* Con due sole linguette la barra a tutta colonna resta mezza vuota: si
+   stringe su di esse. Le lingue di un gioco restano a tutta larghezza,
+   perché portano l'azione "Aggiungi lingua" all'altro capo. */
+.tab-bar.is-inline {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.tab-bar button {
   background: var(--felt-deep);
   color: var(--felt-text-muted);
   border: none;
@@ -1150,11 +1184,11 @@ button.is-compact svg {
   padding: 0.5rem 0.9rem;
 }
 
-.language-tabs button:hover {
+.tab-bar button:hover {
   color: var(--felt-text);
 }
 
-.language-tabs button.active {
+.tab-bar button.active {
   background: var(--card);
   color: var(--ink);
 }
@@ -1204,6 +1238,35 @@ button.is-compact svg {
   margin-top: 1.25rem;
 }
 
+/* Un form fatto di pannelli non è a sua volta una card: i fogli sono le sue
+   sezioni, e una card dentro una card raddoppia bordo, ombra e padding. I
+   margini dei pannelli passano al gap del form, altrimenti in flex non
+   collassano e si sommano. */
+.layout form.panel-form,
+.public-page form.panel-form {
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  align-items: stretch;
+  gap: 1.25rem;
+}
+
+form.panel-form > .panel-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1rem;
+  margin: 0;
+}
+
+/* La riga azioni si allinea al bordo del foglio, non al tetto dei campi:
+   sopra ha pannelli larghi quanto la colonna. */
+form.panel-form > .form-actions {
+  max-width: none;
+}
+
 .panel-card form {
   max-width: none;
   background: none;
@@ -1237,6 +1300,15 @@ button.is-compact svg {
 
 .section-head h2 {
   margin: 0;
+}
+
+/* Quanti elementi ha la sezione: è un dato, quindi mono, e sta all'altro
+   capo dell'intestazione come le azioni. */
+.section-count {
+  margin-left: auto;
+  font-family: 'Data', monospace;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
 }
 
 .section-head > button {
@@ -1434,10 +1506,14 @@ form button[type='submit']:has(svg) {
   padding: 2.25rem 1.5rem 3.5rem;
 }
 
-.event-list {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 260px));
-  gap: 1rem;
+/* ---------- Eventi: tessere larghe con immagine (admin + pubblico) ------- */
+
+/* Stessa grammatica dello scaffale (`.game-grid`), tessere orizzontali: la
+   locandina di una serata è 16/9, non il ritratto di una scatola. Lato admin
+   la griglia è un div che tiene insieme la lista e lo slot "Crea evento";
+   lato pubblico la griglia è la <ul> stessa, che quindi deve rinunciare al
+   foglio che lo stile globale dà alle liste. */
+ul.game-grid {
   list-style: none;
   padding: 0;
   background: none;
@@ -1445,98 +1521,177 @@ form button[type='submit']:has(svg) {
   box-shadow: none;
 }
 
-.event-list li {
-  display: block;
-  border: 1px solid var(--card-line);
-  border-radius: var(--radius);
-  padding: 0;
-  background: var(--card);
-  box-shadow: var(--shadow-card);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+.event-card-grid {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 340px));
 }
 
-.event-list li:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lift);
+.event-card-grid img,
+.event-card-grid .event-image-placeholder,
+.event-card-grid .add-card .add-slot {
+  aspect-ratio: 16 / 9;
 }
 
-.event-list a {
-  display: block;
-  text-decoration: none;
-  color: inherit;
-  padding: 1.1rem 1.2rem;
+/* Nessuna immagine: il dado sul feltro, come per le copertine mancanti. */
+.event-image-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 0 0.7rem;
+  background: var(--felt);
+  background-image: radial-gradient(rgb(255 255 255 / 6%) 1.5px, transparent 1.5px);
+  background-size: 14px 14px;
+  border-bottom: 1px solid var(--card-line);
 }
 
-.event-list h2 {
-  margin: 0 0 0.3rem;
-  font-size: 1.1rem;
+.event-image-placeholder svg {
+  width: 2.4rem;
+  height: 2.4rem;
+  color: var(--felt-text-muted);
 }
 
-.event-list p {
+/* La data è un dato: mono, con il calendario a fare da insegna. */
+.event-card-date {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--ink-muted);
   font-family: 'Data', monospace;
 }
 
-.event-list p svg,
-.event-grid p svg {
+.event-card-date svg {
   flex: none;
   width: 0.95rem;
   height: 0.95rem;
   color: var(--ink-muted);
 }
 
-/* Griglia eventi lato admin: stessa grammatica, senza feltro. */
-.event-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 260px));
-  gap: 1rem;
-  list-style: none;
-  padding: 0;
-  background: none;
-  border: none;
-  box-shadow: none;
+.event-card-games {
+  margin-top: 0.2rem;
 }
 
-.event-grid li {
+/* Su telefono una serata per riga: le tessere sono orizzontali, due per riga
+   ridurrebbero l'immagine a una striscia. */
+@media (max-width: 560px) {
+  .event-card-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* L'immagine dell'evento in cima alla pagina pubblica: una locandina, non
+   una card — è già dentro il foglio della pagina. */
+.event-banner {
   display: block;
-  border: 1px solid var(--card-line);
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
   border-radius: var(--radius);
-  padding: 0;
-  background: var(--card);
+  border: 1px solid var(--card-line);
+  margin: 0 0 1.25rem;
   box-shadow: var(--shadow-card);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.event-grid li:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-lift);
+/* Il selettore dell'immagine in un form: stessa cornice-controllo della
+   copertina di un gioco (`.cover-uploader`), larghezza dei campi. */
+.event-image-field {
+  width: min(100%, 30rem);
 }
 
-.event-grid a {
+.event-image {
   display: block;
-  text-decoration: none;
-  color: inherit;
-  padding: 1.1rem 1.2rem;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--card-line);
+  box-shadow: var(--shadow-card);
 }
 
-.event-grid h2 {
-  margin: 0 0 0.3rem;
-  font-size: 1.1rem;
-}
-
-.event-grid p {
+.event-image-empty {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  margin: 0;
-  font-size: 0.85rem;
+  justify-content: center;
+  background: var(--felt);
+  background-image: radial-gradient(rgb(255 255 255 / 6%) 1.5px, transparent 1.5px);
+  background-size: 14px 14px;
+}
+
+.event-image-empty svg {
+  width: 2.4rem;
+  height: 2.4rem;
+  color: var(--felt-text-muted);
+}
+
+.event-image-uploader {
+  display: block;
+  width: 100%;
+}
+
+/* Un campo che non è un <label> perché il controllo non è un input di testo:
+   insegna, controllo e nota, impilati come in un campo normale. */
+.field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.field-label {
+  font-size: 0.82rem;
+  font-weight: 500;
   color: var(--ink-muted);
+}
+
+.field-optional {
+  font-weight: 400;
+  opacity: 0.8;
+}
+
+.field-block .field-hint {
+  margin: 0;
+}
+
+/* Pager dell'archivio: due passi e la posizione, non una fila di numeri —
+   gli eventi passati si sfogliano, non si indirizzano. */
+.pager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  margin: 0 0 2rem;
+}
+
+/* Testo e padding si alleggeriscono, l'altezza no: 44px è il minimo per un
+   bersaglio da dito, come per `.action-link.is-compact`. */
+.pager button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.85rem;
+  background: var(--card);
+  color: var(--ink);
+  border-color: var(--card-line);
+}
+
+.pager button:hover:not(:disabled) {
+  background: var(--card-alt);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.pager button svg {
+  flex: none;
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+.pager-position {
   font-family: 'Data', monospace;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
 }
 
 /* Il tavolo in feltro: le scatole dei giochi di un evento, pronte. */
@@ -1675,6 +1830,51 @@ form button[type='submit']:has(svg) {
 
 /* ---------- Selezione giochi in un evento ---------- */
 
+/* I giochi scelti si staccano in cima su fondo alterato: con un catalogo che
+   cresce quello che conta è cosa c'è sul tavolo, non dove cade un nome
+   nell'ordine alfabetico. Sotto, la ricerca e il resto del catalogo. */
+.games-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.games-picker-chosen,
+.games-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0.15rem 0.9rem;
+  background: none;
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+}
+
+.games-picker-chosen {
+  background: var(--card-alt);
+}
+
+/* La lista del catalogo scorre per conto suo: un form non deve allungarsi a
+   fisarmonica per stare dietro a quante scatole ha l'associazione. */
+.games-picker-list {
+  max-height: 18rem;
+  overflow-y: auto;
+}
+
+.games-picker-chosen li,
+.games-picker-list li {
+  border-bottom: 1px solid var(--card-line);
+}
+
+.games-picker-chosen li:last-child,
+.games-picker-list li:last-child {
+  border-bottom: none;
+}
+
+.games-picker-search input {
+  max-width: 22rem;
+}
+
 .game-select-row {
   display: flex;
   align-items: center;
@@ -1683,8 +1883,67 @@ form button[type='submit']:has(svg) {
   padding: 0.4rem 0;
 }
 
+.game-select-quantity {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* "copie" è l'etichetta del campo, non una riga di form: sta sulla stessa
+   linea del numero. */
+.game-select-copies {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Quante copie sono già prenotate: sotto quel numero il backend rifiuta, e
+   il gioco non si può togliere dall'evento. */
+.game-select-booked {
+  font-family: 'Data', monospace;
+  font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
 .game-select-row input[type='number'] {
   width: 5rem;
+  font-family: 'Data', monospace;
+}
+
+/* ---------- Prenotazioni e risultati di un evento (scheda admin) ---------- */
+
+.booking-who {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.booking-who .row-meta {
+  margin-top: 0;
+}
+
+/* Il gioco prenotato: una pastiglia quieta, non un badge di stato — dice a
+   cosa si riferisce la riga, non come sta. È anche la scorciatoia alla
+   scheda del gioco, quindi si accende come un link al passaggio. */
+.booking-game {
+  flex: none;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  text-decoration: none;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+a.booking-game:hover,
+a.booking-game:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.match-scores {
   font-family: 'Data', monospace;
 }
 
@@ -2175,4 +2434,199 @@ tbody tr:nth-child(3) .rank-medal {
   .admin-invite {
     margin-left: 0;
   }
+}
+
+/* ---------- Ricerca BGG: combobox con miniature ------------------------- */
+
+/* Aggiungere un gioco è cercarlo su BoardGameGeek, e cercarlo è scrivere
+   finché il nome giusto non compare: la lista si aggiorna da sé mentre si
+   digita, senza un bottone "Cerca" da premere a ogni tentativo. La colonna
+   si ferma alla misura del campo, non a quella del pannello — la lista è la
+   continuazione dell'input, non una sezione a sé. */
+.bgg-select {
+  align-self: stretch;
+}
+
+.bgg-combobox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-width: 30rem;
+}
+
+.bgg-combobox input {
+  width: 100%;
+}
+
+/* La nota è l'unica riga di stato del campo (istruzione, ricerca in corso,
+   conteggio, errore): staccata dall'input di quanto serve a non finire
+   sotto l'anello di focus, che è 2px con 2px di offset. */
+.bgg-combobox .field-hint {
+  margin-top: 0.15rem;
+}
+
+/* La lista galleggia sopra il resto del pannello: se spingesse i campi in
+   basso, ogni tasto premuto muoverebbe il form sotto le dita. */
+.bgg-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0.3rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  max-height: 21rem;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+}
+
+/* justify-content esplicito: la regola generale su `li` distribuisce i figli
+   agli estremi, e una riga senza pastiglia del peso finiva col nome
+   schiacciato a destra. Qui a spingere la pastiglia in fondo è il testo che
+   occupa lo spazio, non la distribuzione. */
+.bgg-result {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.7rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* Una sola evidenziazione per tastiera e mouse: il puntatore muove la riga
+   attiva invece di accenderne una seconda, così non ci sono mai due righe
+   che sembrano entrambe quella scelta dall'Invio. */
+.bgg-result.is-active {
+  background: var(--accent-bg);
+}
+
+/* La copertina di BGG arriva in un rettangolo di proporzioni qualsiasi:
+   entra intera in un riquadro fisso, altrimenti la fila di miniature balla
+   di riga in riga. */
+.bgg-thumb {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--radius-sm);
+  background: var(--card-alt);
+  color: var(--ink-muted);
+  overflow: hidden;
+}
+
+.bgg-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.bgg-thumb svg {
+  width: 1.35rem;
+  height: 1.35rem;
+  opacity: 0.55;
+}
+
+.bgg-result-text,
+.bgg-chosen-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.bgg-name {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bgg-meta {
+  display: flex;
+  gap: 0.35rem;
+  font-family: 'Data', monospace;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
+/* Su --card-alt il bordo cartoncino sta a 1.3:1: un separatore invisibile
+   non separa. È inchiostro attenuato, come il testo che divide. */
+.bgg-meta .divider {
+  color: var(--ink-muted);
+  opacity: 0.5;
+}
+
+/* Il peso BGG sta all'estremo opposto del nome: si scorre la colonna dei
+   numeri per capire se una serata regge il gioco, senza leggere le righe. */
+.bgg-weight {
+  flex: none;
+  font-family: 'Data', monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--gold-text);
+  background: var(--gold-bg);
+  border-radius: 999px;
+  padding: 0.12rem 0.5rem;
+}
+
+/* Scelto il gioco, la ricerca lascia il posto alla riga di conferma: quel
+   che resta da decidere è lingua e proprietario, non il gioco. */
+.bgg-chosen {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  max-width: 30rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+}
+
+.bgg-chosen > button {
+  flex: none;
+  margin-left: auto;
+}
+
+.bgg-select .error-text {
+  color: var(--danger);
+}
+
+/* Un'azione secondaria dentro una nota: è una deviazione dal percorso
+   principale, quindi ha il peso di un link, non di un bottone. */
+.link-button {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-weight: 500;
+  font-size: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link-button:hover {
+  background: none;
+  color: var(--accent-deep);
+}
+
+/* Due campi che sono una cosa sola (min/max giocatori) stanno sulla stessa
+   riga: separati sembrerebbero due domande invece di un intervallo. */
+.field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  max-width: 30rem;
+}
+
+.field-row > label {
+  flex: 1 1 8rem;
 }

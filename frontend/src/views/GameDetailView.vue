@@ -29,8 +29,10 @@ interface GameDetail {
   minPlayers: number | null
   maxPlayers: number | null
   playtimeMinutes: number | null
+  weight: number | null
   owner: string | null
   coverPath: string | null
+  seats: number
   languages: GameLanguageInfo[]
 }
 
@@ -62,6 +64,10 @@ const coverInput = ref<HTMLInputElement | null>(null)
 const coverUploading = ref(false)
 const coverError = ref('')
 
+const editSeats = ref(1)
+const seatsSaving = ref(false)
+const seatsError = ref('')
+
 function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
 }
@@ -81,6 +87,11 @@ const gameFacts = computed(() => {
   if (g.playtimeMinutes) {
     facts.push({ label: 'Durata', value: `${g.playtimeMinutes} min` })
   }
+  if (g.weight) {
+    // Il peso di BGG è una media con quattro decimali: uno basta per
+    // distinguere un filler da un gestionale, il resto è rumore.
+    facts.push({ label: 'Complessità', value: `${g.weight.toFixed(1).replace('.', ',')}/5` })
+  }
   if (g.year) {
     facts.push({ label: 'Anno', value: `${g.year}` })
   }
@@ -96,6 +107,7 @@ const gameFacts = computed(() => {
 
 async function load() {
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
+  editSeats.value = game.value.seats
 }
 
 function selectLanguage(code: string) {
@@ -119,6 +131,21 @@ async function saveLanguage() {
     await load()
   } catch (e) {
     error.value = (e as Error).message
+  }
+}
+
+// I posti prenotabili sono l'unico dato del gioco modificabile da qui: si
+// salvano da sé, senza un "Salva" generale che non esiste in questa pagina.
+async function saveSeats() {
+  seatsError.value = ''
+  seatsSaving.value = true
+  try {
+    await api.patch(`/games/${gameId}`, { seats: editSeats.value })
+    await load()
+  } catch (e) {
+    seatsError.value = (e as Error).message
+  } finally {
+    seatsSaving.value = false
   }
 }
 
@@ -430,11 +457,28 @@ onMounted(async () => {
             </div>
           </dl>
           <p v-else class="empty-note">Nessun dato da BoardGameGeek per questo gioco.</p>
+          <div v-if="auth.user" class="game-seats-edit">
+            <label>
+              Posti prenotabili per copia
+              <input v-model.number="editSeats" type="number" min="1" />
+            </label>
+            <button type="button" :disabled="seatsSaving || editSeats === game.seats" @click="saveSeats">
+              {{ seatsSaving ? 'Salvo…' : 'Salva' }}
+            </button>
+            <p class="field-hint">
+              Più di 1 apre il tavolo: a un evento, ogni posto si prenota a sé
+              con il suo codice.
+            </p>
+            <p v-if="seatsError" class="error">{{ seatsError }}</p>
+          </div>
+          <p v-else-if="game.seats > 1" class="row-meta">
+            Tavolo da {{ game.seats }} posti prenotabili.
+          </p>
           <p v-if="coverError" class="error">{{ coverError }}</p>
         </div>
       </div>
 
-      <nav class="language-tabs">
+      <nav class="tab-bar language-tabs">
         <button
           v-for="l in game.languages"
           :key="l.code"
