@@ -71,7 +71,11 @@ async function request<T>(
 }
 
 export const api = {
-  get: <T>(path: string, options?: { skipAuthRedirect?: boolean }) => request<T>(path, options),
+  // signal: una ricerca che parte a ogni tasto premuto deve poter annullare
+  // la richiesta precedente, altrimenti la risposta più lenta arriva per
+  // ultima e sovrascrive quella giusta.
+  get: <T>(path: string, options?: { skipAuthRedirect?: boolean; signal?: AbortSignal }) =>
+    request<T>(path, options),
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',

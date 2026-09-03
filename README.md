@@ -26,6 +26,13 @@ esterno obbligatorio.
   entra nell'evento. Nella pagina pubblica le copie compaiono numerate
   (`Carcassonne #1`, `Carcassonne #2`) quando sono più d'una, e si
   prenotano separatamente.
+- **Luogo dell'evento**: l'indirizzo si cerca su OpenStreetMap mentre lo
+  si scrive e la pagina pubblica dell'evento mostra la mappa del posto.
+  Non serve nessuna chiave né registrazione: la ricerca passa dal server
+  (che si identifica verso Nominatim, come la sua usage policy chiede) e
+  le mattonelle della mappa arrivano da openstreetmap.org, quindi serve
+  una connessione verso l'esterno. Un indirizzo che la ricerca non trova
+  si scrive a mano: resta sull'evento come riga di testo, senza mappa.
 - **Prenotazioni anonime**: nome, email, telefono — nessun account
   richiesto. Alla prenotazione viene generato un codice che permette in
   seguito di cancellarla o di inserire il punteggio finale. Su una copia

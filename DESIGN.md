@@ -270,24 +270,69 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   orizzontale, **mai nell'altezza**: `min-height: 44px`, il minimo per un
   bersaglio da dito.
 
-### Scheda gioco (`/games/:id`)
+### Rimando indietro (`.back-link`)
+- Freccia + una parola che nomina **dove** si torna ("← Catalogo",
+  "← Eventi"), sopra il titolo, in `--ink-muted`. Mai "← Torna alla pagina
+  precedente": la parola è il posto, non il gesto.
+- **`min-height: 44px`** come le azioni compatte, con `padding` orizzontale
+  e un `margin-left` negativo che lo compensa: il bersaglio è da dito
+  (queste pagine si aprono da telefono) e il testo resta otticamente
+  allineato alla colonna.
+- Due rese, una sola misura: `router-link` quando la destinazione è un
+  posto fisso, `<button>` quando torna nella **storia del browser** — è il
+  caso della scheda gioco pubblica, dove si arriva dalla serata o da un
+  link condiviso, e l'etichetta è allora la sola generica ammessa
+  ("← Indietro") perché la destinazione non è nota. Senza storia (scheda
+  aperta da un QR) il bottone porta al calendario invece di non fare
+  nulla.
+
+### Scheda gioco: due pagine, non una con due volti
+
+La scheda gioco è **sdoppiata**, come già gli eventi: `/games/:id` è quel
+che vede chi partecipa, `/admin/games/:id` è dove si lavora. Prima era una
+pagina sola con dieci rami `v-if="auth.user"` dentro, e le due letture si
+ostacolavano: l'admin trovava campi sparsi tra il contenuto, il
+partecipante una pagina disegnata attorno a controlli che non vedeva. Quel
+che è di entrambe sta in due componenti condivisi — `GameFacts` (i dati
+BGG) e `GameMediaList` (la griglia media, con prop `editable`).
+
+#### Scheda pubblica (`/games/:id`)
+- **Nessuna azione primaria in testa.** Qui si legge: il titolo non ha
+  `.page-head` con bottone a destra, e i rimandi — "Classifica", e
+  "Modifica" solo per l'admin già loggato — stanno nella riga
+  `.page-meta`. Un bottone accento pieno in testa a una pagina pubblica
+  prometterebbe un'azione che il partecipante non deve fare.
+- **La copertina è un'immagine e basta**: nessuna affordance di upload,
+  nessun velo, nessun bottone attorno.
+- **Le linguette lingua restano**, senza l'azione "Aggiungi lingua": la
+  lingua del manuale è un'informazione che serve a chi sta al tavolo.
+- **Lo stato d'errore parla italiano e offre un'uscita.** Un `/games/:id`
+  che non esiste (link vecchio, QR di un evento passato) mostra "Questa
+  scheda non è disponibile…" più il rimando ai prossimi eventi — non la
+  stringa dell'API (`game not found`) e mai una pagina bianca, che è quel
+  che faceva prima con `v-if="game"` e il messaggio d'errore dentro.
+
+#### Scheda di modifica (`/admin/games/:id`)
 - **La copertina è il controllo di caricamento** (`.cover-uploader`): un
   `<button>` che avvolge l'immagine, con un velo feltro all'88% e l'icona
   upload che compare su hover e su focus da tastiera. Il click apre il file
   picker e al `change` **l'upload parte da solo** — niente form, niente
   bottone "Carica" da premere dopo. Durante il caricamento il velo resta
-  fisso su "Caricamento…" e il bottone è `disabled`. Per chi non è loggato
-  la copertina torna una `<img>` senza affordance.
+  fisso su "Caricamento…" e il bottone è `disabled`. Vive solo qui: sulla
+  scheda pubblica la copertina è una `<img>`.
 - **Dati BGG** (`.game-facts`): coppie etichetta/valore in una riga
   impacchettata a sinistra (`display: flex; flex-wrap: wrap`), **mai** una
   griglia `1fr` che li stira ai bordi della card. L'etichetta è
   maiuscoletto tracciato in `--ink-muted`, il valore è mono (`Data`): è un
   dato, non un titolo. Niente stat-tile a numero grande.
-- **Azione distruttiva in testa** (`button.is-compact`): "Elimina" +
-  cestino nella `.page-head`, non annegata in una riga di metadati insieme
-  ai link di navigazione. Stessa misura di `.action-link.is-compact`, con
-  l'icona **dopo** il testo — lì nomina la conseguenza, non anticipa
-  l'oggetto.
+- **Testa a due azioni, identica alla scheda evento admin**
+  (`.page-head-actions`): "Vedi scheda pubblica"
+  (`.action-link.is-compact`, `target="_blank"`, icona freccia-fuori e
+  `aria-label` che dice che apre una scheda nuova) e "Elimina"
+  (`button.btn-danger.is-compact`, cestino **dopo** il testo — lì nomina la
+  conseguenza, non anticipa l'oggetto). L'azione distruttiva sta in testa,
+  non annegata in una riga di metadati insieme ai rimandi.
+- **`.back-link` verso il catalogo**, come `/admin/games/new`.
 - **Due fogli, non un foglio diviso** (`.panel-card` × 2): "Scheda" e
   "Media" sono card separate sotto la barra delle lingue, che le governa
   entrambe. Un filetto full-bleed in mezzo a una card sola tagliava il
@@ -309,7 +354,7 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   visibile dove l'hover non esiste (`@media (hover: none)`), con l'area di
   tocco portata a 44px da uno `::after` trasparente.
 
-### Amministratori (`/users`)
+### Amministratori (`/admin/users`)
 - **La riga admin** (`.admin-row`, dentro `.admin-list` in un `.panel-card`):
   la pedina con l'iniziale (`.admin-pawn`) sta dove il catalogo mette la
   copertina, lo `.status-badge` ("Attivo" / "In attesa") dove il catalogo
@@ -365,6 +410,34 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   Successiva, mai una fila di numeri di pagina. Compare solo quando le
   pagine sono più d'una.
 
+### Il luogo di una serata (`VenueSearchSelect`, `EventMap`)
+- **Si cerca, non si compila**: il campo Luogo è un combobox gemello di
+  `BggSearchSelect` (`.venue-combobox`, `.venue-results`, `.venue-result`
+  con `.is-active`) che interroga OpenStreetMap mentre si scrive — tre
+  caratteri, pausa di 400ms, richiesta precedente annullata. Una riga è
+  l'insegna del posto (o la via) sopra e il resto dell'indirizzo sotto,
+  in mono attenuato come ogni dato secondario.
+- **La via d'uscita è parte del campo, non un ripiego**: sotto la nota di
+  stato c'è "Usa «…» così com'è", perché un circolo che su OpenStreetMap
+  non esiste va scritto a mano. La riga di conferma (`.venue-chosen`, su
+  `--card-alt` come `.bgg-chosen`) dice sempre quale dei due casi è:
+  *Posizione trovata sulla mappa* oppure *Indirizzo scritto a mano:
+  nessuna mappa sull'evento*. Nessuna mappa non è un errore.
+- **Il nome del luogo è un campo a sé**, sotto l'indirizzo scelto: quello
+  che una ricerca restituisce è un indirizzo, l'insegna la sa
+  l'organizzatore. Si eredita da OpenStreetMap solo quando è davvero
+  un'insegna ("Circolo Arci"), mai quando ripeterebbe la via.
+- **La mappina conferma, non naviga** (`.event-map`): 220px di altezza
+  sotto la riga del luogo, puntino nel rosso d'accento su bordo cartoncino
+  (`.event-map-pin-dot`, non l'icona di serie di Leaflet), attribuzione
+  OpenStreetMap come da licenza. Rotella e trascinamento a un dito sono
+  spenti: la pagina si legge in piedi al tavolo, e una mappa che cattura
+  lo scorrimento è una pagina che si blocca. Chi deve muoversi davvero
+  esce da "Apri in mappe".
+- **Sulla card di un evento sta l'insegna, non l'indirizzo**
+  (`.event-card-venue`, pin come insegna, gemello di `.event-card-date`):
+  in un elenco serve riconoscere il posto, non arrivarci.
+
 ### Copie numerate
 Quando un evento porta più copie dello stesso gioco, il nome prende il
 suffisso `#1`, `#2`. Il numero compare **solo** se le copie sono più
@@ -379,6 +452,52 @@ La dicitura è sempre "posti prenotabili", mai "posti" da solo: un
 di giocatori del gioco. Una copia con un solo posto prenotabile non
 mostra nulla — resta la dicitura di disponibilità di sempre; da due in
 su compare `Posti prenotabili liberi: 3 di 5`.
+
+### Scheda evento pubblica (`/events/:id`): il tavolo
+Sotto locandina, data, luogo e mappa arriva `Al tavolo` (`h2`), poi il
+feltro. La griglia (`.event-games`) è a colonne elastiche
+`repeat(auto-fill, minmax(150px, 1fr))`: quattro scatole per riga su
+desktop, due sul telefono (`minmax(130px, 1fr)` sotto i 560px). Il minimo
+è basso e la colonna è `1fr` di proposito — il feltro si riempie sempre,
+invece di lasciare una fascia verde vuota a destra quando le copie non
+bastano a fare una riga intera.
+
+La card porta, dall'alto: copertina 3/4, nome (`h3`, con `#2` solo se il
+gioco ha più copie), difficoltà, stato dei posti, e in fondo le due
+azioni ancorate da `margin-top: auto` — **Prenota** a piena larghezza e,
+sotto, **Dettagli →** (`.detail-link`, testo rosso seme) verso la scheda
+del gioco con manuali e video. Una card, una sola azione primaria: il
+nome non è più un link, perché due bersagli allo stesso peso su una
+tessera da 150px si sbagliano col pollice.
+
+### Difficoltà (`GameDifficulty.vue`)
+Il peso BGG diventa cinque pip da dado (`.difficulty-pips`, 6px, bordo
+oro, riempiti fino a `round(weight)`) più la parola: `<2` Facile, `<3`
+Medio, `<4` Impegnativo, `≥4` Esperto. Il decimale esatto vive nel
+`title` — chi conosce la scala BGG lo cerca, chi non la conosce non
+saprebbe cosa farsene di "3,2/5" mentre sceglie un tavolo. Il testo usa
+`--gold-text`, mai `--gold` (vedi Don't sul contrasto). Con `weight`
+nullo la riga sparisce: nessun segnaposto per un dato che non c'è.
+
+### Prenotazione in modale
+Il form di prenotazione vive in `ModalDialog` (`<dialog>` nativo), aperto
+dal "Prenota" della card e intitolato `Prenota: <nome copia>`. Non è
+scelta di spazio ma di sequenza: in pagina il form restava sotto la
+griglia e chi prenotava perdeva di vista quale tavolo aveva scelto.
+
+Il codice di prenotazione compare **due volte**, dallo stesso componente
+(`BookingConfirmation.vue`): dentro la modale appena confermata — con un
+"Ho segnato il codice" che è l'uscita esplicita, non solo la X — e poi in
+cima al tavolo (`.booking-recap`, bordo oro) finché si resta in pagina.
+Nessuna email parte: quel codice si vede una volta sola, e una modale si
+chiude d'istinto.
+
+Il riepilogo **accumula**: al tavolo un telefono solo prenota per due o tre
+persone, quindi ogni conferma si aggiunge invece di sostituire la
+precedente, e il titolo passa da "La tua prenotazione" a "Le tue
+prenotazioni". La riga "conservalo per..." si dice **una volta sola** sotto
+tutti i codici (prop `hint` a `false` nel riepilogo): ripetuta identica
+sotto ognuno diventava rumore.
 
 ### Scheda evento admin (`/admin/events/:id`) e creazione (`/admin/events/new`)
 - **Il titolo dell'evento è il titolo della pagina**, non "Modifica evento":
@@ -418,7 +537,7 @@ su compare `Posti prenotabili liberi: 3 di 5`.
   bottone eredita il rosso dalla regola dei bottoni in `<li>`, con
   conferma che nomina partecipante e gioco.
 
-### Aggiungi gioco (`/games/new`)
+### Aggiungi gioco (`/admin/games/new`)
 - **Un form solo, due fogli** (`.panel-form` + `.panel-card`): *Gioco* e
   *Dettagli* (lingua base, proprietario), un unico submit in fondo,
   disabilitato finché non c'è un gioco. Stessa impalcatura di
@@ -535,4 +654,11 @@ su compare `Posti prenotabili liberi: 3 di 5`.
 - **Don't** dimenticare `display: block` su un `<li>` di griglia-carta:
   eredita altrimenti il flex-row di default della lista base e la card
   collassa (bug reale trovato e corretto in questa sessione, su
-  `.event-grid li` ed `.event-games li`).
+  `.event-grid li` ed `.event-games li`). Se la card resta flex ma in
+  colonna, va dichiarato anche `align-items: stretch`: l'`align-items:
+  center` della lista base fa collassare nome e bottoni alla larghezza del
+  loro contenuto (bug reale su `.event-games li`).
+- **Don't** aggiungere un bordo solo allo stato eccezionale di una card in
+  griglia: i 2px in più restringono il contenuto e sfalsano le copertine
+  della riga. Il bordo c'è sempre, `transparent` a riposo, e lo stato lo
+  colora (`.event-games li.is-full`).

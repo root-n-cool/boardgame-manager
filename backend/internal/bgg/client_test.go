@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 
 	"boardgames-manager/internal/bgg"
@@ -88,5 +89,121 @@ func TestSearch_NonOKStatusReturnsError(t *testing.T) {
 	_, err := client.Search(context.Background(), "bad-token", "catan")
 	if err == nil {
 		t.Fatal("expected an error for non-200 status")
+	}
+}
+
+func TestSearch_FallsBackToAlternateNameNotID(t *testing.T) {
+	// BGG's /search lists plenty of items whose only <name> is an alternate
+	// (fan expansions, localised editions). Falling back to the id turned
+	// those rows into "134277 (2012)" in the picker.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/xml")
+		w.Write([]byte(`<?xml version="1.0"?>
+<items>
+	<item type="boardgame" id="134277">
+		<name type="alternate" value="The 7 Wonders of Catan"/>
+		<yearpublished value="2012"/>
+	</item>
+</items>`))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	results, err := client.Search(context.Background(), "test-token", "catan")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if results[0].Name != "The 7 Wonders of Catan" {
+		t.Fatalf("expected the alternate name, got %q", results[0].Name)
+	}
+}
+
+func TestDetails_FetchesManyIDsWithStats(t *testing.T) {
+	var gotQuery url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "text/xml")
+		w.Write([]byte(`<?xml version="1.0"?>
+<items>
+	<item type="boardgame" id="13">
+		<thumbnail>https://example.com/catan_t.png</thumbnail>
+		<name type="primary" value="Catan"/>
+		<yearpublished value="1995"/>
+		<statistics><ratings><averageweight value="2.2809"/></ratings></statistics>
+	</item>
+	<item type="boardgame" id="822">
+		<thumbnail>https://example.com/carcassonne_t.jpg</thumbnail>
+		<name type="primary" value="Carcassonne"/>
+		<yearpublished value="2000"/>
+		<statistics><ratings><averageweight value="1.8839"/></ratings></statistics>
+	</item>
+</items>`))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	details, err := client.Details(context.Background(), "test-token", []string{"13", "822"})
+	if err != nil {
+		t.Fatalf("details: %v", err)
+	}
+	if gotQuery.Get("id") != "13,822" {
+		t.Fatalf("expected a single request for both ids, got id=%q", gotQuery.Get("id"))
+	}
+	if gotQuery.Get("stats") != "1" {
+		t.Fatalf("averageweight only comes back with stats=1, got stats=%q", gotQuery.Get("stats"))
+	}
+	if len(details) != 2 {
+		t.Fatalf("expected 2 details, got %d", len(details))
+	}
+	if details["13"].ThumbnailURL != "https://example.com/catan_t.png" {
+		t.Fatalf("unexpected thumbnail: %q", details["13"].ThumbnailURL)
+	}
+	if details["13"].Weight != 2.2809 || details["822"].Weight != 1.8839 {
+		t.Fatalf("unexpected weights: %v / %v", details["13"].Weight, details["822"].Weight)
+	}
+}
+
+func TestDetails_NoIDsMakesNoRequest(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("no ids should mean no upstream call")
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	details, err := client.Details(context.Background(), "test-token", nil)
+	if err != nil {
+		t.Fatalf("details: %v", err)
+	}
+	if len(details) != 0 {
+		t.Fatalf("expected no details, got %d", len(details))
+	}
+}
+
+func TestGetThing_ReadsThumbnailAndWeight(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/xml")
+		w.Write([]byte(`<?xml version="1.0"?>
+<items>
+	<item type="boardgame" id="13">
+		<image>https://example.com/catan.jpg</image>
+		<thumbnail>https://example.com/catan_t.png</thumbnail>
+		<name type="primary" value="Catan"/>
+		<yearpublished value="1995"/>
+		<statistics><ratings><averageweight value="2.2809"/></ratings></statistics>
+	</item>
+</items>`))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{BaseURL: server.URL, HTTPClient: server.Client()}
+	detail, err := client.GetThing(context.Background(), "test-token", "13")
+	if err != nil {
+		t.Fatalf("get thing: %v", err)
+	}
+	if detail.Weight != 2.2809 {
+		t.Fatalf("unexpected weight: %v", detail.Weight)
+	}
+	if detail.ThumbnailURL != "https://example.com/catan_t.png" {
+		t.Fatalf("unexpected thumbnail: %q", detail.ThumbnailURL)
 	}
 }

@@ -145,7 +145,7 @@ function capacityLabel(game: PickerGame, copies: number) {
 
     <p v-if="games.length === 0" class="empty-note">
       Il catalogo è vuoto:
-      <router-link to="/games/new">aggiungi un gioco</router-link>
+      <router-link :to="{ name: 'admin-game-new' }">aggiungi un gioco</router-link>
       e poi torna qui.
     </p>
 

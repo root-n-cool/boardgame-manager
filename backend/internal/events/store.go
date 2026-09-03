@@ -26,12 +26,25 @@ type Event struct {
 	EventDate   string
 	StartTime   string
 	ImagePath   *string
-	CreatedAt   time.Time
+	// Venue è il luogo della serata, nil quando l'admin non l'ha indicato.
+	Venue     *Venue
+	CreatedAt time.Time
 	// GamesCount is filled in by ListEvents only: the detail endpoints send
 	// the games themselves, so recomputing it there would be dead weight.
 	// It counts distinct games, not copies: two copies of Carcassonne are
 	// one game in "N giochi" rendered for a human reading the line-up.
 	GamesCount int
+}
+
+// Venue è dove si gioca. Address è l'unico campo che c'è sempre: Name è
+// l'etichetta che l'admin dà al posto ("Circolo Arci") quando quel nome
+// non sta già nell'indirizzo, e le coordinate ci sono solo se il luogo
+// arriva dalla ricerca su OpenStreetMap invece che dalla tastiera.
+type Venue struct {
+	Name    string
+	Address string
+	Lat     *float64
+	Lon     *float64
 }
 
 // EventGame è una singola copia di un gioco dentro un evento. Due copie
@@ -46,6 +59,19 @@ type EventGame struct {
 	// cui la copia è entrata nell'evento: cambiare il catalogo dopo non
 	// muove la capienza di una serata già aperta alle prenotazioni.
 	Seats int
+}
+
+// EventInput è una serata come l'admin la descrive: i suoi dati più i
+// giochi che ci saranno. Sta in una struct perché i campi hanno superato
+// il numero oltre il quale una lista di parametri posizionali di stringhe
+// si scambia senza che il compilatore se ne accorga.
+type EventInput struct {
+	Title       string
+	Description *string
+	EventDate   string
+	StartTime   string
+	Venue       *Venue
+	Games       []EventGameInput
 }
 
 // EventGameInput è come l'admin descrive un gioco: quante copie ne porta.
@@ -81,7 +107,7 @@ type execer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func (s *Store) CreateEvent(ctx context.Context, title string, description *string, eventDate, startTime string, gamesInput []EventGameInput) (Event, error) {
+func (s *Store) CreateEvent(ctx context.Context, in EventInput) (Event, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Event{}, err
@@ -89,8 +115,9 @@ func (s *Store) CreateEvent(ctx context.Context, title string, description *stri
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO events (title, description, event_date, start_time) VALUES (?, ?, ?, ?)`,
-		title, description, eventDate, startTime,
+		`INSERT INTO events (title, description, event_date, start_time, venue_name, venue_address, venue_lat, venue_lon)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		append([]any{in.Title, in.Description, in.EventDate, in.StartTime}, venueColumns(in.Venue)...)...,
 	)
 	if err != nil {
 		return Event{}, err
@@ -100,7 +127,7 @@ func (s *Store) CreateEvent(ctx context.Context, title string, description *stri
 		return Event{}, err
 	}
 
-	if err := insertEventGames(ctx, tx, eventID, gamesInput); err != nil {
+	if err := insertEventGames(ctx, tx, eventID, in.Games); err != nil {
 		return Event{}, err
 	}
 
@@ -160,9 +187,13 @@ func (s *Store) GetEvent(ctx context.Context, id int64) (Event, error) {
 func getEvent(ctx context.Context, q queryer, id int64) (Event, error) {
 	var e Event
 	var createdAt string
+	var venue venueScan
 	err := q.QueryRowContext(ctx,
-		`SELECT id, title, description, event_date, start_time, image_path, created_at FROM events WHERE id = ?`, id,
-	).Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.ImagePath, &createdAt)
+		`SELECT id, title, description, event_date, start_time, image_path,
+		        venue_name, venue_address, venue_lat, venue_lon, created_at
+		 FROM events WHERE id = ?`, id,
+	).Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.ImagePath,
+		&venue.name, &venue.address, &venue.lat, &venue.lon, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Event{}, ErrNotFound
 	}
@@ -170,7 +201,43 @@ func getEvent(ctx context.Context, q queryer, id int64) (Event, error) {
 		return Event{}, err
 	}
 	e.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	e.Venue = venue.venue()
 	return e, nil
+}
+
+// venueColumns traduce il luogo nei quattro valori delle sue colonne:
+// senza luogo sono quattro NULL, ed è così che l'admin lo cancella.
+func venueColumns(v *Venue) []any {
+	if v == nil {
+		return []any{nil, nil, nil, nil}
+	}
+	var name any
+	if v.Name != "" {
+		name = v.Name
+	}
+	return []any{name, v.Address, v.Lat, v.Lon}
+}
+
+// venueScan raccoglie le quattro colonne come arrivano dal database.
+type venueScan struct {
+	name    sql.NullString
+	address sql.NullString
+	lat     sql.NullFloat64
+	lon     sql.NullFloat64
+}
+
+// venue ricompone il luogo, o nil se l'evento non ne ha uno. È l'indirizzo
+// a decidere: un luogo senza indirizzo non è un luogo.
+func (v venueScan) venue() *Venue {
+	if !v.address.Valid || v.address.String == "" {
+		return nil
+	}
+	out := &Venue{Name: v.name.String, Address: v.address.String}
+	if v.lat.Valid && v.lon.Valid {
+		lat, lon := v.lat.Float64, v.lon.Float64
+		out.Lat, out.Lon = &lat, &lon
+	}
+	return out
 }
 
 // ListEventsParams describes one page of the event list. The list is split in
@@ -201,7 +268,8 @@ func (s *Store) ListEvents(ctx context.Context, p ListEventsParams) ([]Event, in
 		return nil, 0, err
 	}
 
-	query := fmt.Sprintf(`SELECT e.id, e.title, e.description, e.event_date, e.start_time, e.image_path, e.created_at,
+	query := fmt.Sprintf(`SELECT e.id, e.title, e.description, e.event_date, e.start_time, e.image_path,
+				e.venue_name, e.venue_address, e.venue_lat, e.venue_lon, e.created_at,
 			(SELECT COUNT(DISTINCT eg.game_id) FROM event_games eg WHERE eg.event_id = e.id)
 		 FROM events e
 		 WHERE e.event_date || ' ' || e.start_time %s ?
@@ -222,11 +290,13 @@ func (s *Store) ListEvents(ctx context.Context, p ListEventsParams) ([]Event, in
 	for rows.Next() {
 		var e Event
 		var createdAt string
-		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime,
-			&e.ImagePath, &createdAt, &e.GamesCount); err != nil {
+		var venue venueScan
+		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.ImagePath,
+			&venue.name, &venue.address, &venue.lat, &venue.lon, &createdAt, &e.GamesCount); err != nil {
 			return nil, 0, err
 		}
 		e.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		e.Venue = venue.venue()
 		out = append(out, e)
 	}
 	if err := rows.Err(); err != nil {
@@ -292,7 +362,7 @@ func (s *Store) RemainingCapacity(ctx context.Context, eventGameID int64) (int, 
 	return remaining, err
 }
 
-func (s *Store) UpdateEvent(ctx context.Context, id int64, title string, description *string, eventDate, startTime string, gamesInput []EventGameInput) (Event, error) {
+func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return Event{}, err
@@ -300,8 +370,9 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, title string, descrip
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`UPDATE events SET title = ?, description = ?, event_date = ?, start_time = ? WHERE id = ?`,
-		title, description, eventDate, startTime, id,
+		`UPDATE events SET title = ?, description = ?, event_date = ?, start_time = ?,
+		        venue_name = ?, venue_address = ?, venue_lat = ?, venue_lon = ? WHERE id = ?`,
+		append(append([]any{in.Title, in.Description, in.EventDate, in.StartTime}, venueColumns(in.Venue)...), id)...,
 	)
 	if err != nil {
 		return Event{}, err
@@ -335,7 +406,7 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, title string, descrip
 	// i posti prenotabili: se uno non esiste, si esce prima di scrivere.
 	seatsByGame := map[int64]int{}
 	wanted := map[int64]int{}
-	for _, g := range gamesInput {
+	for _, g := range in.Games {
 		seats, err := gameSeats(ctx, tx, g.GameID)
 		if err != nil {
 			return Event{}, err
@@ -353,7 +424,7 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, title string, descrip
 		}
 	}
 
-	for _, g := range gamesInput {
+	for _, g := range in.Games {
 		copies := copiesByGame[g.GameID]
 		switch {
 		case g.Copies < len(copies):

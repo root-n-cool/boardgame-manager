@@ -727,12 +727,18 @@ button.is-compact svg {
   height: 1rem;
 }
 
-/* Rimando indietro discreto (es. classifica -> scheda gioco). */
+/* Rimando indietro discreto (es. classifica -> scheda gioco). Il padding
+   serve al pollice — 44px di bersaglio sulle pagine pubbliche, dove si
+   torna indietro da telefono — e il margine negativo lo riallinea al
+   bordo del testo, così il rimando resta otticamente sulla colonna. */
 .back-link {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  margin-bottom: 0.9rem;
+  min-height: 44px;
+  padding: 0 0.6rem;
+  margin-left: -0.6rem;
+  margin-bottom: 0.35rem;
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--ink-muted);
@@ -741,6 +747,23 @@ button.is-compact svg {
 
 .back-link:hover {
   color: var(--accent);
+}
+
+/* Dove il rimando torna nella storia del browser invece di puntare a un
+   path fisso è un <button>, e va spogliato del riempimento che hanno gli
+   altri: stessa resa del router-link, comportamento diverso. */
+button.back-link {
+  border: 0;
+  background: none;
+}
+
+button.back-link:hover {
+  background: none;
+  color: var(--accent);
+}
+
+button.back-link:active {
+  transform: none;
 }
 
 /* ---------- Lo scaffale — griglia scatole di gioco (GamesView) ---------- */
@@ -1704,27 +1727,88 @@ ul.game-grid {
 }
 
 /* Il tavolo in feltro: le scatole dei giochi di un evento, pronte. */
+
+/* Titolo della sezione: sopra il feltro c'è la locandina, il luogo e la
+   mappa — senza una riga che dica "qui si sceglie" la griglia arriva senza
+   preavviso. */
+.table-heading {
+  margin: 2rem 0 0;
+  font-size: 1.15rem;
+}
+
+.table-note {
+  margin: 0.35rem 0 0;
+  color: var(--ink-muted);
+}
+
+/* Il riepilogo del codice dopo la chiusura della modale: non è un blocco di
+   testo qualsiasi, è la cosa da non perdere, quindi prende il bordo oro e
+   sta sopra al tavolo. */
+.booking-recap {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin: 1.5rem 0 0;
+  padding: 1rem 1.1rem;
+  background: var(--card);
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+}
+
+.booking-recap h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+/* Più codici nella stessa visita — un telefono che prenota per il tavolo —
+   restano blocchi separati da una riga, non un muro di testo. */
+.booking-recap > .booking-confirmation + .booking-confirmation {
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--card-line);
+}
+
+.recap-hint {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+.booking-recap .booking-code-card {
+  border-color: var(--card-line);
+  box-shadow: none;
+}
+
+/* Quattro scatole per riga su desktop, due sul telefono: le colonne sono
+   elastiche (`1fr`) e il minimo basso, così il tavolo si riempie sempre
+   invece di lasciare una fascia di feltro vuota a destra. */
 .event-games {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 210px));
-  width: fit-content;
-  max-width: 100%;
-  gap: 1.1rem;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 1rem;
   list-style: none;
   padding: 1.25rem;
-  margin: 1.1rem 0;
+  margin: 1rem 0 1.75rem;
   background: var(--felt);
   border-radius: var(--radius);
   background-image: radial-gradient(circle at 15% 10%, rgb(255 255 255 / 5%), transparent 55%);
 }
 
-/* La card è una colonna e l'azione è ancorata in fondo: con una riga di
+/* La card è una colonna e le azioni sono ancorate in fondo: con una riga di
    posti su un tavolo e nessuna su una copia singola, i "Prenota" della
    stessa fila resterebbero a tre altezze diverse. */
 .event-games li {
   display: flex;
   flex-direction: column;
+  /* La regola base delle <li> centra e distribuisce agli estremi: qui i figli
+     devono occupare la card per intero (nome a sinistra, "Prenota" a piena
+     larghezza), quindi entrambe vanno dichiarate. */
+  align-items: stretch;
+  justify-content: flex-start;
   background: var(--card);
+  /* Il bordo c'è sempre, trasparente a riposo: la copia presa lo colora e
+     basta, invece di aggiungere 2px di larghezza solo a lei e sfalsare le
+     copertine della stessa riga. */
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
   padding: 0;
   text-align: left;
@@ -1734,6 +1818,11 @@ ul.game-grid {
 
 .event-games img {
   width: 100%;
+  /* Gli attributi width/height del markup sono hint presentazionali: senza un
+     `height` d'autore che li scavalchi, l'altezza fissa vince su aspect-ratio
+     e la copertina si allunga. */
+  height: auto;
+  flex: none;
   aspect-ratio: 3 / 4;
   object-fit: cover;
   display: block;
@@ -1742,27 +1831,108 @@ ul.game-grid {
   border-bottom: 1px solid var(--card-line);
 }
 
-.event-games a {
-  display: block;
-  margin: 0.75rem 0.8rem 0.15rem;
+.event-game-body {
+  padding: 0.7rem 0.8rem 0;
+}
+
+.event-games h3 {
+  margin: 0;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 0.98rem;
   font-weight: 600;
-  text-decoration: none;
+  line-height: 1.3;
   color: var(--ink);
 }
 
 /* Non è un dato da ricopiare come un booking code o un punteggio: è una riga
    di stato ("3 posti prenotabili liberi"), quindi voce di testo corrente — e
-   in mono andava a capo dentro una card da 210px. */
+   in mono andava a capo dentro una card stretta. */
 .event-games p {
-  margin: 0 0.8rem 0.4rem;
-  font-size: 0.8rem;
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
   color: var(--ink-muted);
 }
 
+/* Le azioni stanno in fondo alla card: `margin-top: auto` le spinge giù
+   qualunque sia l'altezza del nome, così la fila resta allineata. */
+.event-game-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.45rem;
+  margin-top: auto;
+  padding: 0.7rem 0.8rem 0.75rem;
+}
+
+/* "Prenota" è l'azione della pagina, non un "Rimuovi": la regola base
+   `li button` colora d'allarme ogni bottone dentro una lista, e qui va
+   scavalcata per riportare il bottone primario pieno. */
 .event-games button {
   display: block;
-  width: calc(100% - 1.6rem);
-  margin: auto 0.8rem 0.8rem;
+  width: 100%;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.88rem;
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.event-games button:hover {
+  background: var(--accent-deep);
+  border-color: var(--accent-deep);
+}
+
+/* Il rimando alla scheda — manuali, video, classifica — è secondario al
+   "Prenota" e lo dice restando un link di testo. */
+.detail-link {
+  align-self: flex-start;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.detail-link:hover {
+  text-decoration: underline;
+}
+
+/* ---------- La difficoltà (GameDifficulty.vue) ---------- */
+
+/* Cinque pip come una faccia di dado: quanti sono accesi si vede prima di
+   leggere la parola, ed è quello che serve scorrendo il tavolo. */
+.game-difficulty {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+}
+
+/* Dentro la card vince `.event-games p` sul colore e sul corpo: qui serve
+   una specificità pari, non un !important. */
+.event-games .game-difficulty {
+  font-size: 0.76rem;
+  color: var(--gold-text);
+}
+
+.difficulty-pips {
+  display: inline-flex;
+  flex: none;
+  gap: 2px;
+}
+
+.difficulty-pips span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  /* L'oro pieno sfiora il 3:1 su cartoncino e ci scende sotto sulla card
+     spenta di una copia presa: il contorno porta il contrasto, il
+     riempimento porta il colore. */
+  border: 1px solid var(--gold-text);
+  background: transparent;
+}
+
+.difficulty-pips span.is-on {
+  background: var(--gold);
 }
 
 /* Una scatola presa esce di gioco: il cartoncino passa al tono spento, la
@@ -1772,7 +1942,7 @@ ul.game-grid {
 .event-games li.is-full {
   background: var(--card-alt);
   box-shadow: none;
-  border: 1px solid var(--card-line);
+  border-color: var(--card-line);
 }
 
 .event-games li.is-full img,
@@ -1780,13 +1950,14 @@ ul.game-grid {
   filter: saturate(0.35) brightness(0.94);
 }
 
-.event-games li.is-full a {
+.event-games li.is-full h3 {
   color: var(--ink-muted);
 }
 
+/* La pastiglia è larga quanto la parola: stirata su tutta la card passerebbe
+   per un bottone disabilitato al posto del "Prenota" che non c'è. */
 .event-games .seat-state {
-  align-self: flex-start;
-  margin: auto 0.8rem 0.8rem;
+  display: inline-block;
   padding: 0.16rem 0.5rem;
   border: 1px solid var(--card-line);
   border-radius: 999px;
@@ -1798,15 +1969,13 @@ ul.game-grid {
   letter-spacing: 0.02em;
 }
 
-/* Sotto i 560px il tavolo occupa la pagina invece di restare una striscia:
-   con le colonne bloccate a 210px e la larghezza a contenuto, una serata con
-   una sola colonna di copie lasciava il feltro largo un quarto di schermo. */
+/* Sotto i 560px il feltro stringe i margini: due colonne devono restare due
+   anche su uno schermo da 360px, e il padding da 1.25rem se ne mangiava una. */
 @media (max-width: 560px) {
   .event-games {
-    width: auto;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-    gap: 0.8rem;
-    padding: 0.9rem;
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 0.7rem;
+    padding: 0.8rem;
   }
 }
 
@@ -2711,4 +2880,288 @@ tbody tr:nth-child(3) .rank-medal {
 
 .field-row > label {
   flex: 1 1 8rem;
+}
+
+/* ── Luogo dell'evento ──────────────────────────────────────────────────
+   Cercare un indirizzo è cercare un gioco su BGG: si scrive, la lista si
+   aggiorna da sé, si sceglie una riga. La differenza è la via d'uscita —
+   un circolo che su OpenStreetMap non esiste si scrive a mano, e allora
+   l'evento avrà l'indirizzo senza la mappa. */
+.venue-select {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.venue-combobox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  max-width: 30rem;
+}
+
+.venue-combobox input {
+  width: 100%;
+}
+
+.venue-combobox .field-hint {
+  margin-top: 0.15rem;
+}
+
+.venue-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin: 0.3rem 0 0;
+  padding: 0.25rem;
+  list-style: none;
+  max-height: 18rem;
+  overflow-y: auto;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-card);
+}
+
+.venue-result {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.7rem;
+  /* Una riga di un solo rigo resterebbe sotto i 44px: qui si sceglie col
+     dito, e ogni riga è un bersaglio. */
+  min-height: 44px;
+  padding: 0.45rem 0.5rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.venue-result.is-active {
+  background: var(--accent-bg);
+}
+
+.venue-result-text,
+.venue-chosen-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+/* La via e il civico stanno su una riga sola: se un indirizzo lungo andasse
+   a capo, due righe della lista sembrerebbero una sola voce. */
+.venue-line,
+.venue-address {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Comune, provincia, nazione: il contorno che distingue due vie omonime.
+   Sta sotto e in mono, come ogni dato secondario dell'app. */
+.venue-meta {
+  font-family: 'Data', monospace;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Scelto l'indirizzo, la ricerca lascia il posto alla riga di conferma —
+   e sotto resta il solo campo che la mappa non sa compilare: l'insegna. */
+.venue-chosen {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  max-width: 30rem;
+  padding: 0.6rem 0.7rem;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+}
+
+.venue-chosen > button {
+  flex: none;
+  margin-left: auto;
+}
+
+.venue-pin {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  color: var(--accent);
+}
+
+.venue-pin svg {
+  width: 1.35rem;
+  height: 1.35rem;
+}
+
+.venue-name-field {
+  max-width: 30rem;
+}
+
+/* La scorciatoia per l'indirizzo che la mappa non conosce: sta sotto la
+   nota di stato perché è la risposta a "nessun indirizzo trovato". */
+.venue-manual {
+  align-self: flex-start;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.venue-select .error-text {
+  color: var(--danger);
+}
+
+/* Il luogo sulla card di un evento: l'insegna, non l'indirizzo completo —
+   in un elenco serve riconoscere il posto, non arrivarci. */
+.event-card-venue {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.2rem;
+  min-width: 0;
+}
+
+/* Il nome del posto è testo corrente, non un'etichetta in evidenza: sulla
+   card pesa quanto la riga dei giochi. Tronca invece di andare a capo — in
+   una griglia, due card devono restare alte uguali. */
+.event-card-venue-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-card-venue svg {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  color: var(--ink-muted);
+}
+
+/* ── La mappina sulla pagina pubblica ───────────────────────────────────
+   Sotto la riga del luogo, come conferma visiva: "è quel posto lì". Si
+   guarda dal telefono in piedi, quindi è bassa e non cattura lo scorrimento
+   — chi deve muoversi davvero esce con "Apri in mappe". */
+.event-venue {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+/* La riga del luogo: il pin fa da insegna come il calendario per la data,
+   ma qui il testo può essere due righe — quindi il pin si allinea in alto,
+   non al centro di un blocco. */
+.event-venue-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.event-venue-line svg {
+  flex: none;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: 0.2rem;
+  color: var(--ink-muted);
+}
+
+/* L'indirizzo per esteso sotto l'insegna: è quello che si copia in un
+   navigatore, quindi va per intero e può andare a capo. */
+.event-venue-address {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.event-map {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  /* Su schermo largo la colonna arriva a 56rem: una mappa tirata fin lì
+     diventa una fessura panoramica. Resta una mappina. */
+  max-width: 34rem;
+}
+
+.event-map-canvas {
+  height: 220px;
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  background: var(--card-alt);
+  overflow: hidden;
+  z-index: 0;
+}
+
+/* Il puntino è il colore d'accento dell'app, non l'icona di Leaflet: la
+   mappa è un pezzo della pagina, non un widget incollato sopra. */
+.event-map-pin .event-map-pin-dot {
+  display: block;
+  width: 18px;
+  height: 18px;
+  margin: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--card);
+  box-shadow: 0 1px 4px rgb(36 31 24 / 45%);
+}
+
+.event-map-caption {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.event-map-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 500;
+}
+
+.event-map-link svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
+/* Leaflet porta con sé i suoi caratteri e i suoi colori: qui la mappa parla
+   la lingua del resto della pagina. */
+.event-map-canvas .leaflet-container {
+  font-family: inherit;
+  background: var(--card-alt);
+}
+
+.event-map-canvas .leaflet-control-attribution {
+  background: color-mix(in srgb, var(--card) 85%, transparent);
+  color: var(--ink-muted);
+  font-family: inherit;
+  font-size: 0.7rem;
+}
+
+.event-map-canvas .leaflet-control-attribution a {
+  color: var(--ink-muted);
+}
+
+.event-map-canvas .leaflet-control-zoom a {
+  color: var(--ink);
+  background: var(--card);
+  border-color: var(--card-line);
 }

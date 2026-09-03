@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Workspace di lavoro degli agenti (ledger, brief, review): scratch locale.
+.superpowers/

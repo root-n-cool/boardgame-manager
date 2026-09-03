@@ -11,6 +11,7 @@ import (
 	"boardgames-manager/internal/db"
 	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/games"
+	"boardgames-manager/internal/geocode"
 	"boardgames-manager/internal/httpapi"
 	"boardgames-manager/internal/leaderboard"
 	"boardgames-manager/internal/settings"
@@ -52,6 +53,7 @@ func main() {
 		Leaderboard: leaderboard.NewStore(conn),
 		Storage:     storage.NewStore(dataDir + "/uploads"),
 		BGG:         bgg.NewHTTPClient(),
+		Geocode:     geocode.NewHTTPClient(),
 	}
 
 	apiRouter := httpapi.NewRouter(server)

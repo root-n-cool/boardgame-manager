@@ -11,6 +11,7 @@ import (
 	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/games"
+	"boardgames-manager/internal/geocode"
 	"boardgames-manager/internal/leaderboard"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
@@ -26,6 +27,7 @@ type Server struct {
 	Leaderboard *leaderboard.Store
 	Storage     *storage.Store
 	BGG         bgg.Client
+	Geocode     geocode.Client
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -36,6 +38,10 @@ func NewRouter(s *Server) http.Handler {
 	bookingCredentialsLimiter := newRateLimiter(10, time.Minute)
 	matchResultLimiter := newRateLimiter(60, time.Minute)
 	inviteLimiter := newRateLimiter(10, time.Minute)
+	// Nominatim chiede al massimo una richiesta al secondo: 30 al minuto
+	// lasciano scrivere un indirizzo con calma e restano dentro il limite
+	// anche se due admin cercano insieme.
+	geocodeLimiter := newRateLimiter(30, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
@@ -66,6 +72,7 @@ func NewRouter(s *Server) http.Handler {
 		protected.Get("/api/settings", s.getSettingsHandler)
 		protected.Put("/api/settings", s.putSettingsHandler)
 		protected.Get("/api/games/search", s.searchGamesHandler)
+		protected.With(geocodeLimiter.middleware).Get("/api/geocode/search", s.searchPlacesHandler)
 		protected.Post("/api/games", s.createGameHandler)
 		protected.Patch("/api/games/{id}", s.updateGameHandler)
 		protected.Delete("/api/games/{id}", s.deleteGameHandler)
@@ -76,8 +83,10 @@ func NewRouter(s *Server) http.Handler {
 		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}", s.deleteMediaHandler)
 		protected.Post("/api/events", s.createEventHandler)
 		protected.Put("/api/events/{id}", s.updateEventHandler)
+		protected.Post("/api/events/{id}/image", s.uploadEventImageHandler)
 		protected.Delete("/api/events/{id}", s.deleteEventHandler)
 		protected.Get("/api/events/{id}/bookings", s.listEventBookingsHandler)
+		protected.Delete("/api/bookings/{id}", s.adminCancelBookingHandler)
 		protected.Get("/api/events/{id}/match-results", s.listEventMatchResultsHandler)
 	})
 

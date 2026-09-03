@@ -13,7 +13,7 @@ async function submit() {
   error.value = ''
   try {
     await auth.bootstrap(email.value, password.value)
-    router.push({ name: 'users' })
+    router.push({ name: 'admin-events' })
   } catch (e) {
     error.value = (e as Error).message
   }

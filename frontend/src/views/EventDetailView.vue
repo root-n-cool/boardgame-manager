@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
+import BookingConfirmation from '../components/BookingConfirmation.vue'
+import GameDifficulty from '../components/GameDifficulty.vue'
+import ModalDialog from '../components/ModalDialog.vue'
 import PublicHeader from '../components/PublicHeader.vue'
 import { formatEventDateTime } from '../utils/dates'
 
@@ -13,6 +16,7 @@ interface EventGameInfo {
   copyIndex: number
   seats: number
   remaining: number
+  weight: number | null
 }
 
 interface EventDetail {
@@ -22,13 +26,32 @@ interface EventDetail {
   eventDate: string
   startTime: string
   imagePath: string | null
+  venue: EventVenue | null
   games: EventGameInfo[]
+}
+
+interface EventVenue {
+  name: string
+  address: string
+  lat: number | null
+  lon: number | null
 }
 
 interface BookingResult {
   id: number
   bookingCode: string
 }
+
+/** Una prenotazione andata a buon fine in questa visita alla pagina. */
+interface ConfirmedBooking {
+  code: string
+  label: string
+  multiSeat: boolean
+}
+
+// Leaflet pesa quanto tutto il resto dell'app: si scarica solo quando un
+// evento ha davvero delle coordinate da mostrare, non a ogni pagina aperta.
+const EventMap = defineAsyncComponent(() => import('../components/EventMap.vue'))
 
 const route = useRoute()
 const eventId = route.params.id as string
@@ -37,15 +60,37 @@ const event = ref<EventDetail | null>(null)
 const error = ref('')
 
 const selectedEventGameId = ref<number | null>(null)
+const bookingOpen = ref(false)
 const participantName = ref('')
 const participantEmail = ref('')
 const participantPhone = ref('')
 const bookingError = ref('')
 const bookingResult = ref<BookingResult | null>(null)
 
+/**
+ * I codici già confermati restano qui, e nessuno li cancella: al tavolo un
+ * telefono solo prenota per due o tre persone, e ogni codice si vede una
+ * volta sola — aprire la modale per il tavolo successivo non può far
+ * sparire quello di prima.
+ */
+const confirmed = ref<ConfirmedBooking[]>([])
+
 async function load() {
   event.value = await api.get<EventDetail>(`/events/${eventId}`)
 }
+
+/**
+ * Cosa si legge sulla riga del luogo: l'insegna se c'è, e sotto l'indirizzo
+ * per intero — è quello che si copia in un navigatore, o si legge a voce a
+ * chi sta guidando.
+ */
+const venueLines = computed(() => {
+  const venue = event.value?.venue
+  if (!venue) {
+    return null
+  }
+  return { title: venue.name || venue.address, detail: venue.name ? venue.address : '' }
+})
 
 const hasStarted = computed(() => {
   if (!event.value) {
@@ -55,15 +100,26 @@ const hasStarted = computed(() => {
   return startsAt <= new Date()
 })
 
+/**
+ * Il form riparte vuoto a ogni tavolo: chi prenota una seconda copia è
+ * un'altra persona — un solo booking attivo per telefono — e ritrovare i
+ * dati del compagno precompilati porta solo a prenotare a nome suo.
+ */
 function startBooking(eventGameId: number) {
   selectedEventGameId.value = eventGameId
+  participantName.value = ''
+  participantEmail.value = ''
+  participantPhone.value = ''
   bookingError.value = ''
   bookingResult.value = null
+  bookingOpen.value = true
 }
 
 const selectedGame = computed(
   () => event.value?.games.find((g) => g.eventGameId === selectedEventGameId.value) ?? null,
 )
+
+const selectedLabel = computed(() => (selectedGame.value ? copyLabel(selectedGame.value) : ''))
 
 /** Quante copie ha ogni gioco in questo evento. */
 const copiesByGame = computed(() => {
@@ -109,11 +165,17 @@ async function submitBooking() {
     return
   }
   try {
-    bookingResult.value = await api.post<BookingResult>(`/events/${eventId}/bookings`, {
+    const result = await api.post<BookingResult>(`/events/${eventId}/bookings`, {
       eventGameId: selectedEventGameId.value,
       participantName: participantName.value,
       participantEmail: participantEmail.value,
       participantPhone: participantPhone.value,
+    })
+    bookingResult.value = result
+    confirmed.value.push({
+      code: result.bookingCode,
+      label: selectedLabel.value,
+      multiSeat: !!selectedGame.value && selectedGame.value.seats > 1,
     })
     await load()
   } catch (e) {
@@ -134,6 +196,7 @@ onMounted(async () => {
   <div>
     <PublicHeader />
     <div class="public-page" v-if="event">
+      <router-link :to="{ name: 'events' }" class="back-link">&larr; Eventi</router-link>
       <img
         v-if="event.imagePath"
         :src="`/api/uploads/${event.imagePath}`"
@@ -154,9 +217,64 @@ onMounted(async () => {
         {{ formatEventDateTime(event.eventDate, event.startTime) }}
       </p>
 
+      <div v-if="event.venue && venueLines" class="event-venue">
+        <p class="event-venue-line">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11Z"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+            <circle cx="12" cy="10" r="2.4" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+          <span>
+            {{ venueLines.title }}
+            <span v-if="venueLines.detail" class="event-venue-address">{{ venueLines.detail }}</span>
+          </span>
+        </p>
+        <EventMap
+          v-if="event.venue.lat !== null && event.venue.lon !== null"
+          :lat="event.venue.lat"
+          :lon="event.venue.lon"
+          :label="venueLines.title"
+        />
+      </div>
+
+      <!-- Il codice si vede una volta sola: chiusa la modale resta qui, in
+           cima al tavolo, finché la pagina non viene lasciata. -->
+      <section v-if="confirmed.length > 0" class="booking-recap">
+        <h2>{{ confirmed.length > 1 ? 'Le tue prenotazioni' : 'La tua prenotazione' }}</h2>
+        <BookingConfirmation
+          v-for="b in confirmed"
+          :key="b.code"
+          :game-label="b.label"
+          :code="b.code"
+          :multi-seat="b.multiSeat"
+          :hint="false"
+        />
+        <p class="recap-hint">
+          {{ confirmed.length > 1 ? 'Conservali' : 'Conservalo' }} per gestire la prenotazione o
+          inserire il punteggio finale da "Gestisci prenotazione".
+        </p>
+      </section>
+
+      <h2 class="table-heading">Al tavolo</h2>
+      <p v-if="hasStarted" class="table-note">
+        Questo evento è già iniziato: non è più possibile prenotare.
+      </p>
+
       <ul class="event-games">
         <li v-for="g in event.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
-          <img v-if="g.coverPath" :src="`/api/uploads/${g.coverPath}`" :alt="g.name" />
+          <img
+            v-if="g.coverPath"
+            :src="`/api/uploads/${g.coverPath}`"
+            :alt="g.name"
+            width="300"
+            height="400"
+            loading="lazy"
+            decoding="async"
+          />
           <div v-else class="cover-placeholder" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
               <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />
@@ -167,25 +285,59 @@ onMounted(async () => {
               <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
             </svg>
           </div>
-          <router-link :to="`/games/${g.gameId}`">{{ copyLabel(g) }}</router-link>
-          <p v-if="isFull(g)" class="seat-state">Al completo</p>
-          <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
-          <button v-if="!hasStarted && !isFull(g)" type="button" @click="startBooking(g.eventGameId)">
-            Prenota
-          </button>
+          <div class="event-game-body">
+            <h3>{{ copyLabel(g) }}</h3>
+            <GameDifficulty :weight="g.weight" />
+            <p v-if="isFull(g)" class="seat-state">Al completo</p>
+            <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
+          </div>
+          <div class="event-game-actions">
+            <button
+              v-if="!hasStarted && !isFull(g)"
+              type="button"
+              @click="startBooking(g.eventGameId)"
+            >
+              Prenota
+            </button>
+            <router-link class="detail-link" :to="`/games/${g.gameId}`">
+              Dettagli
+              <span aria-hidden="true">&rarr;</span>
+              <span class="visually-hidden">di {{ copyLabel(g) }}</span>
+            </router-link>
+          </div>
         </li>
       </ul>
+      <p v-if="event.games.length === 0" class="empty-note">
+        Per questa serata non è ancora stato messo in tavola nessun gioco.
+      </p>
+    </div>
 
-      <p v-if="hasStarted">Questo evento è già iniziato: non è più possibile prenotare.</p>
+    <div class="public-page" v-else-if="error">
+      <router-link :to="{ name: 'events' }" class="back-link">&larr; Eventi</router-link>
+      <p class="error">{{ error }}</p>
+    </div>
 
-      <form
-        v-if="selectedEventGameId !== null && !bookingResult && !hasStarted"
-        @submit.prevent="submitBooking"
-      >
-        <h2>Prenota: {{ selectedGame ? copyLabel(selectedGame) : '' }}</h2>
+    <ModalDialog
+      :open="bookingOpen"
+      :title="bookingResult ? 'Prenotazione confermata' : `Prenota: ${selectedLabel}`"
+      @close="bookingOpen = false"
+    >
+      <template v-if="bookingResult">
+        <BookingConfirmation
+          :game-label="selectedLabel"
+          :code="bookingResult.bookingCode"
+          :multi-seat="!!selectedGame && selectedGame.seats > 1"
+        />
+        <div class="form-actions">
+          <button type="button" @click="bookingOpen = false">Ho segnato il codice</button>
+        </div>
+      </template>
+      <form v-else @submit.prevent="submitBooking">
         <label>
           Nome
-          <input v-model="participantName" required />
+          <!-- Il <dialog> nativo rispetta autofocus: al tavolo, da telefono,
+               si prenota con la tastiera già aperta sul primo campo. -->
+          <input v-model="participantName" autofocus required />
         </label>
         <label>
           Email
@@ -195,26 +347,12 @@ onMounted(async () => {
           Telefono
           <input v-model="participantPhone" required />
         </label>
-        <button type="submit">Conferma prenotazione</button>
         <p v-if="bookingError" class="error">{{ bookingError }}</p>
-      </form>
-
-      <div v-if="bookingResult">
-        <p class="success">
-          Prenotazione confermata per {{ selectedGame ? copyLabel(selectedGame) : '' }}!
-        </p>
-        <div class="booking-code-card">
-          <span class="label">Il tuo codice</span>
-          <span class="booking-code">{{ bookingResult.bookingCode }}</span>
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" @click="bookingOpen = false">Annulla</button>
+          <button type="submit">Conferma prenotazione</button>
         </div>
-        <p>Conservalo per gestire la prenotazione o inserire il punteggio finale da "Gestisci prenotazione".</p>
-        <p v-if="selectedGame && selectedGame.seats > 1">
-          Questo tavolo ha più posti prenotabili, uno a testa: il punteggio finale è uno per
-          tavolo e chiunque sieda qui può inserirlo o correggerlo con il proprio codice.
-        </p>
-      </div>
-
-      <p v-if="error" class="error">{{ error }}</p>
-    </div>
+      </form>
+    </ModalDialog>
   </div>
 </template>

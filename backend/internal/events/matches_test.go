@@ -14,8 +14,12 @@ func TestSubmitMatchResult_CreatesAndReturnsPlayers(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -43,8 +47,12 @@ func TestSubmitMatchResult_ResubmittingReplacesPlayersWithoutDuplicating(t *test
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -81,8 +89,12 @@ func TestSubmitMatchResult_RejectsWrongCode(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -103,8 +115,12 @@ func TestSubmitMatchResult_RejectsCancelledBooking(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -128,8 +144,12 @@ func TestSubmitMatchResult_RejectsEmptyPlayers(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -150,8 +170,12 @@ func TestCancelBooking_DeletesExistingMatchResult(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -184,8 +208,12 @@ func TestGetMatchResultForEventGame_ReturnsNilWhenNoneSubmitted(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, "Serata giochi", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -267,8 +295,12 @@ func TestListMatchResultsForEvent_OneRowPerCopy(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
 	gameID := mustCreateGame(t, gameStore, "Carcassonne")
-	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 2}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 2}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}

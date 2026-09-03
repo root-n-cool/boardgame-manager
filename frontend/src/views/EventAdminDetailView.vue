@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import EventImagePicker from '../components/EventImagePicker.vue'
 import EventGamesPicker, { type PickerGame, type SelectedGame } from '../components/EventGamesPicker.vue'
+import VenueSearchSelect, { type Venue } from '../components/VenueSearchSelect.vue'
 import { formatEventDateTime } from '../utils/dates'
 
 interface EventGameInfo {
@@ -22,6 +23,7 @@ interface EventDetail {
   eventDate: string
   startTime: string
   imagePath: string | null
+  venue: Venue | null
   games: EventGameInfo[]
 }
 
@@ -59,6 +61,7 @@ const title = ref('')
 const description = ref('')
 const eventDate = ref('')
 const startTime = ref('')
+const venue = ref<Venue | null>(null)
 const error = ref('')
 const saveMessage = ref('')
 const saving = ref(false)
@@ -128,6 +131,7 @@ async function load() {
   eventDate.value = event.eventDate
   startTime.value = event.startTime
   imagePath.value = event.imagePath
+  venue.value = event.venue
   eventTitle.value = event.title
   eventWhen.value = formatEventDateTime(event.eventDate, event.startTime)
   availableGames.value = games
@@ -177,6 +181,7 @@ async function saveEvent() {
       description: description.value || null,
       eventDate: eventDate.value,
       startTime: startTime.value,
+      venue: venue.value,
       games: selectedGames.value,
     })
     saveMessage.value = 'Salvato'
@@ -320,6 +325,11 @@ onMounted(async () => {
           Ora
           <input v-model="startTime" type="time" required />
         </label>
+
+        <div class="field-block">
+          <span class="field-label">Luogo <span class="field-optional">(opzionale)</span></span>
+          <VenueSearchSelect v-model="venue" />
+        </div>
       </div>
 
       <div class="panel-card">

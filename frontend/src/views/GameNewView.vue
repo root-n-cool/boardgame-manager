@@ -69,7 +69,7 @@ async function createGame() {
           seats: seats.value,
         }
     const game = await api.post<{ id: number }>('/games', payload)
-    router.push(`/games/${game.id}`)
+    router.push({ name: 'admin-game-detail', params: { id: game.id } })
   } catch (e) {
     error.value = (e as Error).message
   } finally {
@@ -80,7 +80,7 @@ async function createGame() {
 
 <template>
   <div>
-    <router-link to="/games" class="back-link">&larr; Catalogo</router-link>
+    <router-link :to="{ name: 'admin-games' }" class="back-link">&larr; Catalogo</router-link>
 
     <div class="page-head">
       <div class="page-head-text">

@@ -8,6 +8,7 @@ import SettingsView from '../views/SettingsView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameNewView from '../views/GameNewView.vue'
 import GameDetailView from '../views/GameDetailView.vue'
+import GameAdminDetailView from '../views/GameAdminDetailView.vue'
 import GameLeaderboardView from '../views/GameLeaderboardView.vue'
 import EventsView from '../views/EventsView.vue'
 import EventDetailView from '../views/EventDetailView.vue'
@@ -43,22 +44,25 @@ const router = createRouter({
       path: '/admin',
       component: DashboardLayout,
       children: [
-        { path: '', redirect: '/users' },
+        { path: '', redirect: { name: 'admin-events' } },
         { path: 'events', name: 'admin-events', component: EventsAdminView },
         { path: 'events/new', name: 'admin-event-new', component: EventNewView },
         { path: 'events/:id', name: 'admin-event-detail', component: EventAdminDetailView },
+        { path: 'games', name: 'admin-games', component: GamesView },
+        { path: 'games/new', name: 'admin-game-new', component: GameNewView },
+        { path: 'games/:id', name: 'admin-game-detail', component: GameAdminDetailView },
+        { path: 'users', name: 'admin-users', component: UsersView },
+        { path: 'settings', name: 'admin-settings', component: SettingsView },
       ],
     },
-    {
-      path: '/',
-      component: DashboardLayout,
-      children: [
-        { path: 'users', name: 'users', component: UsersView },
-        { path: 'games', name: 'games', component: GamesView },
-        { path: 'games/new', name: 'game-new', component: GameNewView },
-        { path: 'settings', name: 'settings', component: SettingsView },
-      ],
-    },
+    // Le pagine di gestione stavano sulla root prima di finire sotto /admin:
+    // i vecchi indirizzi restano validi per i segnalibri di chi organizza.
+    // Attenzione all'ordine: /games/new e /games/:id sono path distinti, il
+    // redirect di /games non intercetta la scheda pubblica.
+    { path: '/games', redirect: { name: 'admin-games' } },
+    { path: '/games/new', redirect: { name: 'admin-game-new' } },
+    { path: '/users', redirect: { name: 'admin-users' } },
+    { path: '/settings', redirect: { name: 'admin-settings' } },
   ],
 })
 
@@ -78,7 +82,7 @@ router.beforeEach(async (to) => {
     return { name: 'setup' }
   }
   if (!auth.needsSetup && to.name === 'setup') {
-    return { name: 'users' }
+    return { name: 'admin-events' }
   }
   if (to.meta.public) {
     return true
@@ -87,7 +91,7 @@ router.beforeEach(async (to) => {
     return { name: 'login' }
   }
   if (auth.user && to.name === 'login') {
-    return { name: 'users' }
+    return { name: 'admin-events' }
   }
   return true
 })

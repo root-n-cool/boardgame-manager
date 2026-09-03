@@ -11,7 +11,17 @@ func toEventSummary(e events.Event) map[string]any {
 	return map[string]any{
 		"id": e.ID, "title": e.Title, "description": e.Description,
 		"eventDate": e.EventDate, "startTime": e.StartTime, "imagePath": e.ImagePath,
+		"venue": toVenueResponse(e.Venue),
 	}
+}
+
+// toVenueResponse manda il luogo, o null se l'evento non ne ha uno. Le
+// coordinate restano puntatori: la mappa si disegna solo quando ci sono.
+func toVenueResponse(v *events.Venue) map[string]any {
+	if v == nil {
+		return nil
+	}
+	return map[string]any{"name": v.Name, "address": v.Address, "lat": v.Lat, "lon": v.Lon}
 }
 
 // toEventListItem is the summary as the list endpoint sends it: same fields
@@ -25,7 +35,7 @@ func toEventListItem(e events.Event) map[string]any {
 func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int) map[string]any {
 	return map[string]any{
 		"eventGameId": eventGameID, "gameId": g.ID, "name": g.Name, "coverPath": g.CoverPath,
-		"copyIndex": copyIndex, "seats": seats, "remaining": remaining,
+		"copyIndex": copyIndex, "seats": seats, "remaining": remaining, "weight": g.Weight,
 	}
 }
 

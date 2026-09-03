@@ -31,9 +31,9 @@ async function logout() {
         Admin
       </span>
       <router-link :to="{ name: 'admin-events' }">Eventi</router-link>
-      <router-link :to="{ name: 'games' }">Giochi</router-link>
-      <router-link :to="{ name: 'users' }">Utenti</router-link>
-      <router-link :to="{ name: 'settings' }">Impostazioni</router-link>
+      <router-link :to="{ name: 'admin-games' }">Giochi</router-link>
+      <router-link :to="{ name: 'admin-users' }">Utenti</router-link>
+      <router-link :to="{ name: 'admin-settings' }">Impostazioni</router-link>
       <button @click="logout">Esci</button>
     </nav>
     <main>

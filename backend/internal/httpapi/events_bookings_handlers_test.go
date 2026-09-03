@@ -18,8 +18,12 @@ import (
 
 func createTestEvent(t *testing.T, server *httpapi.Server, gameID int64, copies int) int64 {
 	t.Helper()
-	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: copies}})
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2099-01-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: copies}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}

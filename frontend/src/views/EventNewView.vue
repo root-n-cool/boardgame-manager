@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../api/client'
 import EventImagePicker from '../components/EventImagePicker.vue'
 import EventGamesPicker, { type PickerGame, type SelectedGame } from '../components/EventGamesPicker.vue'
+import VenueSearchSelect, { type Venue } from '../components/VenueSearchSelect.vue'
 
 const router = useRouter()
 
@@ -11,6 +12,7 @@ const title = ref('')
 const description = ref('')
 const eventDate = ref('')
 const startTime = ref('')
+const venue = ref<Venue | null>(null)
 const error = ref('')
 const saving = ref(false)
 
@@ -53,6 +55,7 @@ async function createEvent() {
       description: description.value || null,
       eventDate: eventDate.value,
       startTime: startTime.value,
+      venue: venue.value,
       games: selectedGames.value,
     })
     // L'evento esiste già: se l'immagine non passa (formato, dimensione, rete)
@@ -126,6 +129,11 @@ onBeforeUnmount(releasePreview)
           Ora
           <input v-model="startTime" type="time" required />
         </label>
+
+        <div class="field-block">
+          <span class="field-label">Luogo <span class="field-optional">(opzionale)</span></span>
+          <VenueSearchSelect v-model="venue" />
+        </div>
       </div>
 
       <div class="panel-card">

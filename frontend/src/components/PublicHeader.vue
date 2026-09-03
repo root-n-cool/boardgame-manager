@@ -30,7 +30,7 @@ async function logout() {
     <nav>
       <router-link :to="{ name: 'manage-booking' }">Gestisci prenotazione</router-link>
       <template v-if="auth.user">
-        <router-link to="/games">Area admin</router-link>
+        <router-link to="/admin">Area admin</router-link>
         <button type="button" @click="logout">Esci</button>
       </template>
       <template v-else>

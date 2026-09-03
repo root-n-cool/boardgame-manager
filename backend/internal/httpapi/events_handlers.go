@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"boardgames-manager/internal/events"
@@ -102,7 +103,40 @@ type eventRequest struct {
 	Description *string            `json:"description"`
 	EventDate   string             `json:"eventDate"`
 	StartTime   string             `json:"startTime"`
+	Venue       *venueRequest      `json:"venue"`
 	Games       []eventGameRequest `json:"games"`
+}
+
+// venueRequest è il luogo come lo manda l'admin. Le coordinate sono
+// puntatori perché un indirizzo scritto a mano non ne ha: 0,0 sarebbe un
+// punto nel Golfo di Guinea, non "non lo so".
+type venueRequest struct {
+	Name    string   `json:"name"`
+	Address string   `json:"address"`
+	Lat     *float64 `json:"lat"`
+	Lon     *float64 `json:"lon"`
+}
+
+// toVenue valida il luogo e lo traduce per lo store. Il secondo valore è
+// false quando il luogo c'è ma non sta in piedi: un indirizzo vuoto, o
+// coordinate a metà o fuori scala.
+func toVenue(in *venueRequest) (*events.Venue, bool) {
+	if in == nil {
+		return nil, true
+	}
+	address := strings.TrimSpace(in.Address)
+	if address == "" {
+		return nil, false
+	}
+	if (in.Lat == nil) != (in.Lon == nil) {
+		return nil, false
+	}
+	if in.Lat != nil && (*in.Lat < -90 || *in.Lat > 90 || *in.Lon < -180 || *in.Lon > 180) {
+		return nil, false
+	}
+	return &events.Venue{
+		Name: strings.TrimSpace(in.Name), Address: address, Lat: in.Lat, Lon: in.Lon,
+	}, true
 }
 
 func toEventGameInputs(in []eventGameRequest) []events.EventGameInput {
@@ -113,40 +147,53 @@ func toEventGameInputs(in []eventGameRequest) []events.EventGameInput {
 	return out
 }
 
-func decodeEventRequest(r *http.Request) (eventRequest, bool) {
+// decodeEventInput legge e valida la serata che l'admin manda, e la
+// consegna già nella forma che lo store si aspetta.
+func decodeEventInput(r *http.Request) (events.EventInput, bool) {
 	var req eventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return eventRequest{}, false
+		return events.EventInput{}, false
 	}
 	if req.Title == "" || req.EventDate == "" || req.StartTime == "" {
-		return eventRequest{}, false
+		return events.EventInput{}, false
 	}
 	if _, err := time.Parse("2006-01-02", req.EventDate); err != nil {
-		return eventRequest{}, false
+		return events.EventInput{}, false
 	}
 	if _, err := time.Parse("15:04", req.StartTime); err != nil {
-		return eventRequest{}, false
+		return events.EventInput{}, false
+	}
+	venue, ok := toVenue(req.Venue)
+	if !ok {
+		return events.EventInput{}, false
 	}
 	seenGames := map[int64]bool{}
 	for _, g := range req.Games {
 		if g.Copies < 1 {
-			return eventRequest{}, false
+			return events.EventInput{}, false
 		}
 		if seenGames[g.GameID] {
-			return eventRequest{}, false
+			return events.EventInput{}, false
 		}
 		seenGames[g.GameID] = true
 	}
-	return req, true
+	return events.EventInput{
+		Title:       req.Title,
+		Description: req.Description,
+		EventDate:   req.EventDate,
+		StartTime:   req.StartTime,
+		Venue:       venue,
+		Games:       toEventGameInputs(req.Games),
+	}, true
 }
 
 func (s *Server) createEventHandler(w http.ResponseWriter, r *http.Request) {
-	req, ok := decodeEventRequest(r)
+	in, ok := decodeEventInput(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "title, eventDate and startTime are required")
 		return
 	}
-	event, err := s.Events.CreateEvent(r.Context(), req.Title, req.Description, req.EventDate, req.StartTime, toEventGameInputs(req.Games))
+	event, err := s.Events.CreateEvent(r.Context(), in)
 	if errors.Is(err, events.ErrGameNotFound) {
 		writeError(w, http.StatusBadRequest, "one of the selected games does not exist")
 		return
@@ -164,12 +211,12 @@ func (s *Server) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid event id")
 		return
 	}
-	req, ok := decodeEventRequest(r)
+	in, ok := decodeEventInput(r)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "title, eventDate and startTime are required")
 		return
 	}
-	event, err := s.Events.UpdateEvent(r.Context(), id, req.Title, req.Description, req.EventDate, req.StartTime, toEventGameInputs(req.Games))
+	event, err := s.Events.UpdateEvent(r.Context(), id, in)
 	switch {
 	case errors.Is(err, events.ErrNotFound):
 		writeError(w, http.StatusNotFound, "event not found")

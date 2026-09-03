@@ -58,8 +58,12 @@ func createEventsForList(t *testing.T, server *httpapi.Server, titledDates map[s
 	t.Helper()
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 	for title, date := range titledDates {
-		if _, err := server.Events.CreateEvent(context.Background(), title, nil, date, "20:00",
-			[]events.EventGameInput{{GameID: gameID, Copies: 1}}); err != nil {
+		if _, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+			Title:     title,
+			EventDate: date,
+			StartTime: "20:00",
+			Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+		}); err != nil {
 			t.Fatalf("create event %q: %v", title, err)
 		}
 	}
@@ -166,8 +170,12 @@ func TestGetEvent_ReturnsGamesWithRemainingCapacity(t *testing.T) {
 	router := httpapi.NewRouter(server)
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
-	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 3}})
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2099-01-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 3}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -303,8 +311,12 @@ func TestUpdateEvent_RejectsQuantityBelowActiveBookings(t *testing.T) {
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
-	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 2}})
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2099-01-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 2}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -340,8 +352,12 @@ func TestUpdateEvent_SucceedsAndChangesCopies(t *testing.T) {
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
-	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2099-01-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -382,8 +398,12 @@ func TestDeleteEvent_Succeeds(t *testing.T) {
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
-	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2099-01-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -420,8 +440,12 @@ func TestListEventBookings_ReturnsActiveBookings(t *testing.T) {
 	}
 	gameID := game.ID
 
-	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 2}})
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2099-01-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: gameID, Copies: 2}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -516,5 +540,181 @@ func TestCreateEvent_WithSeveralCopiesOfTheSameGame(t *testing.T) {
 	}
 	if detail.Games[0].GameID != gameID {
 		t.Fatalf("unexpected gameId %d", detail.Games[0].GameID)
+	}
+}
+
+func TestCreateEvent_KeepsTheVenueAndSendsItBack(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "password123")
+
+	body := `{"title":"Serata giochi","eventDate":"2099-01-01","startTime":"20:00",
+		"venue":{"name":"Circolo Arci","address":"Via Roma 1, Torino","lat":45.07,"lon":7.68}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var created struct {
+		ID    int64 `json:"id"`
+		Venue *struct {
+			Name    string   `json:"name"`
+			Address string   `json:"address"`
+			Lat     *float64 `json:"lat"`
+			Lon     *float64 `json:"lon"`
+		} `json:"venue"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if created.Venue == nil {
+		t.Fatal("expected the venue in the response")
+	}
+	if created.Venue.Name != "Circolo Arci" || created.Venue.Address != "Via Roma 1, Torino" {
+		t.Fatalf("unexpected venue: %+v", created.Venue)
+	}
+	if created.Venue.Lat == nil || *created.Venue.Lat != 45.07 {
+		t.Fatalf("expected the latitude, got %+v", created.Venue)
+	}
+
+	stored, err := server.Events.GetEvent(context.Background(), created.ID)
+	if err != nil {
+		t.Fatalf("get event: %v", err)
+	}
+	if stored.Venue == nil || stored.Venue.Address != "Via Roma 1, Torino" {
+		t.Fatalf("expected the venue stored, got %+v", stored.Venue)
+	}
+}
+
+// Un indirizzo scritto a mano non ha coordinate: l'evento lo accetta lo
+// stesso, ed è il caso in cui la pagina pubblica stampa solo la stringa.
+func TestCreateEvent_AcceptsAVenueWithoutCoordinates(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "password123")
+
+	body := `{"title":"Serata giochi","eventDate":"2099-01-01","startTime":"20:00",
+		"venue":{"address":"Via Roma 1, Torino"}}`
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateEvent_RejectsAnUnusableVenue(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "password123")
+
+	cases := map[string]string{
+		"venue senza indirizzo":   `{"name":"Circolo Arci","address":"  "}`,
+		"latitudine fuori scala":  `{"address":"Via Roma 1","lat":120,"lon":7.68}`,
+		"longitudine fuori scala": `{"address":"Via Roma 1","lat":45.07,"lon":-200}`,
+		"mezza coordinata":        `{"address":"Via Roma 1","lat":45.07}`,
+	}
+	for name, venue := range cases {
+		t.Run(name, func(t *testing.T) {
+			body := `{"title":"Serata giochi","eventDate":"2099-01-01","startTime":"20:00","venue":` + venue + `}`
+			req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewBufferString(body))
+			req.AddCookie(cookie)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusBadRequest {
+				t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestUpdateEvent_RemovesTheVenueWhenItIsLeftOut(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "password123")
+
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata giochi", EventDate: "2099-01-01", StartTime: "20:00",
+		Venue: &events.Venue{Name: "Circolo Arci", Address: "Via Roma 1, Torino"},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	body := `{"title":"Serata giochi","eventDate":"2099-01-01","startTime":"20:00","venue":null}`
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/events/%d", event.ID), bytes.NewBufferString(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	stored, err := server.Events.GetEvent(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("get event: %v", err)
+	}
+	if stored.Venue != nil {
+		t.Fatalf("expected the venue removed, got %+v", stored.Venue)
+	}
+}
+
+// La card di un gioco sulla pagina pubblica mostra la difficoltà: il peso BGG
+// deve arrivare insieme al resto della copia, e restare null quando il gioco
+// non ce l'ha (inserito a mano, o mai valutato su BGG).
+func TestGetEvent_ExposesGameWeight(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+
+	weight := 3.24
+	weighted, err := server.Games.CreateGame(context.Background(), games.Game{Name: "Terraforming Mars", Weight: &weight})
+	if err != nil {
+		t.Fatalf("create weighted game: %v", err)
+	}
+	plainID := createTestGameForEvent(t, server.Games, "Gioco fatto in casa")
+
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title:     "Serata giochi",
+		EventDate: "2099-01-01",
+		StartTime: "20:00",
+		Games: []events.EventGameInput{
+			{GameID: weighted.ID, Copies: 1},
+			{GameID: plainID, Copies: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d", event.ID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Games []struct {
+			Name   string   `json:"name"`
+			Weight *float64 `json:"weight"`
+		} `json:"games"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Games) != 2 {
+		t.Fatalf("expected 2 game copies, got %+v", body.Games)
+	}
+	byName := map[string]*float64{}
+	for _, g := range body.Games {
+		byName[g.Name] = g.Weight
+	}
+	if got := byName["Terraforming Mars"]; got == nil || *got != weight {
+		t.Fatalf("expected weight %v, got %v", weight, got)
+	}
+	if got := byName["Gioco fatto in casa"]; got != nil {
+		t.Fatalf("expected null weight for a game without one, got %v", *got)
 	}
 }

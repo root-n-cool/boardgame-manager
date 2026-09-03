@@ -33,8 +33,9 @@ func newTestStoreWithDB(t *testing.T) (*games.Store, *sql.DB) {
 	return games.NewStore(conn), conn
 }
 
-func strPtr(v string) *string { return &v }
-func intPtr(v int) *int       { return &v }
+func strPtr(v string) *string     { return &v }
+func intPtr(v int) *int           { return &v }
+func floatPtr(v float64) *float64 { return &v }
 
 func TestCreateAndGetGame(t *testing.T) {
 	store := newTestStore(t)
@@ -309,5 +310,37 @@ func TestUpdateGame_ChangesSeats(t *testing.T) {
 	}
 	if untouched.Seats != 7 {
 		t.Fatalf("expected seats to stay 7, got %d", untouched.Seats)
+	}
+}
+
+func TestGameWeight_RoundTripsAndUpdates(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := store.CreateGame(ctx, games.Game{Name: "Catan", Weight: floatPtr(2.2809)})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.Weight == nil || *created.Weight != 2.2809 {
+		t.Fatalf("unexpected weight after create: %v", created.Weight)
+	}
+
+	updated, err := store.UpdateGame(ctx, created.ID, games.GameUpdate{Weight: floatPtr(3.5)})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Weight == nil || *updated.Weight != 3.5 {
+		t.Fatalf("unexpected weight after update: %v", updated.Weight)
+	}
+}
+
+func TestGameWeight_DefaultsToUnknown(t *testing.T) {
+	store := newTestStore(t)
+	created, err := store.CreateGame(context.Background(), games.Game{Name: "Azul"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.Weight != nil {
+		t.Fatalf("expected no weight, got %v", *created.Weight)
 	}
 }

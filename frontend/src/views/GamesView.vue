@@ -33,7 +33,7 @@ onMounted(loadGames)
           {{ games.length === 0 ? 'Nessun gioco in catalogo' : games.length === 1 ? '1 gioco' : `${games.length} giochi` }}
         </p>
       </div>
-      <router-link to="/games/new" class="action-link is-compact">
+      <router-link :to="{ name: 'admin-game-new' }" class="action-link is-compact">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
         </svg>
@@ -44,7 +44,7 @@ onMounted(loadGames)
     <div class="game-grid">
       <ul role="list" class="game-grid-items">
         <li v-for="g in games" :key="g.id">
-          <router-link :to="`/games/${g.id}`">
+          <router-link :to="{ name: 'admin-game-detail', params: { id: g.id } }">
             <img
               v-if="g.coverPath"
               :src="`/api/uploads/${g.coverPath}`"
@@ -70,7 +70,7 @@ onMounted(loadGames)
           </router-link>
         </li>
       </ul>
-      <router-link to="/games/new" class="add-card">
+      <router-link :to="{ name: 'admin-game-new' }" class="add-card">
         <span class="add-slot" aria-hidden="true">
           <svg viewBox="0 0 24 24" fill="none">
             <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />

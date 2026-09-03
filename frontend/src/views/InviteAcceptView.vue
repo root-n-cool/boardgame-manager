@@ -57,7 +57,7 @@ async function submit() {
   saving.value = true
   try {
     await auth.acceptInvite(token, password.value)
-    router.push({ name: 'users' })
+    router.push({ name: 'admin-events' })
   } catch (e) {
     error.value = toItalian((e as Error).message)
   } finally {

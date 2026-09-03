@@ -36,8 +36,12 @@ func TestGetLeaderboard_AggregatesWinsAndAveragesAcrossEvents(t *testing.T) {
 		t.Fatalf("create game: %v", err)
 	}
 
-	event1, err := eventStore.CreateEvent(ctx, "Serata 1", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: game.ID, Copies: 2}})
+	event1, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata 1",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: game.ID, Copies: 2}},
+	})
 	if err != nil {
 		t.Fatalf("create event 1: %v", err)
 	}
@@ -53,8 +57,12 @@ func TestGetLeaderboard_AggregatesWinsAndAveragesAcrossEvents(t *testing.T) {
 		t.Fatalf("submit match 1: %v", err)
 	}
 
-	event2, err := eventStore.CreateEvent(ctx, "Serata 2", nil, "2026-11-01", "20:00",
-		[]events.EventGameInput{{GameID: game.ID, Copies: 2}})
+	event2, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata 2",
+		EventDate: "2026-11-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: game.ID, Copies: 2}},
+	})
 	if err != nil {
 		t.Fatalf("create event 2: %v", err)
 	}
@@ -106,8 +114,12 @@ func TestGetLeaderboard_TiedTopScoreBothCountAsWinners(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create game: %v", err)
 	}
-	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: game.ID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: game.ID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -149,8 +161,12 @@ func TestGetLeaderboard_CountsATableOnce(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create game: %v", err)
 	}
-	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: game.ID, Copies: 1}})
+	event, err := eventStore.CreateEvent(ctx, events.EventInput{
+		Title:     "Serata",
+		EventDate: "2026-10-01",
+		StartTime: "20:00",
+		Games:     []events.EventGameInput{{GameID: game.ID, Copies: 1}},
+	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
