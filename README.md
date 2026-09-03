@@ -28,9 +28,9 @@ esterno obbligatorio.
   prenotano separatamente.
 - **Prenotazioni anonime**: nome, email, telefono — nessun account
   richiesto. Alla prenotazione viene generato un codice che permette in
-  seguito di cancellarla o di inserire il punteggio finale. Su un tavolo
-  a più posti il punteggio è **uno per copia**: lo inserisce o lo
-  corregge chiunque abbia prenotato lì, e resta finché la copia ha
+  seguito di cancellarla o di inserire il punteggio finale. Su una copia
+  con più posti prenotabili il punteggio è **uno per copia**: lo inserisce
+  o lo corregge chiunque abbia prenotato lì, e resta finché la copia ha
   almeno una prenotazione attiva.
 - **Punteggi e classifiche**: a fine partita si registrano i punteggi dei
   giocatori (nomi liberi); la classifica per gioco aggrega partite
