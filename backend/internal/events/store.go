@@ -25,19 +25,32 @@ type Event struct {
 	Description *string
 	EventDate   string
 	StartTime   string
+	ImagePath   *string
 	CreatedAt   time.Time
+	// GamesCount is filled in by ListEvents only: the detail endpoints send
+	// the games themselves, so recomputing it there would be dead weight.
+	GamesCount int
 }
 
+// EventGame è una singola copia di un gioco dentro un evento. Due copie
+// dello stesso gioco sono due righe: chi prenota sa su quale sta finendo,
+// e l'organizzatore sa chi siede a quale tavolo.
 type EventGame struct {
-	ID       int64
-	EventID  int64
-	GameID   int64
-	Quantity int
+	ID        int64
+	EventID   int64
+	GameID    int64
+	CopyIndex int
+	// Seats è la fotografia dei posti prenotabili del gioco al momento in
+	// cui la copia è entrata nell'evento: cambiare il catalogo dopo non
+	// muove la capienza di una serata già aperta alle prenotazioni.
+	Seats int
 }
 
+// EventGameInput è come l'admin descrive un gioco: quante copie ne porta.
+// I posti prenotabili non si scelgono qui, si leggono dal catalogo.
 type EventGameInput struct {
-	GameID   int64
-	Quantity int
+	GameID int64
+	Copies int
 }
 
 var (
@@ -97,21 +110,39 @@ func (s *Store) CreateEvent(ctx context.Context, title string, description *stri
 
 func insertEventGames(ctx context.Context, tx execQueryer, eventID int64, gamesInput []EventGameInput) error {
 	for _, g := range gamesInput {
-		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM games WHERE id = ?`, g.GameID).Scan(&exists); err != nil {
+		seats, err := gameSeats(ctx, tx, g.GameID)
+		if err != nil {
 			return err
 		}
-		if exists == 0 {
-			return ErrGameNotFound
+		if err := insertCopies(ctx, tx, eventID, g.GameID, seats, 1, g.Copies); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// insertCopies scrive `count` copie consecutive a partire da firstIndex.
+func insertCopies(ctx context.Context, tx execer, eventID, gameID int64, seats, firstIndex, count int) error {
+	for i := 0; i < count; i++ {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO event_games (event_id, game_id, quantity) VALUES (?, ?, ?)`,
-			eventID, g.GameID, g.Quantity,
+			`INSERT INTO event_games (event_id, game_id, copy_index, seats) VALUES (?, ?, ?, ?)`,
+			eventID, gameID, firstIndex+i, seats,
 		); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// gameSeats fa doppio servizio: legge i posti prenotabili del gioco e, se
+// il gioco non esiste, è il punto in cui l'input viene rifiutato.
+func gameSeats(ctx context.Context, q queryer, gameID int64) (int, error) {
+	var seats int
+	err := q.QueryRowContext(ctx, `SELECT seats FROM games WHERE id = ?`, gameID).Scan(&seats)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrGameNotFound
+	}
+	return seats, err
 }
 
 // execQueryer is what insertEventGames needs; *sql.Tx satisfies it.
@@ -128,8 +159,8 @@ func getEvent(ctx context.Context, q queryer, id int64) (Event, error) {
 	var e Event
 	var createdAt string
 	err := q.QueryRowContext(ctx,
-		`SELECT id, title, description, event_date, start_time, created_at FROM events WHERE id = ?`, id,
-	).Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &createdAt)
+		`SELECT id, title, description, event_date, start_time, image_path, created_at FROM events WHERE id = ?`, id,
+	).Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.ImagePath, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Event{}, ErrNotFound
 	}
@@ -140,18 +171,48 @@ func getEvent(ctx context.Context, q queryer, id int64) (Event, error) {
 	return e, nil
 }
 
-func (s *Store) ListEvents(ctx context.Context, includePast bool, now time.Time) ([]Event, error) {
-	query := `SELECT id, title, description, event_date, start_time, created_at FROM events`
-	args := []any{}
-	if !includePast {
-		query += ` WHERE event_date || ' ' || start_time >= ?`
-		args = append(args, now.Format("2006-01-02 15:04"))
+// ListEventsParams describes one page of the event list. The list is split in
+// two around Now: the upcoming events, nearest first, and the past ones, most
+// recent first. Limit 0 means "no limit" — the upcoming list is short enough
+// to send whole, while the past one is paged.
+type ListEventsParams struct {
+	Past   bool
+	Now    time.Time
+	Limit  int
+	Offset int
+}
+
+// ListEvents returns one page of events plus the total number of events on the
+// same side of Now, so the caller can render a pager without a second query.
+func (s *Store) ListEvents(ctx context.Context, p ListEventsParams) ([]Event, int, error) {
+	comparison, order := ">=", "ASC"
+	if p.Past {
+		comparison, order = "<", "DESC"
 	}
-	query += ` ORDER BY event_date, start_time`
+	cutoff := p.Now.Format("2006-01-02 15:04")
+
+	var total int
+	if err := s.db.QueryRowContext(ctx,
+		fmt.Sprintf(`SELECT COUNT(*) FROM events WHERE event_date || ' ' || start_time %s ?`, comparison),
+		cutoff,
+	).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	query := fmt.Sprintf(`SELECT e.id, e.title, e.description, e.event_date, e.start_time, e.image_path, e.created_at,
+			(SELECT COUNT(*) FROM event_games eg WHERE eg.event_id = e.id)
+		 FROM events e
+		 WHERE e.event_date || ' ' || e.start_time %s ?
+		 ORDER BY e.event_date %s, e.start_time %s, e.id %s`, comparison, order, order, order)
+	args := []any{cutoff}
+	if p.Limit > 0 {
+		query += ` LIMIT ? OFFSET ?`
+		args = append(args, p.Limit, p.Offset)
+	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -159,13 +220,17 @@ func (s *Store) ListEvents(ctx context.Context, includePast bool, now time.Time)
 	for rows.Next() {
 		var e Event
 		var createdAt string
-		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &createdAt); err != nil {
-			return nil, err
+		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime,
+			&e.ImagePath, &createdAt, &e.GamesCount); err != nil {
+			return nil, 0, err
 		}
 		e.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
 		out = append(out, e)
 	}
-	return out, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return out, total, nil
 }
 
 func (s *Store) ListEventGames(ctx context.Context, eventID int64) ([]EventGame, error) {
@@ -174,7 +239,8 @@ func (s *Store) ListEventGames(ctx context.Context, eventID int64) ([]EventGame,
 
 func listEventGames(ctx context.Context, q queryer, eventID int64) ([]EventGame, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT id, event_id, game_id, quantity FROM event_games WHERE event_id = ? ORDER BY id`, eventID)
+		`SELECT id, event_id, game_id, copy_index, seats FROM event_games
+		 WHERE event_id = ? ORDER BY game_id, copy_index`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +249,7 @@ func listEventGames(ctx context.Context, q queryer, eventID int64) ([]EventGame,
 	var out []EventGame
 	for rows.Next() {
 		var eg EventGame
-		if err := rows.Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.Quantity); err != nil {
+		if err := rows.Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.CopyIndex, &eg.Seats); err != nil {
 			return nil, err
 		}
 		out = append(out, eg)
@@ -194,8 +260,8 @@ func listEventGames(ctx context.Context, q queryer, eventID int64) ([]EventGame,
 func (s *Store) GetEventGame(ctx context.Context, id int64) (EventGame, error) {
 	var eg EventGame
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, event_id, game_id, quantity FROM event_games WHERE id = ?`, id,
-	).Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.Quantity)
+		`SELECT id, event_id, game_id, copy_index, seats FROM event_games WHERE id = ?`, id,
+	).Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.CopyIndex, &eg.Seats)
 	if errors.Is(err, sql.ErrNoRows) {
 		return EventGame{}, ErrNotFound
 	}
@@ -205,7 +271,7 @@ func (s *Store) GetEventGame(ctx context.Context, id int64) (EventGame, error) {
 func (s *Store) RemainingCapacity(ctx context.Context, eventGameID int64) (int, error) {
 	var remaining int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT eg.quantity - (
+		`SELECT eg.seats - (
 			SELECT COUNT(*) FROM bookings b WHERE b.event_game_id = eg.id AND b.status = 'active'
 		 ) FROM event_games eg WHERE eg.id = ?`, eventGameID,
 	).Scan(&remaining)
@@ -241,57 +307,57 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, title string, descrip
 	if err != nil {
 		return Event{}, err
 	}
-	existingByGame := map[int64]EventGame{}
+	// Le copie arrivano già ordinate per (game_id, copy_index): raggrupparle
+	// per gioco conserva quell'ordine, che è quello in cui si sacrificano
+	// dalla coda.
+	copiesByGame := map[int64][]EventGame{}
 	for _, eg := range existing {
-		existingByGame[eg.GameID] = eg
+		copiesByGame[eg.GameID] = append(copiesByGame[eg.GameID], eg)
 	}
 
-	activeCounts, err := activeBookingCountsByGame(ctx, tx, id)
+	occupied, err := occupiedCopies(ctx, tx, id)
 	if err != nil {
 		return Event{}, err
 	}
 
-	newByGame := map[int64]int{}
+	// Un passaggio a parte per validare tutti i giochi richiesti e leggere
+	// i posti prenotabili: se uno non esiste, si esce prima di scrivere.
+	seatsByGame := map[int64]int{}
+	wanted := map[int64]int{}
 	for _, g := range gamesInput {
-		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM games WHERE id = ?`, g.GameID).Scan(&exists); err != nil {
+		seats, err := gameSeats(ctx, tx, g.GameID)
+		if err != nil {
 			return Event{}, err
 		}
-		if exists == 0 {
-			return Event{}, ErrGameNotFound
-		}
-		newByGame[g.GameID] = g.Quantity
+		seatsByGame[g.GameID] = seats
+		wanted[g.GameID] = g.Copies
 	}
-	for gameID, activeCount := range activeCounts {
-		if activeCount > 0 && newByGame[gameID] < activeCount {
-			return Event{}, ErrQuantityBelowActiveBookings
+
+	// Giochi spariti dalla selezione: via tutte le loro copie, se libere.
+	for gameID, copies := range copiesByGame {
+		if _, stillWanted := wanted[gameID]; !stillWanted {
+			if err := dropCopies(ctx, tx, copies, occupied, len(copies)); err != nil {
+				return Event{}, err
+			}
 		}
 	}
 
-	// Games no longer present: safe to drop (the guard above already ensured
-	// zero active bookings for any of them). This also cascades away any
-	// cancelled bookings for that game/event pair. Any match result for a
-	// cancelled booking was already deleted by CancelBooking, so this
-	// cascade only ever drops bookings/results that were correctly
-	// considered void — it does not silently erase live historical data.
-	for gameID, eg := range existingByGame {
-		if _, stillPresent := newByGame[gameID]; !stillPresent {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, eg.ID); err != nil {
-				return Event{}, err
-			}
-		}
-	}
-	// Games kept: update the quantity in place (never delete+recreate — that
-	// would cascade-delete their bookings too). Games newly added: insert.
 	for _, g := range gamesInput {
-		if eg, ok := existingByGame[g.GameID]; ok {
-			if _, err := tx.ExecContext(ctx, `UPDATE event_games SET quantity = ? WHERE id = ?`, g.Quantity, eg.ID); err != nil {
+		copies := copiesByGame[g.GameID]
+		switch {
+		case g.Copies < len(copies):
+			if err := dropCopies(ctx, tx, copies, occupied, len(copies)-g.Copies); err != nil {
 				return Event{}, err
 			}
-		} else {
-			if _, err := tx.ExecContext(ctx,
-				`INSERT INTO event_games (event_id, game_id, quantity) VALUES (?, ?, ?)`, id, g.GameID, g.Quantity,
-			); err != nil {
+		case g.Copies > len(copies):
+			// I numeri delle copie sono etichette stabili, non posizioni:
+			// le nuove partono dopo la più alta esistente, anche se in
+			// mezzo c'è un buco lasciato da una copia eliminata.
+			next := 1
+			if len(copies) > 0 {
+				next = copies[len(copies)-1].CopyIndex + 1
+			}
+			if err := insertCopies(ctx, tx, id, g.GameID, seatsByGame[g.GameID], next, g.Copies-len(copies)); err != nil {
 				return Event{}, err
 			}
 		}
@@ -303,11 +369,33 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, title string, descrip
 	return s.GetEvent(ctx, id)
 }
 
-func activeBookingCountsByGame(ctx context.Context, tx *sql.Tx, eventID int64) (map[int64]int, error) {
-	rows, err := tx.QueryContext(ctx,
-		`SELECT eg.game_id, COUNT(b.id) FROM event_games eg
+// dropCopies elimina `count` copie partendo dalla più alta, saltando quelle
+// con prenotazioni attive. Se le copie libere non bastano l'operazione
+// fallisce e la transazione del chiamante viene annullata: meglio un errore
+// che una prenotazione cancellata a cascata sotto il naso di chi l'ha fatta.
+func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, count int) error {
+	dropped := 0
+	for i := len(copies) - 1; i >= 0 && dropped < count; i-- {
+		if occupied[copies[i].ID] > 0 {
+			continue
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, copies[i].ID); err != nil {
+			return err
+		}
+		dropped++
+	}
+	if dropped < count {
+		return ErrQuantityBelowActiveBookings
+	}
+	return nil
+}
+
+// occupiedCopies conta le prenotazioni attive di ogni copia dell'evento.
+func occupiedCopies(ctx context.Context, q queryer, eventID int64) (map[int64]int, error) {
+	rows, err := q.QueryContext(ctx,
+		`SELECT eg.id, COUNT(b.id) FROM event_games eg
 		 LEFT JOIN bookings b ON b.event_game_id = eg.id AND b.status = 'active'
-		 WHERE eg.event_id = ? GROUP BY eg.game_id`, eventID)
+		 WHERE eg.event_id = ? GROUP BY eg.id`, eventID)
 	if err != nil {
 		return nil, err
 	}
@@ -315,14 +403,32 @@ func activeBookingCountsByGame(ctx context.Context, tx *sql.Tx, eventID int64) (
 
 	out := map[int64]int{}
 	for rows.Next() {
-		var gameID int64
+		var eventGameID int64
 		var count int
-		if err := rows.Scan(&gameID, &count); err != nil {
+		if err := rows.Scan(&eventGameID, &count); err != nil {
 			return nil, err
 		}
-		out[gameID] = count
+		out[eventGameID] = count
 	}
 	return out, rows.Err()
+}
+
+// UpdateImagePath sets the optional event image. Uploading a new one simply
+// replaces the path: there is no removal, the file itself is content-addressed
+// and shared, so it is never deleted from disk here.
+func (s *Store) UpdateImagePath(ctx context.Context, id int64, path string) (Event, error) {
+	res, err := s.db.ExecContext(ctx, `UPDATE events SET image_path = ? WHERE id = ?`, path, id)
+	if err != nil {
+		return Event{}, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return Event{}, err
+	}
+	if affected == 0 {
+		return Event{}, ErrNotFound
+	}
+	return s.GetEvent(ctx, id)
 }
 
 func (s *Store) DeleteEvent(ctx context.Context, id int64) error {
