@@ -356,7 +356,7 @@ func TestAdminCancelBooking_DropsTheSubmittedScore(t *testing.T) {
 		t.Fatalf("admin cancel: %v", err)
 	}
 
-	result, err := eventStore.GetMatchResultForBooking(ctx, created.ID)
+	result, err := eventStore.GetMatchResultForEventGame(ctx, created.EventGameID)
 	if err != nil {
 		t.Fatalf("get match result: %v", err)
 	}
@@ -501,5 +501,53 @@ func TestCountActiveBookingsForEventGame(t *testing.T) {
 	}
 	if count != 2 {
 		t.Fatalf("expected 2, got %d", count)
+	}
+}
+
+func TestCancelBooking_KeepsTheTableResultWhileSomeoneRemains(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGameWithSeats(t, gameStore, "D&D", 3)
+	event := mustCreateEvent(t, eventStore, "Serata", "2026-10-01", "20:00", gameID)
+	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+
+	first, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
+		"Mario", "mario@example.com", "3331111111", now)
+	if err != nil {
+		t.Fatalf("first booking: %v", err)
+	}
+	second, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
+		"Luigi", "luigi@example.com", "3332222222", now)
+	if err != nil {
+		t.Fatalf("second booking: %v", err)
+	}
+	if _, err := eventStore.SubmitMatchResult(ctx, first.ID, first.BookingCode,
+		[]events.PlayerScore{{Name: "Mario", Score: 10}}); err != nil {
+		t.Fatalf("submit: %v", err)
+	}
+
+	// Chi si sfila non porta via il punteggio degli altri.
+	if _, err := eventStore.CancelBooking(ctx, first.ID, first.BookingCode); err != nil {
+		t.Fatalf("cancel first: %v", err)
+	}
+	result, err := eventStore.GetMatchResultForEventGame(ctx, eventGames[0].ID)
+	if err != nil {
+		t.Fatalf("get result: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected the table result to survive one cancellation")
+	}
+
+	// Svuotato il tavolo, il risultato non ha più senso e sparisce.
+	if _, err := eventStore.CancelBooking(ctx, second.ID, second.BookingCode); err != nil {
+		t.Fatalf("cancel second: %v", err)
+	}
+	result, err = eventStore.GetMatchResultForEventGame(ctx, eventGames[0].ID)
+	if err != nil {
+		t.Fatalf("get result after last cancel: %v", err)
+	}
+	if result != nil {
+		t.Fatalf("expected the result to be gone, got %+v", result)
 	}
 }

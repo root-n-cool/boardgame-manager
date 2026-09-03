@@ -188,13 +188,22 @@ func (s *Store) cancelBooking(ctx context.Context, b Booking) (Booking, error) {
 	if _, err := tx.ExecContext(ctx, `UPDATE bookings SET status = ? WHERE id = ?`, BookingStatusCancelled, b.ID); err != nil {
 		return Booking{}, err
 	}
-	// A cancelled booking means the participant didn't play — any match
-	// result already submitted for it must not keep counting in the public
-	// leaderboard or the admin's read-only results view. This also prevents
-	// double-counting if the freed (event_id, phone) slot gets re-booked and
-	// scored again.
-	if _, err := tx.ExecContext(ctx, `DELETE FROM match_results WHERE booking_id = ?`, b.ID); err != nil {
+	// Un tavolo condiviso non deve poter essere azzerato da chi si sfila:
+	// il risultato è di tutti quelli che ci sono ancora seduti. Solo quando
+	// il tavolo si svuota il punteggio non ha più senso e va via — e questo
+	// evita anche il doppio conteggio se il posto liberato viene riprenotato
+	// e riscritto.
+	var remainingActive int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM bookings WHERE event_game_id = ? AND status = 'active' AND id != ?`,
+		b.EventGameID, b.ID,
+	).Scan(&remainingActive); err != nil {
 		return Booking{}, err
+	}
+	if remainingActive == 0 {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM match_results WHERE event_game_id = ?`, b.EventGameID); err != nil {
+			return Booking{}, err
+		}
 	}
 
 	if err := tx.Commit(); err != nil {

@@ -2,6 +2,7 @@ package leaderboard_test
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -136,6 +137,51 @@ func TestGetLeaderboard_TiedTopScoreBothCountAsWinners(t *testing.T) {
 	for _, p := range lb.Players {
 		if p.Wins != 1 {
 			t.Fatalf("expected both players to have 1 win from the tie, got %+v", p)
+		}
+	}
+}
+
+func TestGetLeaderboard_CountsATableOnce(t *testing.T) {
+	eventStore, gameStore, lbStore := newTestStores(t)
+	ctx := context.Background()
+
+	game, err := gameStore.CreateGame(ctx, games.Game{Name: "D&D", Seats: 5})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: game.ID, Copies: 1}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+
+	// Cinque prenotazioni sullo stesso tavolo, ognuna che manda lo stesso
+	// risultato: la partita giocata resta una.
+	for i := 0; i < 5; i++ {
+		b, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
+			fmt.Sprintf("G%d", i), fmt.Sprintf("g%d@example.com", i),
+			fmt.Sprintf("33300000%02d", i), now)
+		if err != nil {
+			t.Fatalf("booking %d: %v", i, err)
+		}
+		if _, err := eventStore.SubmitMatchResult(ctx, b.ID, b.BookingCode,
+			[]events.PlayerScore{{Name: "Mario", Score: 50}, {Name: "Luigi", Score: 30}}); err != nil {
+			t.Fatalf("submit %d: %v", i, err)
+		}
+	}
+
+	lb, err := lbStore.GetLeaderboard(ctx, game.ID)
+	if err != nil {
+		t.Fatalf("leaderboard: %v", err)
+	}
+	if len(lb.Matches) != 1 {
+		t.Fatalf("expected 1 match, got %d", len(lb.Matches))
+	}
+	for _, p := range lb.Players {
+		if p.GamesPlayed != 1 {
+			t.Fatalf("expected 1 game for %s, got %d", p.Name, p.GamesPlayed)
 		}
 	}
 }

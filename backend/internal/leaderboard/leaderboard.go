@@ -51,18 +51,18 @@ type scoreRow struct {
 }
 
 // GetLeaderboard aggregates every MatchResult ever submitted for a game,
-// across all events it was played at. Winner and player-stats computation
-// happens in Go rather than SQL: each match's winner(s) depend on comparing
-// scores within that match only, which is awkward to express as a portable
-// SQL aggregate.
+// across all events it was played at. One MatchResult is one table, so a
+// game of D&D booked by six people still counts as a single match.
+// Winner and player-stats computation happens in Go rather than SQL: each
+// match's winner(s) depend on comparing scores within that match only,
+// which is awkward to express as a portable SQL aggregate.
 func (s *Store) GetLeaderboard(ctx context.Context, gameID int64) (Leaderboard, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT mr.id, e.title, e.event_date, e.start_time, mps.player_name, mps.score
 		 FROM match_player_scores mps
 		 JOIN match_results mr ON mps.match_result_id = mr.id
-		 JOIN bookings b ON mr.booking_id = b.id
-		 JOIN event_games eg ON b.event_game_id = eg.id
-		 JOIN events e ON b.event_id = e.id
+		 JOIN event_games eg ON mr.event_game_id = eg.id
+		 JOIN events e ON eg.event_id = e.id
 		 WHERE eg.game_id = ?
 		 ORDER BY mr.id, mps.id`, gameID)
 	if err != nil {

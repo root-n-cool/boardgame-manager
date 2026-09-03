@@ -15,7 +15,7 @@ type PlayerScore struct {
 
 type MatchResult struct {
 	ID          int64
-	BookingID   int64
+	EventGameID int64
 	SubmittedAt time.Time
 	Players     []PlayerScore
 }
@@ -25,11 +25,13 @@ var (
 	ErrBookingNotActive = errors.New("booking is not active")
 )
 
-// SubmitMatchResult creates or replaces the MatchResult for a booking. A
-// booking can only ever have one MatchResult (booking_id is UNIQUE):
-// calling this again for the same booking replaces the previously
-// submitted players instead of creating a duplicate — this is how "il
-// punteggio è sempre modificabile" (design spec) is implemented.
+// SubmitMatchResult creates or replaces the MatchResult for the copy the
+// booking sits on. A copy can only ever have one MatchResult
+// (event_game_id is UNIQUE): calling this again for any booking at the
+// same table replaces the previously submitted players instead of adding
+// a second result — this is both "il punteggio è sempre modificabile"
+// (design spec) and what keeps the leaderboard from counting one game of
+// D&D once per participant.
 func (s *Store) SubmitMatchResult(ctx context.Context, bookingID int64, code string, players []PlayerScore) (MatchResult, error) {
 	if len(players) == 0 {
 		return MatchResult{}, ErrEmptyPlayers
@@ -52,10 +54,10 @@ func (s *Store) SubmitMatchResult(ctx context.Context, bookingID int64, code str
 	defer tx.Rollback()
 
 	var matchResultID int64
-	err = tx.QueryRowContext(ctx, `SELECT id FROM match_results WHERE booking_id = ?`, bookingID).Scan(&matchResultID)
+	err = tx.QueryRowContext(ctx, `SELECT id FROM match_results WHERE event_game_id = ?`, b.EventGameID).Scan(&matchResultID)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		res, err := tx.ExecContext(ctx, `INSERT INTO match_results (booking_id) VALUES (?)`, bookingID)
+		res, err := tx.ExecContext(ctx, `INSERT INTO match_results (event_game_id) VALUES (?)`, b.EventGameID)
 		if err != nil {
 			return MatchResult{}, err
 		}
@@ -93,8 +95,8 @@ func (s *Store) getMatchResultByID(ctx context.Context, id int64) (MatchResult, 
 	var m MatchResult
 	var submittedAt string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, booking_id, submitted_at FROM match_results WHERE id = ?`, id,
-	).Scan(&m.ID, &m.BookingID, &submittedAt)
+		`SELECT id, event_game_id, submitted_at FROM match_results WHERE id = ?`, id,
+	).Scan(&m.ID, &m.EventGameID, &submittedAt)
 	if err != nil {
 		return MatchResult{}, err
 	}
@@ -127,12 +129,12 @@ func playersForMatchResult(ctx context.Context, q queryer, matchResultID int64) 
 	return out, rows.Err()
 }
 
-// GetMatchResultForBooking returns nil (with no error) if the booking has
-// no MatchResult yet — "not played yet" is a normal, expected state here,
-// unlike ErrNotFound elsewhere in this package.
-func (s *Store) GetMatchResultForBooking(ctx context.Context, bookingID int64) (*MatchResult, error) {
+// GetMatchResultForEventGame returns nil (with no error) if nobody at that
+// table has submitted a result yet — "not played yet" is a normal,
+// expected state here, unlike ErrNotFound elsewhere in this package.
+func (s *Store) GetMatchResultForEventGame(ctx context.Context, eventGameID int64) (*MatchResult, error) {
 	var id int64
-	err := s.db.QueryRowContext(ctx, `SELECT id FROM match_results WHERE booking_id = ?`, bookingID).Scan(&id)
+	err := s.db.QueryRowContext(ctx, `SELECT id FROM match_results WHERE event_game_id = ?`, eventGameID).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -146,42 +148,45 @@ func (s *Store) GetMatchResultForBooking(ctx context.Context, bookingID int64) (
 	return &m, nil
 }
 
-type BookingMatchResult struct {
-	BookingID       int64
-	ParticipantName string
-	GameName        string
-	Players         []PlayerScore
+type EventGameMatchResult struct {
+	EventGameID int64
+	GameID      int64
+	GameName    string
+	CopyIndex   int
+	Players     []PlayerScore
 }
 
-// ListMatchResultsForEvent returns, for every booking of the event that has
-// a MatchResult, the participant, the game and the players/scores
-// submitted — read-only data for the admin event detail page.
-func (s *Store) ListMatchResultsForEvent(ctx context.Context, eventID int64) ([]BookingMatchResult, error) {
+// ListMatchResultsForEvent returns one row per copy of the event that has a
+// result, with the game, its copy number and the players/scores submitted —
+// read-only data for the admin event detail page. It is keyed by copy and
+// not by participant because the result belongs to the table: who typed it
+// in is not a fact worth storing.
+func (s *Store) ListMatchResultsForEvent(ctx context.Context, eventID int64) ([]EventGameMatchResult, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT b.id, b.participant_name, g.name, mps.player_name, mps.score
-		 FROM bookings b
-		 JOIN event_games eg ON b.event_game_id = eg.id
+		`SELECT eg.id, g.id, g.name, eg.copy_index, mps.player_name, mps.score
+		 FROM match_results mr
+		 JOIN event_games eg ON mr.event_game_id = eg.id
 		 JOIN games g ON eg.game_id = g.id
-		 JOIN match_results mr ON mr.booking_id = b.id
 		 JOIN match_player_scores mps ON mps.match_result_id = mr.id
-		 WHERE b.event_id = ?
-		 ORDER BY b.id, mps.id`, eventID)
+		 WHERE eg.event_id = ?
+		 ORDER BY eg.game_id, eg.copy_index, mps.id`, eventID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var out []BookingMatchResult
-	var current *BookingMatchResult
+	var out []EventGameMatchResult
+	var current *EventGameMatchResult
 	for rows.Next() {
-		var bookingID int64
-		var participantName, gameName, playerName string
-		var score int
-		if err := rows.Scan(&bookingID, &participantName, &gameName, &playerName, &score); err != nil {
+		var eventGameID, gameID int64
+		var gameName, playerName string
+		var copyIndex, score int
+		if err := rows.Scan(&eventGameID, &gameID, &gameName, &copyIndex, &playerName, &score); err != nil {
 			return nil, err
 		}
-		if current == nil || current.BookingID != bookingID {
-			out = append(out, BookingMatchResult{BookingID: bookingID, ParticipantName: participantName, GameName: gameName})
+		if current == nil || current.EventGameID != eventGameID {
+			out = append(out, EventGameMatchResult{EventGameID: eventGameID, GameID: gameID,
+				GameName: gameName, CopyIndex: copyIndex})
 			current = &out[len(out)-1]
 		}
 		current.Players = append(current.Players, PlayerScore{Name: playerName, Score: score})
