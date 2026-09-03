@@ -42,7 +42,11 @@ func (s *Server) createLanguageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Pre-fill from the base language's text as a translation starting point.
+	// Con l'originale BGG a disposizione si traduce da lì: partire dalla
+	// lingua base darebbe la traduzione di una traduzione. Senza originale
+	// — gioco inserito a mano, o entrato in catalogo prima della 0011 —
+	// resta il ripiego di sempre, il testo della lingua base come punto di
+	// partenza per una correzione a mano.
 	name := game.Name
 	var description *string
 	existing, err := s.Games.ListLanguages(r.Context(), gameID)
@@ -54,6 +58,10 @@ func (s *Server) createLanguageHandler(w http.ResponseWriter, r *http.Request) {
 				break
 			}
 		}
+	}
+	if game.BGGDescription != nil && *game.BGGDescription != "" {
+		translated := s.translateDescription(r.Context(), *game.BGGDescription, req.LanguageCode)
+		description = &translated
 	}
 
 	lang, err := s.Games.CreateLanguage(r.Context(), games.GameLanguage{

@@ -175,6 +175,77 @@ func TestUpdateLanguage_ChangesNameAndDescription(t *testing.T) {
 	}
 }
 
+func TestCreateLanguage_TranslatesFromTheRawBGGDescription(t *testing.T) {
+	tr := &fakeTranslator{out: "Ein Spiel über Vögel."}
+	server, _ := newTestServerWithTranslator(t, tr)
+	router, cookie := setupWingspanFromBGG(t, server)
+
+	rec := postGame(router, cookie, `{"bggId":"266192","languageCode":"it"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 creating the game, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Creare il gioco da BGG traduce già la lingua base: azzera il
+	// contatore prima di provare la traduzione della nuova lingua.
+	tr.calls = 0
+
+	payload, _ := json.Marshal(map[string]string{"languageCode": "de"})
+	req := httptest.NewRequest(http.MethodPost, "/api/games/1/languages", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	langRec := httptest.NewRecorder()
+	router.ServeHTTP(langRec, req)
+	if langRec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", langRec.Code, langRec.Body.String())
+	}
+	if tr.calls != 1 {
+		t.Fatalf("expected exactly one translation call for the new language, got %d", tr.calls)
+	}
+	if tr.lastText != "A worker placement game about birds." || tr.lastLang != "de" {
+		t.Fatalf("expected the raw BGG text translated into de, got %q / %q", tr.lastText, tr.lastLang)
+	}
+	var got map[string]any
+	json.Unmarshal(langRec.Body.Bytes(), &got)
+	if got["description"] != "Ein Spiel über Vögel." {
+		t.Fatalf("expected the translated description, got %v", got["description"])
+	}
+}
+
+func TestCreateLanguage_ManualGameFallsBackToTheBaseLanguage(t *testing.T) {
+	tr := &fakeTranslator{out: "NON DEVE COMPARIRE"}
+	server, _ := newTestServerWithTranslator(t, tr)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	id := createTestGame(t, router, cookie, "Gioco fatto in casa")
+
+	// La descrizione base è scritta dall'admin, non tradotta.
+	editPayload, _ := json.Marshal(map[string]string{"name": "Gioco fatto in casa", "description": "Un gioco di carte fatto in casa"})
+	editReq := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/games/%d/languages/it", id), bytes.NewReader(editPayload))
+	editReq.AddCookie(cookie)
+	editRec := httptest.NewRecorder()
+	router.ServeHTTP(editRec, editReq)
+	if editRec.Code != http.StatusOK {
+		t.Fatalf("expected 200 editing base language, got %d: %s", editRec.Code, editRec.Body.String())
+	}
+
+	payload, _ := json.Marshal(map[string]string{"languageCode": "en"})
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/languages", id), bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if tr.calls != 0 {
+		t.Fatalf("a manual game has no BGG original to translate, got %d calls", tr.calls)
+	}
+	var got map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	// Senza originale BGG resta il ripiego di sempre: si copia la lingua
+	// base come punto di partenza per una traduzione a mano.
+	if got["description"] != "Un gioco di carte fatto in casa" {
+		t.Fatalf("expected the base language text as the fallback, got %v", got["description"])
+	}
+}
+
 func TestUpdateLanguage_NotFoundReturns404(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)

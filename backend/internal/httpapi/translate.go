@@ -4,9 +4,13 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"strings"
 
+	"github.com/go-chi/chi/v5"
+
 	"boardgames-manager/internal/ai"
+	"boardgames-manager/internal/games"
 )
 
 // translator restituisce il traduttore da usare per questa richiesta:
@@ -51,4 +55,71 @@ func (s *Server) translateDescription(ctx context.Context, source, targetLang st
 		return source
 	}
 	return out
+}
+
+// translateLanguageHandler ritraduce a richiesta la descrizione di una
+// lingua, sempre dall'originale BGG. Sovrascrive quel che c'è, comprese le
+// correzioni a mano: è il senso del bottone, e la UI lo dice prima di
+// chiamarlo.
+//
+// A differenza degli innesti automatici, qui un guasto si mostra: l'admin
+// ha premuto un bottone e ha diritto di sapere che non ha funzionato.
+func (s *Server) translateLanguageHandler(w http.ResponseWriter, r *http.Request) {
+	gameID, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid game id")
+		return
+	}
+	code := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "lang")))
+	if code == "" {
+		writeError(w, http.StatusBadRequest, "language code is required")
+		return
+	}
+
+	game, err := s.Games.GetGame(r.Context(), gameID)
+	if errors.Is(err, games.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "game not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load game")
+		return
+	}
+
+	lang, err := s.Games.GetLanguage(r.Context(), gameID, code)
+	if errors.Is(err, games.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "language not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load language")
+		return
+	}
+
+	if game.BGGDescription == nil || strings.TrimSpace(*game.BGGDescription) == "" {
+		writeError(w, http.StatusConflict, "questo gioco non ha una descrizione originale da BoardGameGeek da tradurre")
+		return
+	}
+
+	translated, err := s.translator(r.Context()).Translate(r.Context(), *game.BGGDescription, code)
+	if errors.Is(err, ai.ErrNotConfigured) {
+		writeError(w, http.StatusConflict, "il provider AI non è configurato: aggiungilo nelle impostazioni")
+		return
+	}
+	if err != nil {
+		log.Printf("translate language %s of game %d: %v", code, gameID, err)
+		writeError(w, http.StatusBadGateway, "la traduzione non è riuscita: riprova, o controlla il provider nelle impostazioni")
+		return
+	}
+
+	updated, err := s.Games.UpdateLanguage(r.Context(), gameID, code, lang.Name, &translated)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not save the translation")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"code": updated.LanguageCode, "isBaseLanguage": updated.IsBaseLanguage,
+		"name": updated.Name, "description": updated.Description,
+	})
 }
