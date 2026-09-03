@@ -10,14 +10,22 @@ import (
 func toEventSummary(e events.Event) map[string]any {
 	return map[string]any{
 		"id": e.ID, "title": e.Title, "description": e.Description,
-		"eventDate": e.EventDate, "startTime": e.StartTime,
+		"eventDate": e.EventDate, "startTime": e.StartTime, "imagePath": e.ImagePath,
 	}
 }
 
-func toEventGameSummary(eventGameID int64, g games.Game, quantity, remaining int) map[string]any {
+// toEventListItem is the summary as the list endpoint sends it: same fields
+// plus the number of games, which only ListEvents computes.
+func toEventListItem(e events.Event) map[string]any {
+	item := toEventSummary(e)
+	item["gamesCount"] = e.GamesCount
+	return item
+}
+
+func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int) map[string]any {
 	return map[string]any{
 		"eventGameId": eventGameID, "gameId": g.ID, "name": g.Name, "coverPath": g.CoverPath,
-		"quantity": quantity, "remaining": remaining,
+		"copyIndex": copyIndex, "seats": seats, "remaining": remaining,
 	}
 }
 
@@ -37,7 +45,7 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 		if err != nil {
 			return nil, err
 		}
-		gamesOut = append(gamesOut, toEventGameSummary(eg.ID, game, eg.Quantity, remaining))
+		gamesOut = append(gamesOut, toEventGameSummary(eg.ID, game, eg.CopyIndex, eg.Seats, remaining))
 	}
 
 	detail := toEventSummary(e)
@@ -70,8 +78,18 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 	resp["eventDate"] = event.EventDate
 	resp["startTime"] = event.StartTime
 	resp["gameName"] = game.Name
+	resp["copyIndex"] = eventGame.CopyIndex
+	resp["seats"] = eventGame.Seats
+	// Quante persone siedono a questo tavolo: la pagina pubblica lo usa per
+	// dire che il punteggio è condiviso invece di far credere a ognuno di
+	// avere il proprio.
+	tableBookings, err := s.Events.CountActiveBookingsForEventGame(ctx, b.EventGameID)
+	if err != nil {
+		return nil, err
+	}
+	resp["tableBookings"] = tableBookings
 
-	matchResult, err := s.Events.GetMatchResultForBooking(ctx, b.ID)
+	matchResult, err := s.Events.GetMatchResultForEventGame(ctx, b.EventGameID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,9 +103,11 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 
 func toBookingAdminResponse(b events.BookingWithGame) map[string]any {
 	return map[string]any{
-		"id": b.ID, "gameName": b.GameName, "participantName": b.ParticipantName,
-		"participantEmail": b.ParticipantEmail, "participantPhone": b.ParticipantPhone,
-		"createdAt": b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"id": b.ID, "eventGameId": b.EventGameID, "gameId": b.GameID, "gameName": b.GameName,
+		"copyIndex": b.CopyIndex, "seats": b.Seats,
+		"participantName": b.ParticipantName, "participantEmail": b.ParticipantEmail,
+		"participantPhone": b.ParticipantPhone,
+		"createdAt":        b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
@@ -101,4 +121,11 @@ func toPlayerScores(players []events.PlayerScore) []map[string]any {
 
 func toMatchResultResponse(m events.MatchResult) map[string]any {
 	return map[string]any{"players": toPlayerScores(m.Players)}
+}
+
+func toEventGameMatchResultResponse(m events.EventGameMatchResult) map[string]any {
+	return map[string]any{
+		"eventGameId": m.EventGameID, "gameId": m.GameID, "gameName": m.GameName,
+		"copyIndex": m.CopyIndex, "players": toPlayerScores(m.Players),
+	}
 }

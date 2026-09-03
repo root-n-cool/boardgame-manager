@@ -292,6 +292,7 @@ func TestListEventMatchResults_ReturnsSubmittedResults(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body []struct {
+		GameID   int64  `json:"gameId"`
 		GameName string `json:"gameName"`
 		Players  []struct {
 			Name  string `json:"name"`
@@ -303,5 +304,9 @@ func TestListEventMatchResults_ReturnsSubmittedResults(t *testing.T) {
 	}
 	if len(body) != 1 || body[0].GameName != "Catan" || len(body[0].Players) != 1 || body[0].Players[0].Name != "Mario" {
 		t.Fatalf("unexpected body: %+v", body)
+	}
+	// L'id serve alla scheda admin per linkare il gioco dalla riga.
+	if body[0].GameID != gameID {
+		t.Fatalf("expected the game id %d in the result row, got %d", gameID, body[0].GameID)
 	}
 }

@@ -23,62 +23,141 @@ func createTestGameForEvent(t *testing.T, gamesStore *games.Store, name string) 
 	return g.ID
 }
 
-func TestListEvents_PublicSeesOnlyFutureEvents(t *testing.T) {
-	server := newTestServer(t)
-	router := httpapi.NewRouter(server)
-	gameID := createTestGameForEvent(t, server.Games, "Catan")
-
-	if _, err := server.Events.CreateEvent(context.Background(), "Passato", nil, "2020-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 1}}); err != nil {
-		t.Fatalf("create past event: %v", err)
-	}
-	if _, err := server.Events.CreateEvent(context.Background(), "Futuro", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 1}}); err != nil {
-		t.Fatalf("create future event: %v", err)
-	}
-
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/events", nil))
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
-	}
-	var body []struct {
-		Title string `json:"title"`
-	}
-	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
-		t.Fatalf("decode: %v", err)
-	}
-	if len(body) != 1 || body[0].Title != "Futuro" {
-		t.Fatalf("expected only the future event for an anonymous request, got %+v", body)
-	}
+type eventListItem struct {
+	Title      string  `json:"title"`
+	ImagePath  *string `json:"imagePath"`
+	GamesCount int     `json:"gamesCount"`
 }
 
-func TestListEvents_AdminSeesPastEventsToo(t *testing.T) {
-	server := newTestServer(t)
-	router := httpapi.NewRouter(server)
-	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
-	gameID := createTestGameForEvent(t, server.Games, "Catan")
+type eventListResponse struct {
+	Items    []eventListItem `json:"items"`
+	Total    int             `json:"total"`
+	Page     int             `json:"page"`
+	PageSize int             `json:"pageSize"`
+}
 
-	if _, err := server.Events.CreateEvent(context.Background(), "Passato", nil, "2020-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 1}}); err != nil {
-		t.Fatalf("create past event: %v", err)
+func listEvents(t *testing.T, router http.Handler, url string, cookie *http.Cookie) eventListResponse {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, url, nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
 	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/events", nil)
-	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", rec.Code)
+		t.Fatalf("GET %s: expected 200, got %d: %s", url, rec.Code, rec.Body.String())
 	}
-	var body []struct {
-		Title string `json:"title"`
-	}
+	var body eventListResponse
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body) != 1 || body[0].Title != "Passato" {
-		t.Fatalf("expected the past event to be visible to an admin, got %+v", body)
+	return body
+}
+
+func createEventsForList(t *testing.T, server *httpapi.Server, titledDates map[string]string) {
+	t.Helper()
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	for title, date := range titledDates {
+		if _, err := server.Events.CreateEvent(context.Background(), title, nil, date, "20:00",
+			[]events.EventGameInput{{GameID: gameID, Copies: 1}}); err != nil {
+			t.Fatalf("create event %q: %v", title, err)
+		}
+	}
+}
+
+func TestListEvents_ReturnsOnlyUpcomingEventsUnpaged(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	createEventsForList(t, server, map[string]string{"Passato": "2020-01-01", "Futuro": "2099-01-01"})
+
+	body := listEvents(t, router, "/api/events", nil)
+	if len(body.Items) != 1 || body.Items[0].Title != "Futuro" {
+		t.Fatalf("expected only the upcoming event, got %+v", body.Items)
+	}
+	if body.Total != 1 || body.Page != 1 || body.PageSize != 0 {
+		t.Fatalf("expected an unpaged single-item response, got %+v", body)
+	}
+	if body.Items[0].GamesCount != 1 {
+		t.Fatalf("expected the games count in the list, got %+v", body.Items[0])
+	}
+}
+
+func TestListEvents_AdminSeesTheUpcomingEventsByDefaultToo(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	createEventsForList(t, server, map[string]string{"Passato": "2020-01-01", "Futuro": "2099-01-01"})
+
+	body := listEvents(t, router, "/api/events", cookie)
+	if len(body.Items) != 1 || body.Items[0].Title != "Futuro" {
+		t.Fatalf("expected the upcoming event, got %+v", body.Items)
+	}
+}
+
+func TestListEvents_AdminPagesThroughPastEventsMostRecentFirst(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	dates := map[string]string{}
+	for day := 1; day <= 14; day++ {
+		dates[fmt.Sprintf("Serata %02d", day)] = fmt.Sprintf("2020-01-%02d", day)
+	}
+	createEventsForList(t, server, dates)
+
+	first := listEvents(t, router, "/api/events?past=true", cookie)
+	if first.Total != 14 || first.PageSize != 12 || first.Page != 1 {
+		t.Fatalf("unexpected pager on the first page: %+v", first)
+	}
+	if len(first.Items) != 12 || first.Items[0].Title != "Serata 14" {
+		t.Fatalf("expected 12 past events, most recent first, got %+v", first.Items)
+	}
+
+	second := listEvents(t, router, "/api/events?past=true&page=2", cookie)
+	if second.Page != 2 || len(second.Items) != 2 || second.Items[0].Title != "Serata 02" {
+		t.Fatalf("unexpected second page: %+v", second)
+	}
+}
+
+func TestListEvents_PastArchiveIsNotServedToThePublic(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	createEventsForList(t, server, map[string]string{"Passato": "2020-01-01", "Futuro": "2099-01-01"})
+
+	body := listEvents(t, router, "/api/events?past=true", nil)
+	if len(body.Items) != 1 || body.Items[0].Title != "Futuro" {
+		t.Fatalf("expected an anonymous past=true request to fall back to the upcoming events, got %+v", body.Items)
+	}
+}
+
+func TestListEvents_PageBeyondTheEndFallsBackToTheLastFullOne(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	dates := map[string]string{}
+	for day := 1; day <= 13; day++ {
+		dates[fmt.Sprintf("Serata %02d", day)] = fmt.Sprintf("2020-01-%02d", day)
+	}
+	createEventsForList(t, server, dates)
+
+	body := listEvents(t, router, "/api/events?past=true&page=9", cookie)
+	if body.Page != 2 || len(body.Items) != 1 || body.Items[0].Title != "Serata 01" {
+		t.Fatalf("expected a fallback to the last page, got %+v", body)
+	}
+}
+
+func TestListEvents_InvalidPageFallsBackToTheFirstOne(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	createEventsForList(t, server, map[string]string{"Passato": "2020-01-01"})
+
+	for _, query := range []string{"page=0", "page=-3", "page=abc"} {
+		body := listEvents(t, router, "/api/events?past=true&"+query, cookie)
+		if body.Page != 1 || len(body.Items) != 1 {
+			t.Fatalf("query %q: expected the first page, got %+v", query, body)
+		}
 	}
 }
 
@@ -88,7 +167,7 @@ func TestGetEvent_ReturnsGamesWithRemainingCapacity(t *testing.T) {
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 3}})
+		[]events.EventGameInput{{GameID: gameID, Copies: 3}})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -102,17 +181,18 @@ func TestGetEvent_ReturnsGamesWithRemainingCapacity(t *testing.T) {
 		Title string `json:"title"`
 		Games []struct {
 			Name      string `json:"name"`
-			Quantity  int    `json:"quantity"`
+			CopyIndex int    `json:"copyIndex"`
+			Seats     int    `json:"seats"`
 			Remaining int    `json:"remaining"`
 		} `json:"games"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.Title != "Serata giochi" || len(body.Games) != 1 {
+	if body.Title != "Serata giochi" || len(body.Games) != 3 {
 		t.Fatalf("unexpected body: %+v", body)
 	}
-	if body.Games[0].Name != "Catan" || body.Games[0].Quantity != 3 || body.Games[0].Remaining != 3 {
+	if body.Games[0].Name != "Catan" || body.Games[0].Seats != 1 || body.Games[0].Remaining != 1 {
 		t.Fatalf("unexpected game entry: %+v", body.Games[0])
 	}
 }
@@ -148,7 +228,7 @@ func TestCreateEvent_Succeeds(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
-		"games": []map[string]any{{"gameId": gameID, "quantity": 2}},
+		"games": []map[string]any{{"gameId": gameID, "copies": 2}},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(payload))
 	req.AddCookie(cookie)
@@ -159,7 +239,7 @@ func TestCreateEvent_Succeeds(t *testing.T) {
 	}
 }
 
-func TestCreateEvent_RejectsZeroQuantity(t *testing.T) {
+func TestCreateEvent_RejectsZeroCopies(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
@@ -167,7 +247,7 @@ func TestCreateEvent_RejectsZeroQuantity(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
-		"games": []map[string]any{{"gameId": gameID, "quantity": 0}},
+		"games": []map[string]any{{"gameId": gameID, "copies": 0}},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(payload))
 	req.AddCookie(cookie)
@@ -204,8 +284,8 @@ func TestCreateEvent_RejectsDuplicateGame(t *testing.T) {
 	payload, _ := json.Marshal(map[string]any{
 		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
 		"games": []map[string]any{
-			{"gameId": gameID, "quantity": 1},
-			{"gameId": gameID, "quantity": 2},
+			{"gameId": gameID, "copies": 1},
+			{"gameId": gameID, "copies": 2},
 		},
 	})
 	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(payload))
@@ -224,21 +304,22 @@ func TestUpdateEvent_RejectsQuantityBelowActiveBookings(t *testing.T) {
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 2}})
+		[]events.EventGameInput{{GameID: gameID, Copies: 2}})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
 	eventGames, _ := server.Events.ListEventGames(context.Background(), event.ID)
-	if err := server.Events.TestInsertBooking(event.ID, eventGames[0].ID, "active"); err != nil {
-		t.Fatalf("insert booking fixture: %v", err)
-	}
-	if err := server.Events.TestInsertBooking(event.ID, eventGames[0].ID, "active"); err != nil {
-		t.Fatalf("insert booking fixture: %v", err)
+	// Entrambe le copie occupate: non è possibile scendere a una sola copia
+	// senza liberarne prima una.
+	for _, eg := range eventGames {
+		if err := server.Events.TestInsertBooking(event.ID, eg.ID, "active"); err != nil {
+			t.Fatalf("insert booking fixture: %v", err)
+		}
 	}
 
 	payload, _ := json.Marshal(map[string]any{
 		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
-		"games": []map[string]any{{"gameId": gameID, "quantity": 1}},
+		"games": []map[string]any{{"gameId": gameID, "copies": 1}},
 	})
 	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/events/%d", event.ID), bytes.NewReader(payload))
 	req.AddCookie(cookie)
@@ -256,7 +337,7 @@ func TestDeleteEvent_Succeeds(t *testing.T) {
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 1}})
+		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -288,7 +369,7 @@ func TestListEventBookings_ReturnsActiveBookings(t *testing.T) {
 	gameID := createTestGameForEvent(t, server.Games, "Catan")
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: 1}})
+		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -305,6 +386,7 @@ func TestListEventBookings_ReturnsActiveBookings(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body []struct {
+		GameID   int64  `json:"gameId"`
 		GameName string `json:"gameName"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
@@ -312,5 +394,68 @@ func TestListEventBookings_ReturnsActiveBookings(t *testing.T) {
 	}
 	if len(body) != 1 || body[0].GameName != "Catan" {
 		t.Fatalf("unexpected body: %+v", body)
+	}
+	// L'id serve alla scheda admin per linkare il gioco dalla riga.
+	if body[0].GameID != gameID {
+		t.Fatalf("expected the game id %d in the booking row, got %d", gameID, body[0].GameID)
+	}
+}
+
+func TestCreateEvent_WithSeveralCopiesOfTheSameGame(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+
+	payload, _ := json.Marshal(map[string]any{
+		"title": "Serata", "eventDate": "2099-01-01", "startTime": "20:00",
+		"games": []map[string]any{{"gameId": gameID, "copies": 2}},
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/events", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatalf("decode created event: %v", err)
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet,
+		fmt.Sprintf("/api/events/%d", created.ID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var detail struct {
+		Games []struct {
+			EventGameID int64 `json:"eventGameId"`
+			GameID      int64 `json:"gameId"`
+			CopyIndex   int   `json:"copyIndex"`
+			Seats       int   `json:"seats"`
+			Remaining   int   `json:"remaining"`
+		} `json:"games"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if len(detail.Games) != 2 {
+		t.Fatalf("expected 2 copies in the payload, got %d", len(detail.Games))
+	}
+	if detail.Games[0].CopyIndex != 1 || detail.Games[1].CopyIndex != 2 {
+		t.Fatalf("unexpected copy indexes: %+v", detail.Games)
+	}
+	if detail.Games[0].Seats != 1 || detail.Games[0].Remaining != 1 {
+		t.Fatalf("unexpected seats/remaining: %+v", detail.Games[0])
+	}
+	if detail.Games[0].EventGameID == detail.Games[1].EventGameID {
+		t.Fatal("expected two distinct eventGameId values")
+	}
+	if detail.Games[0].GameID != gameID {
+		t.Fatalf("unexpected gameId %d", detail.Games[0].GameID)
 	}
 }

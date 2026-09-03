@@ -78,10 +78,7 @@ func (s *Server) listEventMatchResultsHandler(w http.ResponseWriter, r *http.Req
 	}
 	out := make([]map[string]any, 0, len(list))
 	for _, m := range list {
-		out = append(out, map[string]any{
-			"bookingId": m.BookingID, "participantName": m.ParticipantName,
-			"gameName": m.GameName, "players": toPlayerScores(m.Players),
-		})
+		out = append(out, toEventGameMatchResultResponse(m))
 	}
 	writeJSON(w, http.StatusOK, out)
 }

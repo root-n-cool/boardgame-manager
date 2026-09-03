@@ -8,15 +8,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/httpapi"
 )
 
-func createTestEvent(t *testing.T, server *httpapi.Server, gameID int64, quantity int) int64 {
+func createTestEvent(t *testing.T, server *httpapi.Server, gameID int64, copies int) int64 {
 	t.Helper()
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Quantity: quantity}})
+		[]events.EventGameInput{{GameID: gameID, Copies: copies}})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
@@ -172,5 +173,91 @@ func TestLookupBooking_IncludesNullMatchResultWhenNoneSubmitted(t *testing.T) {
 	}
 	if v, ok := body["matchResult"]; !ok || v != nil {
 		t.Fatalf("expected matchResult to be present and null, got %#v", v)
+	}
+}
+
+func TestAdminCancelBooking_RemovesItFromTheEventBookings(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 2)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	booking, err := server.Events.CreateBooking(context.Background(), eventID, eventGames[0].ID,
+		"Mario Rossi", "mario@example.com", "3331234567", time.Now())
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/bookings/%d", booking.ID), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	listReq := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d/bookings", eventID), nil)
+	listReq.AddCookie(cookie)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	var list []map[string]any
+	if err := json.NewDecoder(listRec.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(list) != 0 {
+		t.Fatalf("expected the cancelled booking to be gone, got %+v", list)
+	}
+}
+
+func TestAdminCancelBooking_UnknownOrAlreadyCancelledReturns404(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	booking, err := server.Events.CreateBooking(context.Background(), eventID, eventGames[0].ID,
+		"Mario Rossi", "mario@example.com", "3331234567", time.Now())
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+	if _, err := server.Events.AdminCancelBooking(context.Background(), booking.ID); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+
+	for _, path := range []string{fmt.Sprintf("/api/bookings/%d", booking.ID), "/api/bookings/9999"} {
+		req := httptest.NewRequest(http.MethodDelete, path, nil)
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("DELETE %s: expected 404, got %d: %s", path, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+func TestAdminCancelBooking_RequiresAuth(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	booking, err := server.Events.CreateBooking(context.Background(), eventID, eventGames[0].ID,
+		"Mario Rossi", "mario@example.com", "3331234567", time.Now())
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/bookings/%d", booking.ID), nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// La prenotazione deve essere ancora attiva.
+	found, err := server.Events.LookupBooking(context.Background(), booking.BookingCode)
+	if err != nil || found.Status != events.BookingStatusActive {
+		t.Fatalf("expected the booking to stay active, got %+v (err %v)", found, err)
 	}
 }

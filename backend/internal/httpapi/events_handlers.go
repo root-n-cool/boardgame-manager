@@ -4,23 +4,67 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"boardgames-manager/internal/events"
 )
 
+// pastEventsPageSize is how many past events one page of the archive holds.
+const pastEventsPageSize = 12
+
+// listEventsHandler serves both sides of the event list: by default the
+// upcoming events, nearest first and unpaged (they are few and the public
+// page shows them all); with ?past=true the archive, most recent first and
+// paged. The archive is admin-only — an anonymous request asking for it gets
+// the upcoming events instead, never a 403 that would leak that it exists.
 func (s *Server) listEventsHandler(w http.ResponseWriter, r *http.Request) {
-	includePast := s.hasAdminSession(r)
-	list, err := s.Events.ListEvents(r.Context(), includePast, time.Now())
+	past := r.URL.Query().Get("past") == "true" && s.hasAdminSession(r)
+
+	params := events.ListEventsParams{Past: past, Now: time.Now()}
+	page := 1
+	if past {
+		page = parsePageParam(r)
+		params.Limit = pastEventsPageSize
+		params.Offset = (page - 1) * pastEventsPageSize
+	}
+
+	list, total, err := s.Events.ListEvents(r.Context(), params)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not list events")
 		return
 	}
-	out := make([]map[string]any, 0, len(list))
-	for _, e := range list {
-		out = append(out, toEventSummary(e))
+	// Una pagina oltre la fine (link vecchio, archivio rimpicciolito) tornerebbe
+	// vuota con un pager che dice "pagina 5 di 2": si ricade sull'ultima piena.
+	if past && total > 0 && len(list) == 0 {
+		page = (total + pastEventsPageSize - 1) / pastEventsPageSize
+		params.Offset = (page - 1) * pastEventsPageSize
+		list, total, err = s.Events.ListEvents(r.Context(), params)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "could not list events")
+			return
+		}
 	}
-	writeJSON(w, http.StatusOK, out)
+	items := make([]map[string]any, 0, len(list))
+	for _, e := range list {
+		items = append(items, toEventListItem(e))
+	}
+	// pageSize 0 means "everything on one page": the upcoming list is not paged.
+	pageSize := 0
+	if past {
+		pageSize = pastEventsPageSize
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items, "total": total, "page": page, "pageSize": pageSize,
+	})
+}
+
+func parsePageParam(r *http.Request) int {
+	page, err := strconv.Atoi(r.URL.Query().Get("page"))
+	if err != nil || page < 1 {
+		return 1
+	}
+	return page
 }
 
 func (s *Server) getEventHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,8 +91,10 @@ func (s *Server) getEventHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type eventGameRequest struct {
-	GameID   int64 `json:"gameId"`
-	Quantity int   `json:"quantity"`
+	GameID int64 `json:"gameId"`
+	// Copies è quante copie del gioco l'evento mette in tavola. I posti
+	// prenotabili di ciascuna arrivano dal catalogo, non da qui.
+	Copies int `json:"copies"`
 }
 
 type eventRequest struct {
@@ -62,7 +108,7 @@ type eventRequest struct {
 func toEventGameInputs(in []eventGameRequest) []events.EventGameInput {
 	out := make([]events.EventGameInput, 0, len(in))
 	for _, g := range in {
-		out = append(out, events.EventGameInput{GameID: g.GameID, Quantity: g.Quantity})
+		out = append(out, events.EventGameInput{GameID: g.GameID, Copies: g.Copies})
 	}
 	return out
 }
@@ -83,7 +129,7 @@ func decodeEventRequest(r *http.Request) (eventRequest, bool) {
 	}
 	seenGames := map[int64]bool{}
 	for _, g := range req.Games {
-		if g.Quantity < 1 {
+		if g.Copies < 1 {
 			return eventRequest{}, false
 		}
 		if seenGames[g.GameID] {
@@ -130,7 +176,7 @@ func (s *Server) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, events.ErrGameNotFound):
 		writeError(w, http.StatusBadRequest, "one of the selected games does not exist")
 	case errors.Is(err, events.ErrQuantityBelowActiveBookings):
-		writeError(w, http.StatusConflict, "quantity is below the number of active bookings for that game")
+		writeError(w, http.StatusConflict, "fewer copies than the ones with active bookings")
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "could not update event")
 	default:
