@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"boardgames-manager/internal/events"
+	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
 )
 
@@ -147,24 +148,31 @@ func TestLookupBooking_WrongCodeReturns404(t *testing.T) {
 func TestLookupBooking_IncludesNullMatchResultWhenNoneSubmitted(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
-	gameID := createTestGameForEvent(t, server.Games, "Catan")
-	eventID := createTestEvent(t, server, gameID, 1)
+	// Seats 5 su una seconda copia (copyIndex 2): valori diversi da 1 così
+	// un mapper che sbagliasse campo o restasse a un valore fisso fallisce.
+	game, err := server.Games.CreateGame(context.Background(), games.Game{Name: "D&D", Seats: 5})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	eventID := createTestEvent(t, server, game.ID, 2)
 	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	tableEventGameID := eventGames[1].ID // copyIndex 2, 5 posti
 
-	createPayload, _ := json.Marshal(map[string]any{
-		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
+	marioPayload, _ := json.Marshal(map[string]any{
+		"eventGameId": tableEventGameID, "participantName": "Mario Rossi",
 		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
 	})
-	createRec := httptest.NewRecorder()
-	router.ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(createPayload)))
-	var created struct {
+	marioRec := httptest.NewRecorder()
+	router.ServeHTTP(marioRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(marioPayload)))
+	var mario struct {
+		ID          int64  `json:"id"`
 		BookingCode string `json:"bookingCode"`
 	}
-	if err := json.NewDecoder(createRec.Body).Decode(&created); err != nil {
+	if err := json.NewDecoder(marioRec.Body).Decode(&mario); err != nil {
 		t.Fatalf("decode create: %v", err)
 	}
 
-	lookupPayload, _ := json.Marshal(map[string]string{"bookingCode": created.BookingCode})
+	lookupPayload, _ := json.Marshal(map[string]string{"bookingCode": mario.BookingCode})
 	lookupRec := httptest.NewRecorder()
 	router.ServeHTTP(lookupRec, httptest.NewRequest(http.MethodPost, "/api/bookings/lookup", bytes.NewReader(lookupPayload)))
 	var body map[string]any
@@ -173,6 +181,79 @@ func TestLookupBooking_IncludesNullMatchResultWhenNoneSubmitted(t *testing.T) {
 	}
 	if v, ok := body["matchResult"]; !ok || v != nil {
 		t.Fatalf("expected matchResult to be present and null, got %#v", v)
+	}
+	if copyIndex, _ := body["copyIndex"].(float64); copyIndex != 2 {
+		t.Fatalf("expected copyIndex 2, got %#v", body["copyIndex"])
+	}
+	if seats, _ := body["seats"].(float64); seats != 5 {
+		t.Fatalf("expected seats 5, got %#v", body["seats"])
+	}
+	if tableBookings, _ := body["tableBookings"].(float64); tableBookings != 1 {
+		t.Fatalf("expected tableBookings 1 with a single person seated, got %#v", body["tableBookings"])
+	}
+
+	// Un secondo giocatore si siede allo stesso tavolo: tableBookings deve
+	// riflettere entrambi, non restare fermo a 1 (una sola persona seduta
+	// non distinguerebbe il conteggio da una costante).
+	luigiPayload, _ := json.Marshal(map[string]any{
+		"eventGameId": tableEventGameID, "participantName": "Luigi Verdi",
+		"participantEmail": "luigi@example.com", "participantPhone": "3339876543",
+	})
+	luigiRec := httptest.NewRecorder()
+	router.ServeHTTP(luigiRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(luigiPayload)))
+	var luigi struct {
+		ID          int64  `json:"id"`
+		BookingCode string `json:"bookingCode"`
+	}
+	if err := json.NewDecoder(luigiRec.Body).Decode(&luigi); err != nil {
+		t.Fatalf("decode create: %v", err)
+	}
+
+	luigiLookupPayload, _ := json.Marshal(map[string]string{"bookingCode": luigi.BookingCode})
+	luigiLookupRec := httptest.NewRecorder()
+	router.ServeHTTP(luigiLookupRec, httptest.NewRequest(http.MethodPost, "/api/bookings/lookup", bytes.NewReader(luigiLookupPayload)))
+	var luigiBody map[string]any
+	if err := json.NewDecoder(luigiLookupRec.Body).Decode(&luigiBody); err != nil {
+		t.Fatalf("decode lookup: %v", err)
+	}
+	if tableBookings, _ := luigiBody["tableBookings"].(float64); tableBookings != 2 {
+		t.Fatalf("expected tableBookings 2 once a second person sits at the table, got %#v", luigiBody["tableBookings"])
+	}
+
+	// Mario invia il punteggio; Luigi, che non l'ha inserito ma siede allo
+	// stesso tavolo, deve vederlo comunque nel suo lookup — è il punto
+	// comportamentale dello switch da GetMatchResultForBooking (per
+	// prenotazione) a GetMatchResultForEventGame (per tavolo).
+	submitPayload, _ := json.Marshal(map[string]any{
+		"bookingCode": mario.BookingCode,
+		"players": []map[string]any{
+			{"name": "Mario", "score": 42},
+			{"name": "Luigi", "score": 30},
+		},
+	})
+	submitRec := httptest.NewRecorder()
+	router.ServeHTTP(submitRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/match-result", mario.ID), bytes.NewReader(submitPayload)))
+	if submitRec.Code != http.StatusOK {
+		t.Fatalf("submit match result: expected 200, got %d: %s", submitRec.Code, submitRec.Body.String())
+	}
+
+	sharedLookupRec := httptest.NewRecorder()
+	router.ServeHTTP(sharedLookupRec, httptest.NewRequest(http.MethodPost, "/api/bookings/lookup", bytes.NewReader(luigiLookupPayload)))
+	var sharedBody map[string]any
+	if err := json.NewDecoder(sharedLookupRec.Body).Decode(&sharedBody); err != nil {
+		t.Fatalf("decode shared lookup: %v", err)
+	}
+	sharedResult, ok := sharedBody["matchResult"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected a non-null matchResult in Luigi's lookup, got %#v", sharedBody["matchResult"])
+	}
+	players, ok := sharedResult["players"].([]any)
+	if !ok || len(players) != 2 {
+		t.Fatalf("expected 2 players in the shared match result, got %#v", sharedResult["players"])
+	}
+	first, _ := players[0].(map[string]any)
+	if first["name"] != "Mario" || first["score"] != float64(42) {
+		t.Fatalf("unexpected first player in the shared match result: %#v", first)
 	}
 }
 

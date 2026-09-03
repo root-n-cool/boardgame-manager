@@ -366,15 +366,22 @@ func TestListEventBookings_ReturnsActiveBookings(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
-	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	// Seats 5 su una seconda copia (copyIndex 2): valori diversi da 1 così
+	// un mapper che sbagliasse o scambiasse campo fallisce il test.
+	game, err := server.Games.CreateGame(context.Background(), games.Game{Name: "D&D", Seats: 5})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	gameID := game.ID
 
 	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
-		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+		[]events.EventGameInput{{GameID: gameID, Copies: 2}})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
 	eventGames, _ := server.Events.ListEventGames(context.Background(), event.ID)
-	if err := server.Events.TestInsertBooking(event.ID, eventGames[0].ID, "active"); err != nil {
+	tableEventGameID := eventGames[1].ID // copyIndex 2, 5 posti
+	if err := server.Events.TestInsertBooking(event.ID, tableEventGameID, "active"); err != nil {
 		t.Fatalf("insert booking fixture: %v", err)
 	}
 
@@ -386,18 +393,24 @@ func TestListEventBookings_ReturnsActiveBookings(t *testing.T) {
 		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
 	}
 	var body []struct {
-		GameID   int64  `json:"gameId"`
-		GameName string `json:"gameName"`
+		EventGameID int64  `json:"eventGameId"`
+		GameID      int64  `json:"gameId"`
+		GameName    string `json:"gameName"`
+		CopyIndex   int    `json:"copyIndex"`
+		Seats       int    `json:"seats"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(body) != 1 || body[0].GameName != "Catan" {
+	if len(body) != 1 || body[0].GameName != "D&D" {
 		t.Fatalf("unexpected body: %+v", body)
 	}
 	// L'id serve alla scheda admin per linkare il gioco dalla riga.
 	if body[0].GameID != gameID {
 		t.Fatalf("expected the game id %d in the booking row, got %d", gameID, body[0].GameID)
+	}
+	if body[0].EventGameID != tableEventGameID || body[0].CopyIndex != 2 || body[0].Seats != 5 {
+		t.Fatalf("expected the booking's table (eventGameId %d, copyIndex 2, seats 5), got %+v", tableEventGameID, body[0])
 	}
 }
 
