@@ -275,3 +275,96 @@ func TestGetSettings_NoLongerExposesTheUnusedAPIKeyFields(t *testing.T) {
 		}
 	}
 }
+
+func TestPutSettings_SavesAIProviderAndMasksTheKey(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"aiBaseUrl":       "https://api.example.org/v1/",
+		"aiApiKey":        "sk-secret-1234",
+		"aiModel":         "gemini-flash-lite-latest",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got := getSettings(t, router, cookie)
+	// Lo slash finale viene tolto: il client ci appende /chat/completions.
+	if got["aiBaseUrl"] != "https://api.example.org/v1" {
+		t.Fatalf("expected the base URL without a trailing slash, got %v", got["aiBaseUrl"])
+	}
+	if got["aiModel"] != "gemini-flash-lite-latest" {
+		t.Fatalf("unexpected model: %v", got["aiModel"])
+	}
+	if got["aiApiKeySet"] != true || got["aiConfigured"] != true {
+		t.Fatalf("expected the provider to read as configured, got %v", got)
+	}
+	if got["aiApiKeyMasked"] != "****1234" {
+		t.Fatalf("expected a masked key, got %v", got["aiApiKeyMasked"])
+	}
+	if _, leaked := got["aiApiKey"]; leaked {
+		t.Fatal("the API key must never be served in clear")
+	}
+}
+
+func TestPutSettings_EmptyAIKeyKeepsTheStoredOne(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	if rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"aiBaseUrl":       "https://api.example.org/v1",
+		"aiApiKey":        "sk-secret-1234",
+		"aiModel":         "m",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("first put: %d %s", rec.Code, rec.Body.String())
+	}
+
+	// Salvare di nuovo senza riscrivere la chiave non deve cancellarla:
+	// il campo del form torna vuoto dopo ogni salvataggio.
+	rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"aiBaseUrl":       "https://api.example.org/v1",
+		"aiApiKey":        "",
+		"aiModel":         "m2",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got := getSettings(t, router, cookie)
+	if got["aiApiKeySet"] != true || got["aiModel"] != "m2" {
+		t.Fatalf("expected the key kept and the model updated, got %v", got)
+	}
+}
+
+func TestPutSettings_RejectsARelativeAIBaseURL(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"aiBaseUrl":       "api.example.org",
+		"aiApiKey":        "k",
+		"aiModel":         "m",
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 on a relative base URL, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestGetSettings_NotConfiguredByDefault(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	got := getSettings(t, router, cookie)
+	if got["aiConfigured"] != false || got["aiApiKeySet"] != false {
+		t.Fatalf("expected no AI provider out of the box, got %v", got)
+	}
+}
