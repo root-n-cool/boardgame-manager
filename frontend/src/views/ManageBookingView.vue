@@ -159,7 +159,7 @@ async function submitScore() {
           <p v-if="isSharedTable" class="row-meta">
             Il punteggio è del tavolo: lo vedono e lo possono correggere tutti
             quelli che hanno prenotato qui. Se qualcuno l'ha già inserito, qui
-            sopra c'è il suo, e salvando lo sostituisci.
+            sotto c'è il suo, e salvando lo sostituisci.
           </p>
           <div v-for="(p, index) in players" :key="index" class="player-score-row">
             <input v-model="p.name" placeholder="Nome giocatore" required />

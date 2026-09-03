@@ -462,7 +462,11 @@ onMounted(async () => {
               Posti prenotabili per copia
               <input v-model.number="editSeats" type="number" min="1" />
             </label>
-            <button type="button" :disabled="seatsSaving || editSeats === game.seats" @click="saveSeats">
+            <button
+              type="button"
+              :disabled="seatsSaving || editSeats === game.seats || editSeats < 1"
+              @click="saveSeats"
+            >
               {{ seatsSaving ? 'Salvo…' : 'Salva' }}
             </button>
             <p class="field-hint">

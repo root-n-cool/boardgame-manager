@@ -331,6 +331,7 @@ onMounted(async () => {
           v-model="selectedGames"
           :games="availableGames"
           :occupied-copies="occupiedCopiesByGame"
+          :existing-copies="copiesByGame"
         />
       </div>
 
@@ -353,7 +354,9 @@ onMounted(async () => {
         <div v-for="group in bookingsByCopy" :key="group.eventGameId" class="booking-copy-group">
           <h3 class="booking-copy-head">
             {{ group.label }}
-            <span class="row-meta">· {{ group.rows.length }} di {{ group.seats }} posti prenotabili</span>
+            <span v-if="group.seats > 1" class="row-meta"
+              >· {{ group.rows.length }} di {{ group.seats }} posti prenotabili</span
+            >
           </h3>
           <ul role="list" class="admin-list">
             <li v-for="b in group.rows" :key="b.id">

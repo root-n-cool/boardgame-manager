@@ -31,6 +31,16 @@ const props = defineProps<{
    * togliere — meglio un campo che non scende che un 409 dopo il salvataggio.
    */
   occupiedCopies?: Record<number, number>
+  /**
+   * Copie che il gioco aveva già prima di aprire questo form, per gioco
+   * (solo nella scheda di un evento esistente): quelle copie portano una
+   * fotografia dei posti prenotabili presa quando sono nate, che può non
+   * coincidere più con `game.seats` del catalogo — moltiplicarle per il
+   * valore di adesso darebbe un totale falso. Un gioco assente da questa
+   * mappa è appena stato scelto in questo form: tutte le sue copie nascono
+   * ora, quindi il valore del catalogo è esatto e il totale si può mostrare.
+   */
+  existingCopies?: Record<number, number>
 }>()
 
 const emit = defineEmits<{ 'update:modelValue': [value: SelectedGame[]] }>()
@@ -81,9 +91,15 @@ function setCopies(gameId: number, copies: number) {
   )
 }
 
-/** "× 5 posti prenotabili = 10 in tutto", solo quando c'è qualcosa da spiegare. */
+/**
+ * "× 5 posti prenotabili = 10 in tutto", solo quando c'è qualcosa da
+ * spiegare e quando il conto è vero: se il gioco ha già copie sue da prima
+ * di questo form, quelle portano una fotografia di posti prenotabili che
+ * può differire dal valore corrente del catalogo, e moltiplicare tutte le
+ * copie per quel valore darebbe un totale falso.
+ */
 function capacityLabel(game: PickerGame, copies: number) {
-  if (game.seats <= 1) {
+  if (game.seats <= 1 || (props.existingCopies?.[game.id] ?? 0) > 0) {
     return ''
   }
   return `× ${game.seats} posti prenotabili = ${copies * game.seats} in tutto`
