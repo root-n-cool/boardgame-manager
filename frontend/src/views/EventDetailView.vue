@@ -83,15 +83,24 @@ function copyLabel(g: EventGameInfo) {
   return (copiesByGame.value[g.gameId] ?? 1) > 1 ? `${g.name} #${g.copyIndex}` : g.name
 }
 
+function isFull(g: EventGameInfo) {
+  return g.remaining <= 0
+}
+
 /**
- * Un tavolo aperto dice quanti posti prenotabili restano; una copia
- * singola resta con la dicitura di sempre.
+ * Quanti posti restano, e solo quando la risposta è un numero che serve:
+ * su un tavolo aperto sapere se ne resta uno o quattro cambia se ti
+ * siedi. Su una copia singola il numero è sempre 1 o 0 — un booleano
+ * travestito da cifra — e chi guarda ha già il bottone "Prenota" o la
+ * pastiglia "Al completo" per capirlo.
  */
-function availabilityLabel(g: EventGameInfo) {
-  if (g.seats > 1) {
-    return `Posti prenotabili liberi: ${g.remaining} di ${g.seats}`
+function seatsLabel(g: EventGameInfo) {
+  if (g.seats <= 1 || isFull(g)) {
+    return ''
   }
-  return `Disponibilità: ${g.remaining}`
+  return g.remaining === 1
+    ? 'Un posto prenotabile libero'
+    : `${g.remaining} posti prenotabili liberi`
 }
 
 async function submitBooking() {
@@ -146,7 +155,7 @@ onMounted(async () => {
       </p>
 
       <ul class="event-games">
-        <li v-for="g in event.games" :key="g.eventGameId">
+        <li v-for="g in event.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
           <img v-if="g.coverPath" :src="`/api/uploads/${g.coverPath}`" :alt="g.name" />
           <div v-else class="cover-placeholder" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
@@ -159,13 +168,9 @@ onMounted(async () => {
             </svg>
           </div>
           <router-link :to="`/games/${g.gameId}`">{{ copyLabel(g) }}</router-link>
-          <p>{{ availabilityLabel(g) }}</p>
-          <button
-            v-if="!hasStarted"
-            type="button"
-            :disabled="g.remaining <= 0"
-            @click="startBooking(g.eventGameId)"
-          >
+          <p v-if="isFull(g)" class="seat-state">Al completo</p>
+          <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
+          <button v-if="!hasStarted && !isFull(g)" type="button" @click="startBooking(g.eventGameId)">
             Prenota
           </button>
         </li>

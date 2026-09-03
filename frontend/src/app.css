@@ -824,8 +824,17 @@ button.is-compact svg {
   color: var(--felt-text-muted);
 }
 
+/* Dentro la card a colonna il segnaposto è un flex item: senza una larghezza
+   esplicita l'aspect-ratio lo calcolerebbe sull'altezza del solo dado e la
+   copertina si ridurrebbe a un quadratino. */
 .event-games .cover-placeholder {
+  width: 100%;
+  flex: none;
   margin: 0;
+}
+
+.event-games img {
+  flex: none;
 }
 
 .game-grid h2 {
@@ -1709,8 +1718,12 @@ ul.game-grid {
   background-image: radial-gradient(circle at 15% 10%, rgb(255 255 255 / 5%), transparent 55%);
 }
 
+/* La card è una colonna e l'azione è ancorata in fondo: con una riga di
+   posti su un tavolo e nessuna su una copia singola, i "Prenota" della
+   stessa fila resterebbero a tre altezze diverse. */
 .event-games li {
-  display: block;
+  display: flex;
+  flex-direction: column;
   background: var(--card);
   border-radius: var(--radius-sm);
   padding: 0;
@@ -1737,17 +1750,64 @@ ul.game-grid {
   color: var(--ink);
 }
 
+/* Non è un dato da ricopiare come un booking code o un punteggio: è una riga
+   di stato ("3 posti prenotabili liberi"), quindi voce di testo corrente — e
+   in mono andava a capo dentro una card da 210px. */
 .event-games p {
   margin: 0 0.8rem 0.4rem;
   font-size: 0.8rem;
   color: var(--ink-muted);
-  font-family: 'Data', monospace;
 }
 
 .event-games button {
   display: block;
   width: calc(100% - 1.6rem);
-  margin: 0 0.8rem 0.8rem;
+  margin: auto 0.8rem 0.8rem;
+}
+
+/* Una scatola presa esce di gioco: il cartoncino passa al tono spento, la
+   copertina si smorza e resta la pastiglia. Scorrendo il tavolo dal telefono
+   l'occhio cade sulle scatole ancora accese, senza dover leggere un numero
+   su ognuna. Non è rosso: non è un errore, è un posto già occupato. */
+.event-games li.is-full {
+  background: var(--card-alt);
+  box-shadow: none;
+  border: 1px solid var(--card-line);
+}
+
+.event-games li.is-full img,
+.event-games li.is-full .cover-placeholder {
+  filter: saturate(0.35) brightness(0.94);
+}
+
+.event-games li.is-full a {
+  color: var(--ink-muted);
+}
+
+.event-games .seat-state {
+  align-self: flex-start;
+  margin: auto 0.8rem 0.8rem;
+  padding: 0.16rem 0.5rem;
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink-muted);
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.76rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Sotto i 560px il tavolo occupa la pagina invece di restare una striscia:
+   con le colonne bloccate a 210px e la larghezza a contenuto, una serata con
+   una sola colonna di copie lasciava il feltro largo un quarto di schermo. */
+@media (max-width: 560px) {
+  .event-games {
+    width: auto;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.8rem;
+    padding: 0.9rem;
+  }
 }
 
 /* ---------- Il codice prenotazione: cartellino da conservare ---------- */
