@@ -74,70 +74,81 @@ onMounted(async () => {
 <template>
   <div>
     <h1>Impostazioni</h1>
-    <form @submit.prevent="save">
-      <label>
-        Lingua di default
-        <select v-model="defaultLanguage">
-          <option value="it">Italiano</option>
-          <option value="en">Inglese</option>
-        </select>
-      </label>
+    <form class="panel-form" @submit.prevent="save">
+      <div class="panel-card">
+        <div class="section-head">
+          <h2>Generale</h2>
+        </div>
+        <label>
+          Lingua di default
+          <select v-model="defaultLanguage">
+            <option value="it">Italiano</option>
+            <option value="en">Inglese</option>
+          </select>
+        </label>
 
-      <label>
-        BoardGameGeek API token
-        <input v-model="bggApiToken" type="password" :placeholder="bggApiTokenMasked || 'non configurato'" />
-      </label>
+        <label>
+          BoardGameGeek API token
+          <input v-model="bggApiToken" type="password" :placeholder="bggApiTokenMasked || 'non configurato'" />
+        </label>
 
-      <label>
-        Indirizzo pubblico
-        <input v-model="publicBaseUrl" type="url" inputmode="url" placeholder="https://giochi.example.org" />
-      </label>
-      <p class="field-hint">
-        Serve a comporre i link che mandi fuori dall'app, come l'invito di un
-        amministratore. Se lo lasci vuoto si usa l'indirizzo da cui stai navigando.
-      </p>
+        <label>
+          Indirizzo pubblico
+          <input v-model="publicBaseUrl" type="url" inputmode="url" placeholder="https://giochi.example.org" />
+        </label>
+        <p class="field-hint">
+          Serve a comporre i link che mandi fuori dall'app, come l'invito di un
+          amministratore. Se lo lasci vuoto si usa l'indirizzo da cui stai navigando.
+        </p>
+      </div>
 
-      <h2>Provider AI</h2>
-      <p class="field-hint">
-        Se lo configuri, le descrizioni scaricate da BoardGameGeek arrivano già
-        tradotte nella lingua della scheda. Vale un qualsiasi servizio
-        compatibile con le API OpenAI: Google Gemini, OpenAI, OpenRouter, o un
-        Ollama in casa. Lasciandolo vuoto l'app funziona come prima, con le
-        descrizioni in inglese.
-      </p>
+      <div class="panel-card">
+        <div class="section-head">
+          <h2>Provider AI</h2>
+        </div>
+        <p class="field-hint">
+          Se lo configuri, le descrizioni scaricate da BoardGameGeek arrivano già
+          tradotte nella lingua della scheda. Vale un qualsiasi servizio
+          compatibile con le API OpenAI: Google Gemini, OpenAI, OpenRouter, o un
+          Ollama in casa. Lasciandolo vuoto l'app funziona come prima, con le
+          descrizioni in inglese.
+        </p>
 
-      <label>
-        Indirizzo del provider
-        <input
-          v-model="aiBaseUrl"
-          type="url"
-          inputmode="url"
-          placeholder="https://generativelanguage.googleapis.com/v1beta/openai"
-        />
-      </label>
-      <p class="field-hint">
-        L'indirizzo base, senza <code>/chat/completions</code> in fondo. Gemini:
-        <code>https://generativelanguage.googleapis.com/v1beta/openai</code> ·
-        OpenAI: <code>https://api.openai.com/v1</code> · Ollama:
-        <code>http://localhost:11434/v1</code>
-      </p>
+        <label>
+          Indirizzo del provider
+          <input
+            v-model="aiBaseUrl"
+            type="url"
+            inputmode="url"
+            placeholder="https://generativelanguage.googleapis.com/v1beta/openai"
+          />
+        </label>
+        <p class="field-hint">
+          L'indirizzo base, senza <code>/chat/completions</code> in fondo. Gemini:
+          <code>https://generativelanguage.googleapis.com/v1beta/openai</code> ·
+          OpenAI: <code>https://api.openai.com/v1</code> · Ollama:
+          <code>http://localhost:11434/v1</code>
+        </p>
 
-      <label>
-        Chiave API
-        <input v-model="aiApiKey" type="password" :placeholder="aiApiKeyMasked || 'non configurata'" />
-      </label>
+        <label>
+          Chiave API
+          <input v-model="aiApiKey" type="password" :placeholder="aiApiKeyMasked || 'non configurata'" />
+        </label>
 
-      <label>
-        Modello
-        <input v-model="aiModel" placeholder="gemini-flash-lite-latest" />
-      </label>
-      <p class="field-hint">
-        Per tradurre basta un modello economico e veloce. Esempi:
-        <code>gemini-flash-lite-latest</code>, <code>gpt-4.1-mini</code>,
-        <code>llama3.1</code>.
-      </p>
+        <label>
+          Modello
+          <input v-model="aiModel" placeholder="gemini-flash-lite-latest" />
+        </label>
+        <p class="field-hint">
+          Per tradurre basta un modello economico e veloce. Esempi:
+          <code>gemini-flash-lite-latest</code>, <code>gpt-4.1-mini</code>,
+          <code>llama3.1</code>.
+        </p>
+      </div>
 
-      <button type="submit">Salva</button>
+      <div class="form-actions">
+        <button type="submit">Salva</button>
+      </div>
       <p v-if="message" class="success">{{ message }}</p>
       <p v-if="error" class="error">{{ error }}</p>
     </form>

@@ -92,6 +92,7 @@ async function load() {
 function selectLanguage(code: string) {
   activeLangCode.value = code
   saveMessage.value = ''
+  translateError.value = ''
   const lang = activeLanguage()
   if (lang) {
     editName.value = lang.name
