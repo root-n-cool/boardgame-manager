@@ -466,8 +466,8 @@ onMounted(async () => {
               {{ seatsSaving ? 'Salvo…' : 'Salva' }}
             </button>
             <p class="field-hint">
-              Più di 1 apre il tavolo: a un evento, ogni posto si prenota a sé
-              con il suo codice.
+              Più di 1 apre il tavolo: a un evento, ogni posto prenotabile ha
+              un proprio codice.
             </p>
             <p v-if="seatsError" class="error">{{ seatsError }}</p>
           </div>

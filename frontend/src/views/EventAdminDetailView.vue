@@ -188,14 +188,15 @@ async function saveEvent() {
   }
 }
 
-// Annullare una prenotazione libera il posto sul tavolo; il punteggio, se
-// c'è, resta perché appartiene al tavolo e non a chi l'ha inserito — sparisce
-// solo se quella era l'ultima prenotazione rimasta su quella copia. Quello
-// che cambia non è solo la lista, quindi si ricarica tutta la scheda.
+// Annullare una prenotazione libera un posto prenotabile sul tavolo; il
+// punteggio, se c'è, resta perché appartiene al tavolo e non a chi l'ha
+// inserito — sparisce solo se quella era l'ultima prenotazione rimasta su
+// quella copia. Quello che cambia non è solo la lista, quindi si ricarica
+// tutta la scheda.
 async function cancelBooking(booking: BookingAdminInfo) {
   const confirmed = window.confirm(
     `Annullare la prenotazione di ${booking.participantName} per ${booking.gameName}? ` +
-      'Il posto torna libero. Il punteggio del tavolo resta, a meno che non fosse la sua ultima prenotazione.',
+      'Il posto prenotabile torna libero. Il punteggio del tavolo resta, a meno che non fosse la sua ultima prenotazione.',
   )
   if (!confirmed) {
     return
@@ -352,7 +353,7 @@ onMounted(async () => {
         <div v-for="group in bookingsByCopy" :key="group.eventGameId" class="booking-copy-group">
           <h3 class="booking-copy-head">
             {{ group.label }}
-            <span class="row-meta">{{ group.rows.length }} di {{ group.seats }} posti prenotabili</span>
+            <span class="row-meta">· {{ group.rows.length }} di {{ group.seats }} posti prenotabili</span>
           </h3>
           <ul role="list" class="admin-list">
             <li v-for="b in group.rows" :key="b.id">

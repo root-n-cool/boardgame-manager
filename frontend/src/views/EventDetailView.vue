@@ -204,8 +204,8 @@ onMounted(async () => {
         </div>
         <p>Conservalo per gestire la prenotazione o inserire il punteggio finale da "Gestisci prenotazione".</p>
         <p v-if="selectedGame && selectedGame.seats > 1">
-          A questo tavolo si prenota un posto a testa: il punteggio finale è uno per tavolo e
-          chiunque sieda qui può inserirlo o correggerlo con il proprio codice.
+          Questo tavolo ha più posti prenotabili, uno a testa: il punteggio finale è uno per
+          tavolo e chiunque sieda qui può inserirlo o correggerlo con il proprio codice.
         </p>
       </div>
 
