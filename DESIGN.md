@@ -401,8 +401,10 @@ su compare `Posti prenotabili liberi: 3 di 5`.
   campo **copie** in mono; sotto, la ricerca per nome (che compare solo
   oltre i 6 giochi in catalogo) e il resto del catalogo in un'area con
   scroll proprio (18rem), perché un form non deve allungarsi a fisarmonica
-  quanto è grande lo scaffale. Un gioco con prenotazioni attive mostra
-  "N prenotate", non si può togliere e il campo copie non scende sotto
+  quanto è grande lo scaffale. Un gioco con copie occupate da prenotazioni
+  attive mostra "1 copia occupata" / "N copie occupate" (si contano le
+  copie, non le prenotazioni: un tavolo con più prenotati è comunque una
+  copia sola), non si può togliere e il campo copie non scende sotto
   quel numero: il backend rifiuterebbe, e un campo che non scende è più
   onesto di un 409 dopo il salvataggio.
 - **Prenotazioni e risultati riusano la lista di `/users`** (`.admin-list`
