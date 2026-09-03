@@ -50,3 +50,13 @@ func newTestServerWithDB(t *testing.T) (*httpapi.Server, *sql.DB) {
 		BGG:         &fakeBGGClient{},
 	}, conn
 }
+
+// newTestServerWithTranslator monta il server con un provider AI finto già
+// configurato: i test che vogliono l'app senza AI usano gli altri helper e
+// lasciano il campo a nil.
+func newTestServerWithTranslator(t *testing.T, tr *fakeTranslator) (*httpapi.Server, *sql.DB) {
+	t.Helper()
+	server, conn := newTestServerWithDB(t)
+	server.AI = tr
+	return server, conn
+}

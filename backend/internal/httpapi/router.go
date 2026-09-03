@@ -7,6 +7,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"boardgames-manager/internal/ai"
 	"boardgames-manager/internal/auth"
 	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/events"
@@ -28,6 +29,11 @@ type Server struct {
 	Storage     *storage.Store
 	BGG         bgg.Client
 	Geocode     geocode.Client
+	// AI, quando è valorizzato, è il traduttore da usare. Lasciato a nil il
+	// server ne costruisce uno per richiesta dalle impostazioni: così
+	// cambiare provider non richiede un riavvio, e i test possono iniettare
+	// un finto.
+	AI ai.Translator
 }
 
 func NewRouter(s *Server) http.Handler {
