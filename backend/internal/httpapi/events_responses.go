@@ -35,16 +35,28 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 		return nil, err
 	}
 
+	// One grouped query for occupancy across every copy, instead of
+	// RemainingCapacity called once per copy: this endpoint is the one every
+	// participant hits, and a copy is a row, not a game.
+	occupied, err := s.Events.ActiveBookingCountsByEventGame(ctx, e.ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// gameCache fetches each distinct game once however many copies it has —
+	// two copies of the same game used to mean two GetGame calls for nothing.
+	gameCache := map[int64]games.Game{}
 	gamesOut := make([]map[string]any, 0, len(eventGames))
 	for _, eg := range eventGames {
-		game, err := s.Games.GetGame(ctx, eg.GameID)
-		if err != nil {
-			return nil, err
+		game, ok := gameCache[eg.GameID]
+		if !ok {
+			game, err = s.Games.GetGame(ctx, eg.GameID)
+			if err != nil {
+				return nil, err
+			}
+			gameCache[eg.GameID] = game
 		}
-		remaining, err := s.Events.RemainingCapacity(ctx, eg.ID)
-		if err != nil {
-			return nil, err
-		}
+		remaining := eg.Seats - occupied[eg.ID]
 		gamesOut = append(gamesOut, toEventGameSummary(eg.ID, game, eg.CopyIndex, eg.Seats, remaining))
 	}
 

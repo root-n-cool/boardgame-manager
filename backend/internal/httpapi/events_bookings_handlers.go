@@ -35,7 +35,7 @@ func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, events.ErrEventAlreadyStarted):
 		writeError(w, http.StatusConflict, "l'evento è già iniziato")
 	case errors.Is(err, events.ErrGameSoldOut):
-		writeError(w, http.StatusConflict, "non ci sono più copie disponibili per questo gioco")
+		writeError(w, http.StatusConflict, "non ci sono più posti prenotabili su questa copia")
 	case errors.Is(err, events.ErrDuplicatePhoneBooking):
 		writeError(w, http.StatusConflict, "hai già una prenotazione attiva per questo evento")
 	case err != nil:
@@ -98,4 +98,23 @@ func (s *Server) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// adminCancelBookingHandler is the organiser's counterpart to the public
+// cancel: no booking code, session auth only. It cancels rather than deletes,
+// so the effect is exactly the one the participant would get.
+func (s *Server) adminCancelBookingHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid booking id")
+		return
+	}
+	if _, err := s.Events.AdminCancelBooking(r.Context(), id); errors.Is(err, events.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "booking not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not cancel booking")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
 }

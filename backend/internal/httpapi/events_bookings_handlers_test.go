@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -70,6 +71,49 @@ func TestCreateBooking_SoldOutReturns409(t *testing.T) {
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestCreateBooking_SoldOutOnATableReturnsATruthfulMessage guards the wording
+// for a full table (seats > 1): "non ci sono più copie disponibili" is false
+// there — the copy exists, its bookable seats are just all taken — and the
+// message reaches the participant verbatim.
+func TestCreateBooking_SoldOutOnATableReturnsATruthfulMessage(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	game, err := server.Games.CreateGame(context.Background(), games.Game{Name: "D&D", Seats: 2})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	eventID := createTestEvent(t, server, game.ID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	if err := server.Events.TestInsertBooking(eventID, eventGames[0].ID, "active"); err != nil {
+		t.Fatalf("insert first booking fixture: %v", err)
+	}
+	if err := server.Events.TestInsertBooking(eventID, eventGames[0].ID, "active"); err != nil {
+		t.Fatalf("insert second booking fixture: %v", err)
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
+		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Error string `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if strings.Contains(body.Error, "copie") {
+		t.Fatalf("expected the message not to blame the copy for a table with free seats, got %q", body.Error)
+	}
+	if !strings.Contains(body.Error, "posti prenotabili") {
+		t.Fatalf(`expected the message to use "posti prenotabili", got %q`, body.Error)
 	}
 }
 

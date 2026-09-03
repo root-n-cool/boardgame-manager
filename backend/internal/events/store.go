@@ -270,6 +270,15 @@ func (s *Store) GetEventGame(ctx context.Context, id int64) (EventGame, error) {
 	return eg, err
 }
 
+// ActiveBookingCountsByEventGame returns, for every copy of the event, how
+// many active bookings sit on it — one grouped query instead of the
+// RemainingCapacity-per-copy loop the public event page used to run: an
+// evening with 8 games × 2 copies went from ~9 queries to ~33 doing it that
+// way. Missing from the map means zero, same as RemainingCapacity's own count.
+func (s *Store) ActiveBookingCountsByEventGame(ctx context.Context, eventID int64) (map[int64]int, error) {
+	return occupiedCopies(ctx, s.db, eventID)
+}
+
 func (s *Store) RemainingCapacity(ctx context.Context, eventGameID int64) (int, error) {
 	var remaining int
 	err := s.db.QueryRowContext(ctx,

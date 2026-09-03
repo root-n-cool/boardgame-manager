@@ -536,6 +536,46 @@ func TestRemainingCapacity_CountsSeatsOnTheCopy(t *testing.T) {
 	}
 }
 
+// TestActiveBookingCountsByEventGame_GroupsOccupancyForTheWholeEvent covers
+// the method the public event page uses to fetch occupancy for every copy in
+// one query instead of RemainingCapacity called once per copy.
+func TestActiveBookingCountsByEventGame_GroupsOccupancyForTheWholeEvent(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGameWithSeats(t, gameStore, "D&D", 5)
+	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Copies: 2}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, err := eventStore.ListEventGames(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+
+	if err := eventStore.TestInsertBooking(event.ID, eventGames[0].ID, "active"); err != nil {
+		t.Fatalf("insert booking on copy 1: %v", err)
+	}
+	if err := eventStore.TestInsertBooking(event.ID, eventGames[0].ID, "active"); err != nil {
+		t.Fatalf("insert second booking on copy 1: %v", err)
+	}
+	// A cancelled booking must not count towards occupancy.
+	if err := eventStore.TestInsertBooking(event.ID, eventGames[1].ID, "cancelled"); err != nil {
+		t.Fatalf("insert cancelled booking on copy 2: %v", err)
+	}
+
+	counts, err := eventStore.ActiveBookingCountsByEventGame(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("counts: %v", err)
+	}
+	if counts[eventGames[0].ID] != 2 {
+		t.Fatalf("expected 2 active bookings on copy 1, got %d", counts[eventGames[0].ID])
+	}
+	if counts[eventGames[1].ID] != 0 {
+		t.Fatalf("expected 0 active bookings on copy 2, got %d", counts[eventGames[1].ID])
+	}
+}
+
 func TestCreateEvent_RejectsUnknownGame(t *testing.T) {
 	eventStore, _ := newTestStore(t)
 	ctx := context.Background()
@@ -614,6 +654,64 @@ func TestUpdateEvent_DropsOnlyFreeCopies(t *testing.T) {
 	}
 	if after[0].ID != eventGames[0].ID || after[1].ID != eventGames[2].ID {
 		t.Fatalf("expected copies #1 and #3 to survive, got %+v", after)
+	}
+}
+
+// TestUpdateEvent_CopyNumbersAreStableLabelsNeverRenumbered chains a drop and
+// an add: copy numbers are stable labels, not positions — dropping a middle
+// copy leaves a permanent gap, and a later addition must take the next number
+// after the highest surviving one, never reuse the gap. Existing tests create
+// a gap (TestUpdateEvent_DropsOnlyFreeCopies) or add copies
+// (TestUpdateEvent_AddsCopiesKeepingExistingIDs) but never chain the two, so
+// nothing pins that the "next" index is computed from the highest copy_index
+// rather than from len(copies) (which a gap would make wrong).
+func TestUpdateEvent_CopyNumbersAreStableLabelsNeverRenumbered(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+
+	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Copies: 3}})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	eventGames, err := eventStore.ListEventGames(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	// Occupa la #3, la più alta: scendendo a 2 copie sopravvive lei e cade
+	// la #2, libera, lasciando un buco.
+	if err := eventStore.TestInsertBooking(event.ID, eventGames[2].ID, "active"); err != nil {
+		t.Fatalf("insert booking: %v", err)
+	}
+	if _, err := eventStore.UpdateEvent(ctx, event.ID, "Serata", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Copies: 2}}); err != nil {
+		t.Fatalf("drop middle copy: %v", err)
+	}
+	afterDrop, err := eventStore.ListEventGames(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("list after drop: %v", err)
+	}
+	if len(afterDrop) != 2 || afterDrop[0].CopyIndex != 1 || afterDrop[1].CopyIndex != 3 {
+		t.Fatalf("expected copies #1 and #3 with a gap at #2, got %+v", afterDrop)
+	}
+
+	// Ora si aggiunge una copia: deve prendere il numero dopo la più alta
+	// esistente (4), non riempire il buco lasciato dalla #2.
+	if _, err := eventStore.UpdateEvent(ctx, event.ID, "Serata", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Copies: 3}}); err != nil {
+		t.Fatalf("add copy after the gap: %v", err)
+	}
+	afterAdd, err := eventStore.ListEventGames(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("list after add: %v", err)
+	}
+	if len(afterAdd) != 3 {
+		t.Fatalf("expected 3 copies, got %d", len(afterAdd))
+	}
+	indexes := []int{afterAdd[0].CopyIndex, afterAdd[1].CopyIndex, afterAdd[2].CopyIndex}
+	if indexes[0] != 1 || indexes[1] != 3 || indexes[2] != 4 {
+		t.Fatalf("expected copy numbers 1, 3, 4 (gap at 2 preserved), got %v", indexes)
 	}
 }
 
