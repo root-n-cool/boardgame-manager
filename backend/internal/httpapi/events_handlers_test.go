@@ -330,6 +330,52 @@ func TestUpdateEvent_RejectsQuantityBelowActiveBookings(t *testing.T) {
 	}
 }
 
+// TestUpdateEvent_SucceedsAndChangesCopies is the update path's only API
+// coverage besides the 409: the earlier test only exercises the rejection,
+// nothing here asserted that a successful PUT actually persists a new copy
+// count.
+func TestUpdateEvent_SucceedsAndChangesCopies(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+
+	event, err := server.Events.CreateEvent(context.Background(), "Serata giochi", nil, "2099-01-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Copies: 1}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	payload, _ := json.Marshal(map[string]any{
+		"title": "Serata giochi", "eventDate": "2099-01-01", "startTime": "20:00",
+		"games": []map[string]any{{"gameId": gameID, "copies": 3}},
+	})
+	req := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/events/%d", event.ID), bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d", event.ID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET after update: expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var detail struct {
+		Games []struct {
+			CopyIndex int `json:"copyIndex"`
+		} `json:"games"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatalf("decode detail: %v", err)
+	}
+	if len(detail.Games) != 3 {
+		t.Fatalf("expected 3 copies after the update, got %d: %+v", len(detail.Games), detail.Games)
+	}
+}
+
 func TestDeleteEvent_Succeeds(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)

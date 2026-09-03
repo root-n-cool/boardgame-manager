@@ -447,6 +447,42 @@ func TestCreateBooking_PhoneConstraintHoldsInsideATable(t *testing.T) {
 	}
 }
 
+// TestCreateBooking_PhoneConstraintHoldsAcrossCopiesOfTheSameEvent pins the
+// actual shape of the partial unique index:
+// idx_one_active_booking_per_phone_per_event is scoped to (event_id, phone),
+// tables included, not to event_game_id. Two copies of the *same* game are
+// used on purpose rather than two different games: that keeps event_game_id
+// as the only thing that differs between the two bookings, so a regression
+// that accidentally scoped the constraint to event_game_id instead of
+// event_id — which would let one phone hold a seat at every table of an
+// evening, one booking per table — cannot hide behind a difference in
+// game_id.
+func TestCreateBooking_PhoneConstraintHoldsAcrossCopiesOfTheSameEvent(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGameWithSeats(t, gameStore, "D&D", 5)
+	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Copies: 2}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, err := eventStore.ListEventGames(ctx, event.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+
+	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
+		"Mario", "mario@example.com", "3331111111", now); err != nil {
+		t.Fatalf("first table booking: %v", err)
+	}
+	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[1].ID,
+		"Mario di nuovo", "mario@example.com", "3331111111", now)
+	if !errors.Is(err, events.ErrDuplicatePhoneBooking) {
+		t.Fatalf("expected ErrDuplicatePhoneBooking on the second table, got %v", err)
+	}
+}
+
 func TestListBookingsForEvent_CarriesTheCopy(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
