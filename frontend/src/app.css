@@ -1910,7 +1910,29 @@ ul.game-grid {
   font-family: 'Data', monospace;
 }
 
+/* Capacità totale di un tavolo con più posti per copia: "× 5 posti
+   prenotabili = 10 in tutto", dato secondario rispetto al numero di copie. */
+.game-select-seats {
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
 /* ---------- Prenotazioni e risultati di un evento (scheda admin) ---------- */
+
+/* Le prenotazioni si raggruppano per copia del tavolo: un gruppo per
+   ciascuna, con la testata che dice quale tavolo è e quanto è pieno. */
+.booking-copy-group + .booking-copy-group {
+  margin-top: 1.1rem;
+}
+
+.booking-copy-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+}
 
 .booking-who {
   display: flex;

@@ -1,17 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/client'
-
-interface GameSummary {
-  id: number
-  name: string
-}
-
-interface SelectedGame {
-  gameId: number
-  quantity: number
-}
+import EventImagePicker from '../components/EventImagePicker.vue'
+import EventGamesPicker, { type PickerGame, type SelectedGame } from '../components/EventGamesPicker.vue'
 
 const router = useRouter()
 
@@ -20,39 +12,41 @@ const description = ref('')
 const eventDate = ref('')
 const startTime = ref('')
 const error = ref('')
+const saving = ref(false)
 
-const availableGames = ref<GameSummary[]>([])
+const availableGames = ref<PickerGame[]>([])
 const selectedGames = ref<SelectedGame[]>([])
 
+const chosenLabel = computed(() =>
+  selectedGames.value.length === 1 ? '1 scelto' : `${selectedGames.value.length} scelti`,
+)
+
+// L'immagine si sceglie qui ma si carica dopo: il file ha bisogno di un evento
+// a cui appartenere, quindi resta in memoria fino al salvataggio e intanto si
+// vede in anteprima da un object URL.
+const imageFile = ref<File | null>(null)
+const imagePreview = ref<string | null>(null)
+
 async function loadGames() {
-  availableGames.value = await api.get<GameSummary[]>('/games')
+  availableGames.value = await api.get<PickerGame[]>('/games')
 }
 
-function isSelected(gameId: number) {
-  return selectedGames.value.some((g) => g.gameId === gameId)
+function onImageSelected(file: File) {
+  releasePreview()
+  imageFile.value = file
+  imagePreview.value = URL.createObjectURL(file)
 }
 
-function toggleGame(gameId: number, checked: boolean) {
-  if (checked) {
-    selectedGames.value.push({ gameId, quantity: 1 })
-  } else {
-    selectedGames.value = selectedGames.value.filter((g) => g.gameId !== gameId)
-  }
-}
-
-function quantityFor(gameId: number) {
-  return selectedGames.value.find((g) => g.gameId === gameId)?.quantity ?? 1
-}
-
-function setQuantity(gameId: number, quantity: number) {
-  const entry = selectedGames.value.find((g) => g.gameId === gameId)
-  if (entry) {
-    entry.quantity = quantity
+function releasePreview() {
+  if (imagePreview.value) {
+    URL.revokeObjectURL(imagePreview.value)
+    imagePreview.value = null
   }
 }
 
 async function createEvent() {
   error.value = ''
+  saving.value = true
   try {
     const event = await api.post<{ id: number }>('/events', {
       title: title.value,
@@ -61,58 +55,90 @@ async function createEvent() {
       startTime: startTime.value,
       games: selectedGames.value,
     })
+    // L'evento esiste già: se l'immagine non passa (formato, dimensione, rete)
+    // non si torna indietro — si va sulla scheda e lì si dice cos'è andato
+    // storto, perché è lì che si riprova.
+    if (imageFile.value) {
+      const body = new FormData()
+      body.append('file', imageFile.value)
+      try {
+        await api.post(`/events/${event.id}/image`, body)
+      } catch (e) {
+        router.push({
+          path: `/admin/events/${event.id}`,
+          query: { imageError: (e as Error).message },
+        })
+        return
+      }
+    }
     router.push(`/admin/events/${event.id}`)
   } catch (e) {
     error.value = (e as Error).message
+  } finally {
+    saving.value = false
   }
 }
 
 onMounted(loadGames)
+onBeforeUnmount(releasePreview)
 </script>
 
 <template>
   <div>
-    <h1>Crea evento</h1>
-    <form @submit.prevent="createEvent">
-      <label>
-        Titolo
-        <input v-model="title" required />
-      </label>
-      <label>
-        Descrizione
-        <textarea v-model="description"></textarea>
-      </label>
-      <label>
-        Data
-        <input v-model="eventDate" type="date" required />
-      </label>
-      <label>
-        Ora
-        <input v-model="startTime" type="time" required />
-      </label>
+    <router-link to="/admin/events" class="back-link">&larr; Eventi</router-link>
 
-      <fieldset>
-        <legend>Giochi</legend>
-        <div v-for="g in availableGames" :key="g.id" class="game-select-row">
-          <label class="checkbox-label">
-            <input
-              type="checkbox"
-              :checked="isSelected(g.id)"
-              @change="toggleGame(g.id, ($event.target as HTMLInputElement).checked)"
-            />
-            {{ g.name }}
-          </label>
-          <input
-            v-if="isSelected(g.id)"
-            type="number"
-            min="1"
-            :value="quantityFor(g.id)"
-            @input="setQuantity(g.id, Number(($event.target as HTMLInputElement).value))"
-          />
+    <div class="page-head">
+      <div class="page-head-text">
+        <h1>Crea evento</h1>
+        <p class="page-meta">Una serata, i giochi che ci saranno e quante copie di ciascuno.</p>
+      </div>
+    </div>
+
+    <form class="panel-form" @submit.prevent="createEvent">
+      <div class="panel-card">
+        <div class="section-head">
+          <h2>Dettagli</h2>
         </div>
-      </fieldset>
 
-      <button type="submit">Crea</button>
+        <div class="field-block">
+          <span class="field-label">Immagine <span class="field-optional">(opzionale)</span></span>
+          <EventImagePicker
+            :src="imagePreview"
+            alt="Anteprima dell'immagine scelta per l'evento"
+            @select="onImageSelected"
+          />
+          <p class="field-hint">JPEG, PNG o WebP, fino a 5MB. Si può aggiungere anche dopo.</p>
+        </div>
+
+        <label>
+          Titolo
+          <input v-model="title" required />
+        </label>
+        <label>
+          <span>Descrizione <span class="field-optional">(opzionale)</span></span>
+          <textarea v-model="description"></textarea>
+        </label>
+        <label>
+          Data
+          <input v-model="eventDate" type="date" required />
+        </label>
+        <label>
+          Ora
+          <input v-model="startTime" type="time" required />
+        </label>
+      </div>
+
+      <div class="panel-card">
+        <div class="section-head">
+          <h2>Giochi dell'evento</h2>
+          <span class="section-count">{{ chosenLabel }}</span>
+        </div>
+        <EventGamesPicker v-model="selectedGames" :games="availableGames" />
+      </div>
+
+      <div class="form-actions">
+        <button type="submit" :disabled="saving">{{ saving ? 'Creazione…' : 'Crea evento' }}</button>
+      </div>
       <p v-if="error" class="error">{{ error }}</p>
     </form>
   </div>
