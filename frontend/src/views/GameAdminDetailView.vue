@@ -103,6 +103,7 @@ function selectLanguage(code: string) {
 async function saveLanguage() {
   error.value = ''
   saveMessage.value = ''
+  translateError.value = ''
   try {
     await api.patch(`/games/${gameId}/languages/${activeLangCode.value}`, {
       name: editName.value,

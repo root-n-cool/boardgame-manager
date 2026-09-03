@@ -98,6 +98,13 @@ func (s *Server) createGameFromBGG(w http.ResponseWriter, r *http.Request, req c
 	// traduce ogni lingua della scheda, oggi e quando se ne aggiunge una.
 	rawDescription := detail.Description
 
+	// La traduzione (fino a 60s di chiamata di rete) va calcolata prima
+	// di creare il gioco: se il contesto viene cancellato a metà, deve
+	// far fallire l'intero import invece di lasciare un gioco senza
+	// lingue (CreateGame riuscito ma CreateLanguage fallito sul
+	// contesto ormai morto).
+	description := s.translateDescription(r.Context(), rawDescription, req.LanguageCode)
+
 	game, err := s.Games.CreateGame(r.Context(), games.Game{
 		BGGID: &bggID, Name: detail.Name, Year: &year, MinPlayers: &minPlayers,
 		MaxPlayers: &maxPlayers, PlaytimeMinutes: &playtime, Owner: &owner, CoverPath: coverPath,
@@ -108,7 +115,6 @@ func (s *Server) createGameFromBGG(w http.ResponseWriter, r *http.Request, req c
 		return
 	}
 
-	description := s.translateDescription(r.Context(), rawDescription, req.LanguageCode)
 	lang, err := s.Games.CreateLanguage(r.Context(), games.GameLanguage{
 		GameID: game.ID, LanguageCode: req.LanguageCode, IsBaseLanguage: true,
 		Name: detail.Name, Description: &description,
