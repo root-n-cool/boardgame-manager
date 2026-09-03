@@ -29,6 +29,8 @@ type Event struct {
 	CreatedAt   time.Time
 	// GamesCount is filled in by ListEvents only: the detail endpoints send
 	// the games themselves, so recomputing it there would be dead weight.
+	// It counts distinct games, not copies: two copies of Carcassonne are
+	// one game in "N giochi" rendered for a human reading the line-up.
 	GamesCount int
 }
 
@@ -200,7 +202,7 @@ func (s *Store) ListEvents(ctx context.Context, p ListEventsParams) ([]Event, in
 	}
 
 	query := fmt.Sprintf(`SELECT e.id, e.title, e.description, e.event_date, e.start_time, e.image_path, e.created_at,
-			(SELECT COUNT(*) FROM event_games eg WHERE eg.event_id = e.id)
+			(SELECT COUNT(DISTINCT eg.game_id) FROM event_games eg WHERE eg.event_id = e.id)
 		 FROM events e
 		 WHERE e.event_date || ' ' || e.start_time %s ?
 		 ORDER BY e.event_date %s, e.start_time %s, e.id %s`, comparison, order, order, order)

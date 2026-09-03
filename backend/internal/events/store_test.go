@@ -210,6 +210,11 @@ func TestListEvents_ReportsHowManyGamesEachEventHas(t *testing.T) {
 	carcassonne := mustCreateGame(t, gameStore, "Carcassonne")
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
+	// Carcassonne has 2 copies here: event_games therefore holds 3 rows for
+	// this event (1 + 2), but GamesCount must still read 2 — it counts
+	// distinct games on the table, not copies. This is the exact regression
+	// the copy-rows model introduces: dropping DISTINCT from the query
+	// would report 3.
 	if _, err := eventStore.CreateEvent(ctx, "Due giochi", nil, "2026-10-01", "20:00",
 		[]events.EventGameInput{{GameID: catan, Copies: 1}, {GameID: carcassonne, Copies: 2}}); err != nil {
 		t.Fatalf("create event: %v", err)
