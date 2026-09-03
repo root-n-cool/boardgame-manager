@@ -207,6 +207,9 @@ valori, nella sezione "Provider AI" della pagina Impostazioni:
 | Chiave API | la chiave del provider |
 | Modello | `gemini-flash-lite-latest` |
 
+L'indirizzo è quello base, senza `/chat/completions` in fondo: ci pensa
+l'app ad aggiungerlo.
+
 Per un'associazione la scelta più semplice è **Google Gemini via AI
 Studio**: la chiave è gratuita, non serve una carta di credito, e il
 piano gratuito basta ampiamente a tradurre un catalogo. In alternativa
@@ -216,6 +219,14 @@ Ollama sulla stessa macchina (`http://localhost:11434/v1`).
 La descrizione tradotta resta modificabile a mano dalla scheda del gioco.
 Il bottone *Traduci* ritraduce sempre dall'originale BoardGameGeek e
 sostituisce il testo corrente.
+
+Se il provider è configurato ma non risponde (chiave sbagliata, servizio
+non raggiungibile, credito esaurito), l'import automatico fallisce in
+silenzio: il gioco entra comunque in catalogo con la descrizione in
+inglese, come se nessun provider fosse configurato. Il bottone *Traduci*
+invece resta visibile — l'app sa solo che i tre campi sono compilati, non
+che funzionano — e se premuto mostra l'errore restituito dal provider
+senza toccare la descrizione esistente.
 
 Il link di invito contiene un token che vale un accesso da amministratore:
 mandalo su un canale privato, e cancella dalla lista un invito che non
