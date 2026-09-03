@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { api } from '../api/client'
 import PublicHeader from '../components/PublicHeader.vue'
 
@@ -19,6 +19,10 @@ interface BookingResult {
   eventDate: string
   startTime: string
   gameName: string
+  copyIndex: number
+  seats: number
+  /** Quante prenotazioni attive ci sono su questo tavolo, compresa la mia. */
+  tableBookings: number
   matchResult: { players: PlayerScore[] } | null
 }
 
@@ -29,6 +33,20 @@ const cancelMessage = ref('')
 const scoreError = ref('')
 const scoreMessage = ref('')
 const players = ref<PlayerScore[]>([{ name: '', score: 0 }])
+
+/** Un tavolo condiviso: più di un posto prenotabile e più di un prenotato. */
+const isSharedTable = computed(
+  () => (booking.value?.seats ?? 1) > 1 && (booking.value?.tableBookings ?? 1) > 1,
+)
+
+/** Il numero della copia serve solo quando il gioco ne ha più di una. */
+const gameLabel = computed(() => {
+  const b = booking.value
+  if (!b) {
+    return ''
+  }
+  return b.seats > 1 ? `${b.gameName} #${b.copyIndex}` : b.gameName
+})
 
 async function lookup() {
   error.value = ''
@@ -52,7 +70,7 @@ async function cancel() {
   if (!booking.value) {
     return
   }
-  if (!window.confirm(`Annullare la prenotazione per ${booking.value.gameName}?`)) {
+  if (!window.confirm(`Annullare la prenotazione per ${gameLabel.value}?`)) {
     return
   }
   error.value = ''
@@ -112,11 +130,14 @@ async function submitScore() {
 
       <div v-if="booking">
         <div class="booking-summary">
-          <h2>{{ booking.gameName }}</h2>
+          <h2>{{ gameLabel }}</h2>
           <p class="booking-summary-meta">
             {{ booking.eventTitle }} · {{ booking.eventDate }} · {{ booking.startTime }}
           </p>
           <p class="booking-summary-participant">Prenotato da <strong>{{ booking.participantName }}</strong></p>
+          <p v-if="booking.seats > 1" class="row-meta">
+            Tavolo da {{ booking.seats }} posti prenotabili · {{ booking.tableBookings }} prenotati
+          </p>
           <span
             class="status-badge"
             :class="booking.status === 'active' ? 'status-active' : 'status-cancelled'"
@@ -131,6 +152,11 @@ async function submitScore() {
 
         <form v-if="booking.status === 'active'" @submit.prevent="submitScore">
           <h2>Punteggio finale</h2>
+          <p v-if="isSharedTable" class="row-meta">
+            Il punteggio è del tavolo: lo vedono e lo possono correggere tutti
+            quelli che hanno prenotato qui. Se qualcuno l'ha già inserito, qui
+            sopra c'è il suo, e salvando lo sostituisci.
+          </p>
           <div v-for="(p, index) in players" :key="index" class="player-score-row">
             <input v-model="p.name" placeholder="Nome giocatore" required />
             <input v-model.number="p.score" type="number" placeholder="Punteggio" required />
