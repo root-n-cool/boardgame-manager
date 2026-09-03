@@ -21,6 +21,7 @@ interface BookingResult {
   gameName: string
   copyIndex: number
   seats: number
+  gameCopies: number
   /** Quante prenotazioni attive ci sono su questo tavolo, compresa la mia. */
   tableBookings: number
   matchResult: { players: PlayerScore[] } | null
@@ -39,13 +40,16 @@ const isSharedTable = computed(
   () => (booking.value?.seats ?? 1) > 1 && (booking.value?.tableBookings ?? 1) > 1,
 )
 
-/** Il numero della copia serve solo quando il gioco ne ha più di una. */
+/**
+ * Il numero della copia serve solo quando l'evento porta più copie di questo
+ * gioco: con una copia sola, "#1" è rumore.
+ */
 const gameLabel = computed(() => {
   const b = booking.value
   if (!b) {
     return ''
   }
-  return b.seats > 1 ? `${b.gameName} #${b.copyIndex}` : b.gameName
+  return b.gameCopies > 1 ? `${b.gameName} #${b.copyIndex}` : b.gameName
 })
 
 async function lookup() {

@@ -188,6 +188,9 @@ func TestLookupBooking_IncludesNullMatchResultWhenNoneSubmitted(t *testing.T) {
 	if seats, _ := body["seats"].(float64); seats != 5 {
 		t.Fatalf("expected seats 5, got %#v", body["seats"])
 	}
+	if gameCopies, _ := body["gameCopies"].(float64); gameCopies != 2 {
+		t.Fatalf("expected gameCopies 2 (event carries 2 copies of D&D), got %#v", body["gameCopies"])
+	}
 	if tableBookings, _ := body["tableBookings"].(float64); tableBookings != 1 {
 		t.Fatalf("expected tableBookings 1 with a single person seated, got %#v", body["tableBookings"])
 	}

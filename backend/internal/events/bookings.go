@@ -261,3 +261,15 @@ func (s *Store) CountActiveBookingsForEventGame(ctx context.Context, eventGameID
 	).Scan(&count)
 	return count, err
 }
+
+// CountEventGameCopies says how many copies of a game the event carries. A page
+// that only ever sees one booking cannot count them itself, and it needs the
+// number to decide whether the copy index is worth showing: on an evening with
+// one copy per game, "#1" is noise.
+func (s *Store) CountEventGameCopies(ctx context.Context, eventID, gameID int64) (int, error) {
+	var count int
+	err := s.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM event_games WHERE event_id = ? AND game_id = ?`, eventID, gameID,
+	).Scan(&count)
+	return count, err
+}

@@ -80,6 +80,13 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 	resp["gameName"] = game.Name
 	resp["copyIndex"] = eventGame.CopyIndex
 	resp["seats"] = eventGame.Seats
+	// Whether the copy number is worth showing at all: with one copy of the
+	// game in the evening, "#1" would be noise.
+	gameCopies, err := s.Events.CountEventGameCopies(ctx, b.EventID, eventGame.GameID)
+	if err != nil {
+		return nil, err
+	}
+	resp["gameCopies"] = gameCopies
 	// Quante persone siedono a questo tavolo: la pagina pubblica lo usa per
 	// dire che il punteggio è condiviso invece di far credere a ognuno di
 	// avere il proprio.

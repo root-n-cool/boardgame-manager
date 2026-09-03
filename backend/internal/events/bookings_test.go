@@ -504,6 +504,34 @@ func TestCountActiveBookingsForEventGame(t *testing.T) {
 	}
 }
 
+func TestCountEventGameCopies(t *testing.T) {
+	eventStore, gameStore := newTestStore(t)
+	ctx := context.Background()
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	otherGameID := mustCreateGame(t, gameStore, "D&D")
+	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
+		[]events.EventGameInput{{GameID: gameID, Copies: 2}, {GameID: otherGameID, Copies: 1}})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	count, err := eventStore.CountEventGameCopies(ctx, event.ID, gameID)
+	if err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 2 {
+		t.Fatalf("expected 2 copies, got %d", count)
+	}
+
+	otherCount, err := eventStore.CountEventGameCopies(ctx, event.ID, otherGameID)
+	if err != nil {
+		t.Fatalf("count other: %v", err)
+	}
+	if otherCount != 1 {
+		t.Fatalf("expected 1 copy, got %d", otherCount)
+	}
+}
+
 func TestCancelBooking_KeepsTheTableResultWhileSomeoneRemains(t *testing.T) {
 	eventStore, gameStore := newTestStore(t)
 	ctx := context.Background()
