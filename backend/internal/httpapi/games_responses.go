@@ -10,7 +10,8 @@ func toGameSummary(g games.Game) map[string]any {
 	return map[string]any{
 		"id": g.ID, "bggId": g.BGGID, "name": g.Name, "year": g.Year,
 		"minPlayers": g.MinPlayers, "maxPlayers": g.MaxPlayers,
-		"playtimeMinutes": g.PlaytimeMinutes, "owner": g.Owner, "coverPath": g.CoverPath,
+		"playtimeMinutes": g.PlaytimeMinutes, "weight": g.Weight,
+		"owner": g.Owner, "coverPath": g.CoverPath, "seats": g.Seats,
 	}
 }
 

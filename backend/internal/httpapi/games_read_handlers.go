@@ -57,11 +57,13 @@ func (s *Server) getGameHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateGameRequest struct {
-	Owner           *string `json:"owner"`
-	Year            *int    `json:"year"`
-	MinPlayers      *int    `json:"minPlayers"`
-	MaxPlayers      *int    `json:"maxPlayers"`
-	PlaytimeMinutes *int    `json:"playtimeMinutes"`
+	Owner           *string  `json:"owner"`
+	Year            *int     `json:"year"`
+	MinPlayers      *int     `json:"minPlayers"`
+	MaxPlayers      *int     `json:"maxPlayers"`
+	PlaytimeMinutes *int     `json:"playtimeMinutes"`
+	Weight          *float64 `json:"weight"`
+	Seats           *int     `json:"seats"`
 }
 
 func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
@@ -75,9 +77,14 @@ func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+	if req.Seats != nil && *req.Seats < 1 {
+		writeError(w, http.StatusBadRequest, "seats must be at least 1")
+		return
+	}
 	game, err := s.Games.UpdateGame(r.Context(), id, games.GameUpdate{
 		Owner: req.Owner, Year: req.Year, MinPlayers: req.MinPlayers,
 		MaxPlayers: req.MaxPlayers, PlaytimeMinutes: req.PlaytimeMinutes,
+		Weight: req.Weight, Seats: req.Seats,
 	})
 	if errors.Is(err, games.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "game not found")
