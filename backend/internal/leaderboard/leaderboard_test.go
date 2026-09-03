@@ -36,7 +36,7 @@ func TestGetLeaderboard_AggregatesWinsAndAveragesAcrossEvents(t *testing.T) {
 	}
 
 	event1, err := eventStore.CreateEvent(ctx, "Serata 1", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: game.ID, Quantity: 2}})
+		[]events.EventGameInput{{GameID: game.ID, Copies: 2}})
 	if err != nil {
 		t.Fatalf("create event 1: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestGetLeaderboard_AggregatesWinsAndAveragesAcrossEvents(t *testing.T) {
 	}
 
 	event2, err := eventStore.CreateEvent(ctx, "Serata 2", nil, "2026-11-01", "20:00",
-		[]events.EventGameInput{{GameID: game.ID, Quantity: 2}})
+		[]events.EventGameInput{{GameID: game.ID, Copies: 2}})
 	if err != nil {
 		t.Fatalf("create event 2: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestGetLeaderboard_TiedTopScoreBothCountAsWinners(t *testing.T) {
 		t.Fatalf("create game: %v", err)
 	}
 	event, err := eventStore.CreateEvent(ctx, "Serata", nil, "2026-10-01", "20:00",
-		[]events.EventGameInput{{GameID: game.ID, Quantity: 1}})
+		[]events.EventGameInput{{GameID: game.ID, Copies: 1}})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
 	}
