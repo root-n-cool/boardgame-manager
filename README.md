@@ -190,6 +190,32 @@ Dalla pagina "Impostazioni" (da admin autenticato):
 - **BoardGameGeek API token**: per la ricerca e l'import di giochi da BGG.
   Se assente, l'import automatico è disabilitato senza bloccare il resto
   dell'app: i giochi si inseriscono a mano.
+- **Provider AI**: traduce automaticamente le descrizioni di BGG (arrivano
+  solo in inglese) nella lingua della scheda, sia importando un gioco sia
+  aggiungendo una lingua a uno esistente. Se assente, l'app funziona come
+  prima: descrizioni in inglese, e nella scheda del gioco non compare
+  nessun comando di traduzione. Dettagli sotto.
+
+### Traduzione automatica delle descrizioni (opzionale)
+
+Va bene qualunque servizio compatibile con le API OpenAI. Servono tre
+valori, nella sezione "Provider AI" della pagina Impostazioni:
+
+| Campo | Esempio |
+|---|---|
+| Indirizzo del provider | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| Chiave API | la chiave del provider |
+| Modello | `gemini-flash-lite-latest` |
+
+Per un'associazione la scelta più semplice è **Google Gemini via AI
+Studio**: la chiave è gratuita, non serve una carta di credito, e il
+piano gratuito basta ampiamente a tradurre un catalogo. In alternativa
+funzionano OpenAI (`https://api.openai.com/v1`), OpenRouter, Groq, o un
+Ollama sulla stessa macchina (`http://localhost:11434/v1`).
+
+La descrizione tradotta resta modificabile a mano dalla scheda del gioco.
+Il bottone *Traduci* ritraduce sempre dall'originale BoardGameGeek e
+sostituisce il testo corrente.
 
 Il link di invito contiene un token che vale un accesso da amministratore:
 mandalo su un canale privato, e cancella dalla lista un invito che non
