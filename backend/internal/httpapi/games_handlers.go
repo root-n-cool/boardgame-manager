@@ -94,17 +94,21 @@ func (s *Server) createGameFromBGG(w http.ResponseWriter, r *http.Request, req c
 		weight = &detail.Weight
 	}
 
+	// La descrizione BGG grezza resta sul gioco: è la sorgente da cui
+	// traduce ogni lingua della scheda, oggi e quando se ne aggiunge una.
+	rawDescription := detail.Description
+
 	game, err := s.Games.CreateGame(r.Context(), games.Game{
 		BGGID: &bggID, Name: detail.Name, Year: &year, MinPlayers: &minPlayers,
 		MaxPlayers: &maxPlayers, PlaytimeMinutes: &playtime, Owner: &owner, CoverPath: coverPath,
-		Weight: weight, Seats: requestedSeats(req),
+		Weight: weight, Seats: requestedSeats(req), BGGDescription: nilIfEmptyString(rawDescription),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create game")
 		return
 	}
 
-	description := detail.Description
+	description := s.translateDescription(r.Context(), rawDescription, req.LanguageCode)
 	lang, err := s.Games.CreateLanguage(r.Context(), games.GameLanguage{
 		GameID: game.ID, LanguageCode: req.LanguageCode, IsBaseLanguage: true,
 		Name: detail.Name, Description: &description,
@@ -272,6 +276,15 @@ func nilIfEmpty(v string) any {
 		return nil
 	}
 	return v
+}
+
+// nilIfEmptyString distingue "nessuna descrizione BGG" da "descrizione
+// vuota": la colonna resta NULL, e canTranslate legge falso.
+func nilIfEmptyString(v string) *string {
+	if strings.TrimSpace(v) == "" {
+		return nil
+	}
+	return &v
 }
 
 // nilIfUnrated turns BGG's zero weight into "unknown": a game nobody has

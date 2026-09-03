@@ -488,3 +488,144 @@ func TestUpdateGame_ChangesBookableSeats(t *testing.T) {
 }
 
 func ptrTo[T any](v T) *T { return &v }
+
+// setupWingspanFromBGG monta router + admin + token BGG + fake BGG, come
+// fanno i test di creazione da BGG già presenti, con la descrizione grezza
+// che le assertion sulla traduzione si aspettano.
+func setupWingspanFromBGG(t *testing.T, server *httpapi.Server) (http.Handler, *http.Cookie) {
+	t.Helper()
+	server.BGG = &fakeBGGClient{thing: bgg.ThingDetail{
+		ID: "266192", Name: "Wingspan", Description: "A worker placement game about birds.",
+		Year: 2019, MinPlayers: 1, MaxPlayers: 5, PlayingTime: 70,
+	}}
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	settingsPayload, _ := json.Marshal(map[string]string{"defaultLanguage": "it", "bggApiToken": "fake-token"})
+	settingsReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(settingsPayload))
+	settingsReq.AddCookie(cookie)
+	router.ServeHTTP(httptest.NewRecorder(), settingsReq)
+
+	return router, cookie
+}
+
+func postGame(router http.Handler, cookie *http.Cookie, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/api/games", bytes.NewReader([]byte(body)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestCreateGameFromBGG_TranslatesTheDescription(t *testing.T) {
+	tr := &fakeTranslator{out: "Un gioco di piazzamento lavoratori sugli uccelli."}
+	server, _ := newTestServerWithTranslator(t, tr)
+	router, cookie := setupWingspanFromBGG(t, server)
+
+	rec := postGame(router, cookie, `{"bggId":"266192","languageCode":"it"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var got map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	langs := got["languages"].([]any)
+	lang := langs[0].(map[string]any)
+	if lang["description"] != "Un gioco di piazzamento lavoratori sugli uccelli." {
+		t.Fatalf("expected the translated description, got %v", lang["description"])
+	}
+	if tr.calls != 1 {
+		t.Fatalf("expected exactly one translation call, got %d", tr.calls)
+	}
+	if tr.lastLang != "it" || tr.lastText != "A worker placement game about birds." {
+		t.Fatalf("expected the raw BGG text translated into it, got %q / %q", tr.lastText, tr.lastLang)
+	}
+	// Il titolo non passa mai dal traduttore: "Wingspan" in Italia si
+	// chiama Wingspan, e un modello lo renderebbe "Apertura alare".
+	if lang["name"] != "Wingspan" {
+		t.Fatalf("the title must stay the BGG one, got %v", lang["name"])
+	}
+	// Il grezzo resta la sorgente di ogni traduzione futura, e il suo
+	// esserci si legge da fuori come canTranslate.
+	if got["canTranslate"] != true {
+		t.Fatalf("expected canTranslate true after a BGG import, got %v", got["canTranslate"])
+	}
+}
+
+func TestCreateGameFromBGG_EnglishSkipsTheTranslator(t *testing.T) {
+	tr := &fakeTranslator{out: "NON DEVE COMPARIRE"}
+	server, _ := newTestServerWithTranslator(t, tr)
+	router, cookie := setupWingspanFromBGG(t, server)
+
+	rec := postGame(router, cookie, `{"bggId":"266192","languageCode":"en"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if tr.calls != 0 {
+		t.Fatalf("the BGG original is already English: expected no call, got %d", tr.calls)
+	}
+	var got map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	lang := got["languages"].([]any)[0].(map[string]any)
+	if lang["description"] != "A worker placement game about birds." {
+		t.Fatalf("expected the original description, got %v", lang["description"])
+	}
+}
+
+func TestCreateGameFromBGG_WithoutAIKeepsTheOriginal(t *testing.T) {
+	server := newTestServer(t) // niente traduttore iniettato, niente provider in impostazioni
+	router, cookie := setupWingspanFromBGG(t, server)
+
+	rec := postGame(router, cookie, `{"bggId":"266192","languageCode":"it"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	lang := got["languages"].([]any)[0].(map[string]any)
+	if lang["description"] != "A worker placement game about birds." {
+		t.Fatalf("without an AI provider the description stays as BGG sent it, got %v", lang["description"])
+	}
+	// Il provider è opzionale: senza, la scheda è quella di BGG, titolo
+	// compreso. Niente campi vuoti e niente errori.
+	if lang["name"] != "Wingspan" || got["name"] != "Wingspan" {
+		t.Fatalf("expected the BGG title, got %v / %v", got["name"], lang["name"])
+	}
+}
+
+func TestCreateGameFromBGG_TranslationFailureDoesNotFailTheCreation(t *testing.T) {
+	tr := &fakeTranslator{err: errors.New("provider down")}
+	server, _ := newTestServerWithTranslator(t, tr)
+	router, cookie := setupWingspanFromBGG(t, server)
+
+	rec := postGame(router, cookie, `{"bggId":"266192","languageCode":"it"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("a broken provider must not break the import: got %d: %s", rec.Code, rec.Body.String())
+	}
+	var got map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	lang := got["languages"].([]any)[0].(map[string]any)
+	if lang["description"] != "A worker placement game about birds." {
+		t.Fatalf("expected the original description as the fallback, got %v", lang["description"])
+	}
+}
+
+func TestCreateGameManually_CannotTranslate(t *testing.T) {
+	tr := &fakeTranslator{out: "NON DEVE COMPARIRE"}
+	server, _ := newTestServerWithTranslator(t, tr)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	rec := postGame(router, cookie, `{"name":"Gioco fatto in casa","languageCode":"it","nameTranslated":"Gioco fatto in casa"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if tr.calls != 0 {
+		t.Fatalf("a manual game has no BGG original to translate, got %d calls", tr.calls)
+	}
+	var got map[string]any
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if got["canTranslate"] != false {
+		t.Fatalf("expected canTranslate false for a manual game, got %v", got["canTranslate"])
+	}
+}

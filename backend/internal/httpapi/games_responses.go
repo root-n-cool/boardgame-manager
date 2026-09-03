@@ -12,6 +12,10 @@ func toGameSummary(g games.Game) map[string]any {
 		"minPlayers": g.MinPlayers, "maxPlayers": g.MaxPlayers,
 		"playtimeMinutes": g.PlaytimeMinutes, "weight": g.Weight,
 		"owner": g.Owner, "coverPath": g.CoverPath, "seats": g.Seats,
+		// canTranslate dice che esiste un originale BGG da cui ritradurre.
+		// Esce il booleano, non il testo: la scheda di modifica deve solo
+		// sapere se il bottone ha una sorgente.
+		"canTranslate": g.BGGDescription != nil && *g.BGGDescription != "",
 	}
 }
 
