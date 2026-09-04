@@ -46,12 +46,14 @@ esterno obbligatorio.
   prenotato quel tavolo.
 - **Amministrazione**: bootstrap del primo admin al primo avvio (come
   n8n); dopo, un admin ne invita un altro inserendo solo l'email — il
-  sistema genera un link di invito che l'admin copia e recapita a mano
-  (nessuna email viene inviata), e chi lo riceve apre il link e sceglie la
-  propria password, che chi lo ha invitato non conosce. Il link non scade
+  sistema genera un link di invito che chi lo riceve apre per scegliere la
+  propria password, che chi lo ha invitato non conosce. Senza un server
+  SMTP configurato il link va copiato e recapitato a mano; con SMTP
+  configurato parte anche una mail con il link pronto. Il link non scade
   e resta valido finché non viene usato o l'invito non viene eliminato.
-  Impostazioni per la lingua di default, l'indirizzo pubblico dell'app e
-  il token BoardGameGeek.
+  Impostazioni per la lingua di default, l'indirizzo pubblico dell'app,
+  il token BoardGameGeek e, opzionalmente, un server SMTP per l'invio
+  automatico delle email.
 
 ## Stack tecnico
 
@@ -195,6 +197,11 @@ Dalla pagina "Impostazioni" (da admin autenticato):
   aggiungendo una lingua a uno esistente. Se assente, l'app funziona come
   prima: descrizioni in inglese, e nella scheda del gioco non compare
   nessun comando di traduzione. Dettagli sotto.
+- **Email (SMTP)**: se configurato, l'app manda da sé l'invito di un
+  amministratore, la conferma di una prenotazione e l'avviso di
+  annullamento. Se assente, l'app funziona esattamente come prima: il
+  codice di prenotazione resta a schermo e il link d'invito si copia a
+  mano. Dettagli sotto.
 
 ### Traduzione automatica delle descrizioni (opzionale)
 
@@ -237,6 +244,66 @@ senza toccare la descrizione esistente.
 Il link di invito contiene un token che vale un accesso da amministratore:
 mandalo su un canale privato, e cancella dalla lista un invito che non
 serve più. Come ogni URL, finisce anche nei log del container.
+
+### Email (SMTP) (opzionale)
+
+Senza un server SMTP configurato l'app funziona esattamente come prima:
+il `booking_code` resta a schermo dopo la prenotazione e il link
+d'invito di un amministratore si copia e recapita a mano. Configurando
+un server nella sezione "Configurazione Email (SMTP)" della pagina
+Impostazioni partono da sole tre email:
+
+- **invito di un amministratore**, con il link per attivare l'accesso;
+- **conferma di prenotazione**, col codice, il link per gestirla o
+  disdirla e quello per inserire il punteggio a fine partita;
+- **avviso di annullamento**, sia quando è il partecipante a disdire sia
+  quando lo fa un organizzatore.
+
+I valori (server, porta, sicurezza, utente, password, mittente) si
+inseriscono nella pagina Impostazioni e restano nel database — **non**
+ci sono variabili d'ambiente per la posta. I campi:
+
+| Campo | Note |
+|---|---|
+| Server SMTP | es. `smtp.gmail.com` |
+| Porta | default `587` |
+| Sicurezza | STARTTLS (587), TLS implicito (465) o nessuna cifratura per un relay in rete locale — lasciato vuoto si comporta come STARTTLS |
+| Nome utente / Password | dipendono dal provider, vedi sotto |
+| Indirizzo mittente | l'indirizzo che compare come mittente |
+| Nome mittente | il nome accanto all'indirizzo, es. "Serate Ludiche" |
+
+Il bottone **"Invia email di prova"** manda un messaggio all'indirizzo
+dell'admin con la sessione attiva, usando la configurazione **salvata**
+(non quella ancora nel form): salva prima di provare. Se l'invio
+fallisce mostra l'errore reale restituito dal server SMTP, utile per
+distinguere una porta sbagliata da una password rifiutata.
+
+I link dentro le email si costruiscono a partire dall'**Indirizzo
+pubblico** delle impostazioni; se è vuoto si ripiega sull'host della
+richiesta che ha generato la mail, che per un invio in background non è
+detto coincida con quello giusto. Su un'installazione raggiungibile da
+fuori (dietro un dominio o un reverse proxy) vale la pena impostarlo,
+altrimenti i link nelle email possono puntare a un indirizzo che
+l'associazione non usa.
+
+**Note sui provider più comuni:**
+
+- **Gmail** (`smtp.gmail.com`, porta 587, STARTTLS): nome utente
+  l'indirizzo Gmail, password **non** quella dell'account ma una **app
+  password** generata dalle impostazioni Google (richiede la verifica in
+  due passaggi attiva). Il piano gratuito regge tranquillamente il
+  volume di un'associazione (circa 500 destinatari al giorno).
+- **Mailjet** (`in-v3.mailjet.com`, porta 587, STARTTLS): nome utente =
+  API key, password = secret key.
+- **Brevo** (`smtp-relay.brevo.com`, porta 587, STARTTLS): la password
+  **non** è la chiave API `xkeysib-…` (con quella l'autenticazione
+  fallisce) ma una **SMTP key** dedicata, nella scheda SMTP del pannello
+  "SMTP & API". Su un account gratuito nuovo, spesso quella scheda resta
+  bloccata finché Brevo non attiva l'invio transazionale sull'account:
+  vale la pena saperlo prima, è un pomeriggio perso altrimenti.
+- **Microsoft/Outlook**: da evitare qui — ha dismesso l'autenticazione
+  SMTP con sola password a favore di OAuth2, che questa integrazione non
+  supporta.
 
 ## Documentazione di progetto
 
