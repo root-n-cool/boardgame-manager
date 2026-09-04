@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"strings"
 
+	"boardgames-manager/internal/mailer"
 	"boardgames-manager/internal/settings"
 )
 
@@ -25,6 +26,19 @@ type settingsResponse struct {
 	// AIConfigured è il booleano su cui la UI decide se mostrare i comandi
 	// di traduzione: servono tutti e tre i valori, non solo la chiave.
 	AIConfigured bool `json:"aiConfigured"`
+	// Host, porta, utente, mittente e modo TLS sono dati da rileggere e
+	// controllare, come PublicBaseURL; la password è un segreto e segue
+	// BGGAPIToken. SMTPConfigured è il booleano su cui la UI abilita la
+	// prova d'invio: serve host, porta e mittente, non la password.
+	SMTPHost           string `json:"smtpHost"`
+	SMTPPort           int    `json:"smtpPort"`
+	SMTPUsername       string `json:"smtpUsername"`
+	SMTPFromAddress    string `json:"smtpFromAddress"`
+	SMTPFromName       string `json:"smtpFromName"`
+	SMTPTLSMode        string `json:"smtpTlsMode"`
+	SMTPPasswordSet    bool   `json:"smtpPasswordSet"`
+	SMTPPasswordMasked string `json:"smtpPasswordMasked,omitempty"`
+	SMTPConfigured     bool   `json:"smtpConfigured"`
 }
 
 func maskKey(key string) string {
@@ -56,6 +70,17 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		resp.AIAPIKeyMasked = maskKey(cfg.AIAPIKey)
 	}
 	resp.AIConfigured = cfg.AIBaseURL != "" && cfg.AIAPIKey != "" && cfg.AIModel != ""
+	resp.SMTPHost = cfg.SMTPHost
+	resp.SMTPPort = cfg.SMTPPort
+	resp.SMTPUsername = cfg.SMTPUsername
+	resp.SMTPFromAddress = cfg.SMTPFromAddress
+	resp.SMTPFromName = cfg.SMTPFromName
+	resp.SMTPTLSMode = cfg.SMTPTLSMode
+	resp.SMTPPasswordSet = cfg.SMTPPassword != ""
+	if resp.SMTPPasswordSet {
+		resp.SMTPPasswordMasked = maskKey(cfg.SMTPPassword)
+	}
+	resp.SMTPConfigured = smtpConfigFrom(cfg).Configured()
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -66,6 +91,13 @@ type updateSettingsRequest struct {
 	AIBaseURL       string `json:"aiBaseUrl"`
 	AIAPIKey        string `json:"aiApiKey"`
 	AIModel         string `json:"aiModel"`
+	SMTPHost        string `json:"smtpHost"`
+	SMTPPort        int    `json:"smtpPort"`
+	SMTPUsername    string `json:"smtpUsername"`
+	SMTPPassword    string `json:"smtpPassword"`
+	SMTPFromAddress string `json:"smtpFromAddress"`
+	SMTPFromName    string `json:"smtpFromName"`
+	SMTPTLSMode     string `json:"smtpTlsMode"`
 }
 
 // normalizePublicBaseURL accepts an empty value — that is how the admin says
@@ -82,6 +114,20 @@ func normalizePublicBaseURL(raw string) (string, bool) {
 		return "", false
 	}
 	return strings.TrimRight(trimmed, "/"), true
+}
+
+// normalizeTLSMode accetta il vuoto — l'admin che non ha ancora scelto —
+// e lo lascia vuoto: è mailer a trattarlo come STARTTLS. Un valore
+// inventato invece è un errore, perché silenziosamente ripiegare su
+// STARTTLS manderebbe la password su una connessione che l'admin credeva
+// configurata diversamente.
+func normalizeTLSMode(raw string) (string, bool) {
+	switch mode := strings.ToLower(strings.TrimSpace(raw)); mode {
+	case "", mailer.TLSModeSTARTTLS, mailer.TLSModeImplicit, mailer.TLSModeNone:
+		return mode, true
+	default:
+		return "", false
+	}
 }
 
 func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
@@ -103,6 +149,12 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tlsMode, ok := normalizeTLSMode(req.SMTPTLSMode)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "la sicurezza SMTP deve essere starttls, tls o none")
+		return
+	}
+
 	current, err := s.Settings.Get(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load settings")
@@ -118,6 +170,13 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		AIBaseURL:       aiBaseURL,
 		AIModel:         strings.TrimSpace(req.AIModel),
 		AIAPIKey:        current.AIAPIKey,
+		SMTPHost:        strings.TrimSpace(req.SMTPHost),
+		SMTPPort:        req.SMTPPort,
+		SMTPUsername:    strings.TrimSpace(req.SMTPUsername),
+		SMTPPassword:    current.SMTPPassword,
+		SMTPFromAddress: strings.TrimSpace(req.SMTPFromAddress),
+		SMTPFromName:    strings.TrimSpace(req.SMTPFromName),
+		SMTPTLSMode:     tlsMode,
 	}
 	if req.BGGAPIToken != "" {
 		next.BGGAPIToken = req.BGGAPIToken
@@ -127,6 +186,11 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	if req.AIAPIKey != "" {
 		next.AIAPIKey = req.AIAPIKey
 	}
+	// Come le altre due credenziali: vuota vuol dire "lascia quella che
+	// c'è", perché il form la rimanda vuota dopo ogni salvataggio.
+	if req.SMTPPassword != "" {
+		next.SMTPPassword = req.SMTPPassword
+	}
 
 	if err := s.Settings.Update(r.Context(), next); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not save settings")
@@ -134,4 +198,19 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "saved"})
+}
+
+// smtpConfigFrom traduce le impostazioni salvate nella Config del package
+// mailer. Vive qui perché la usano sia la risposta di GET /api/settings
+// (per smtpConfigured) sia la glue di invio.
+func smtpConfigFrom(cfg settings.Settings) mailer.Config {
+	return mailer.Config{
+		Host:        cfg.SMTPHost,
+		Port:        cfg.SMTPPort,
+		Username:    cfg.SMTPUsername,
+		Password:    cfg.SMTPPassword,
+		FromAddress: cfg.SMTPFromAddress,
+		FromName:    cfg.SMTPFromName,
+		TLSMode:     cfg.SMTPTLSMode,
+	}
 }

@@ -368,3 +368,148 @@ func TestGetSettings_NotConfiguredByDefault(t *testing.T) {
 		t.Fatalf("expected no AI provider out of the box, got %v", got)
 	}
 }
+
+func TestPutSettings_SavesSMTPAndMasksThePassword(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]any{
+		"defaultLanguage": "it",
+		"smtpHost":        "smtp.gmail.com",
+		"smtpPort":        587,
+		"smtpUsername":    "serate@example.org",
+		"smtpPassword":    "abcdefghilmnopqr",
+		"smtpFromAddress": "serate@example.org",
+		"smtpFromName":    "Serate Ludiche",
+		"smtpTlsMode":     "starttls",
+	})
+	putReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(payload))
+	putReq.AddCookie(cookie)
+	putRec := httptest.NewRecorder()
+	router.ServeHTTP(putRec, putReq)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", putRec.Code, putRec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	getReq.AddCookie(cookie)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+
+	var body struct {
+		SMTPHost           string `json:"smtpHost"`
+		SMTPPort           int    `json:"smtpPort"`
+		SMTPUsername       string `json:"smtpUsername"`
+		SMTPFromAddress    string `json:"smtpFromAddress"`
+		SMTPFromName       string `json:"smtpFromName"`
+		SMTPTLSMode        string `json:"smtpTlsMode"`
+		SMTPPasswordSet    bool   `json:"smtpPasswordSet"`
+		SMTPPasswordMasked string `json:"smtpPasswordMasked"`
+		SMTPConfigured     bool   `json:"smtpConfigured"`
+	}
+	if err := json.NewDecoder(getRec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.SMTPHost != "smtp.gmail.com" || body.SMTPPort != 587 {
+		t.Errorf("host/porta = %q/%d", body.SMTPHost, body.SMTPPort)
+	}
+	if body.SMTPFromName != "Serate Ludiche" || body.SMTPTLSMode != "starttls" {
+		t.Errorf("mittente/tls = %q/%q", body.SMTPFromName, body.SMTPTLSMode)
+	}
+	if !body.SMTPPasswordSet {
+		t.Error("expected smtpPasswordSet to be true")
+	}
+	if body.SMTPPasswordMasked == "abcdefghilmnopqr" {
+		t.Error("expected the SMTP password to be masked, not returned in clear")
+	}
+	if !body.SMTPConfigured {
+		t.Error("expected smtpConfigured to be true with host, port and sender set")
+	}
+}
+
+func TestPutSettings_EmptySMTPPasswordPreservesTheExistingOne(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	first, _ := json.Marshal(map[string]any{
+		"defaultLanguage": "it", "smtpHost": "smtp.example.org", "smtpPort": 587,
+		"smtpPassword": "prima-password", "smtpFromAddress": "serate@example.org",
+	})
+	req1 := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(first))
+	req1.AddCookie(cookie)
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("first put: %d %s", rec1.Code, rec1.Body.String())
+	}
+
+	// Secondo salvataggio senza password, come fa il form dopo il primo.
+	second, _ := json.Marshal(map[string]any{
+		"defaultLanguage": "it", "smtpHost": "smtp.example.org", "smtpPort": 465,
+		"smtpPassword": "", "smtpFromAddress": "serate@example.org", "smtpTlsMode": "tls",
+	})
+	req2 := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(second))
+	req2.AddCookie(cookie)
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusOK {
+		t.Fatalf("second put: %d %s", rec2.Code, rec2.Body.String())
+	}
+
+	var stored string
+	if err := conn.QueryRow(`SELECT smtp_password FROM app_settings WHERE id = 1`).Scan(&stored); err != nil {
+		t.Fatalf("read password: %v", err)
+	}
+	if stored != "prima-password" {
+		t.Errorf("password = %q, attesa 'prima-password'", stored)
+	}
+}
+
+// Il vincolo globale: nessun campo SMTP è obbligatorio, e salvare le
+// impostazioni senza toccarli deve restare possibile.
+func TestPutSettings_SMTPFieldsAreOptional(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]any{"defaultLanguage": "it"})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	getReq := httptest.NewRequest(http.MethodGet, "/api/settings", nil)
+	getReq.AddCookie(cookie)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	var body struct {
+		SMTPConfigured  bool `json:"smtpConfigured"`
+		SMTPPasswordSet bool `json:"smtpPasswordSet"`
+	}
+	if err := json.NewDecoder(getRec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.SMTPConfigured || body.SMTPPasswordSet {
+		t.Error("expected no SMTP configuration on a fresh instance")
+	}
+}
+
+func TestPutSettings_RejectsAnUnknownTLSMode(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]any{"defaultLanguage": "it", "smtpTlsMode": "quantum"})
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
