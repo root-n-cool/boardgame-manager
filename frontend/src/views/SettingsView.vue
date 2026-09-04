@@ -294,17 +294,19 @@ onMounted(async () => {
           </p>
         </div>
         <!--
-          Restano montate sempre, testo vuoto compreso: una regione live che
-          entra nel DOM già col contenuto dentro (v-if) è il caso classico
-          che gli screen reader non annunciano. Qui cambia solo il testo, non
-          l'elemento — la mutazione è quella che l'AT osserva davvero.
+          Annuncio e riquadro sono due elementi separati: uno screen reader
+          ha bisogno di una regione live montata a permanenza (v-if la
+          farebbe entrare nel DOM già col testo dentro, il caso classico che
+          non si annuncia), ma un riquadro sempre montato in un
+          `.panel-card` flex con gap si porta dietro lo spazio vuoto anche a
+          vuoto — il gap non collassa come i margini. La regione live resta
+          fuori dal flusso visivo (`.visually-hidden`), il riquadro sotto
+          torna puramente presentazionale.
         -->
-        <p class="success" :class="{ 'is-empty': !smtpTestMessage }" role="status" aria-live="polite">
-          {{ smtpTestMessage }}
-        </p>
-        <p class="error" :class="{ 'is-empty': !smtpTestError }" role="alert" aria-live="assertive">
-          {{ smtpTestError }}
-        </p>
+        <p class="visually-hidden" role="status" aria-live="polite">{{ smtpTestMessage }}</p>
+        <p class="visually-hidden" role="alert" aria-live="assertive">{{ smtpTestError }}</p>
+        <p v-if="smtpTestMessage" class="success">{{ smtpTestMessage }}</p>
+        <p v-if="smtpTestError" class="error">{{ smtpTestError }}</p>
       </div>
 
       <div class="form-actions">

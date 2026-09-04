@@ -648,14 +648,20 @@ esplicitamente. `.field-row`, che qui allinea porta e sicurezza sulla
 stessa riga, esisteva già (vedi min/max giocatori) e non è un
 componente nuovo.
 
-L'esito della prova (`.success`/`.error` sotto il blocco) resta montato a
-permanenza, con `role="status"`/`aria-live="polite"` per il successo e
-`role="alert"`/`aria-live="assertive"` per l'errore — stesso principio di
-`BggSearchSelect`/`VenueSearchSelect`: una regione live che nasce nel DOM
-già col testo dentro (`v-if`) è il caso che gli screen reader in pratica
-non annunciano. A vuoto il riquadro non deve occupare spazio né lasciare
-un rigo cieco: la classe `.is-empty` azzera riquadro e altezza di riga
-senza smontare l'elemento.
+L'esito della prova sdoppia annuncio e riquadro invece di farli coincidere
+nello stesso elemento. Una regione live ha bisogno di stare nel DOM
+**prima** che il testo cambi — nata già col contenuto dentro (`v-if`) è
+il caso che gli screen reader in pratica non annunciano, stesso principio
+di `BggSearchSelect`/`VenueSearchSelect` — ma `.panel-card` è un flex
+column con `gap`, che non collassa per un elemento a vuoto come farebbe
+un margine: un riquadro sempre montato lascerebbe uno spazio morto anche
+senza risultato. Perciò due `p.visually-hidden` (`role="status"
+aria-live="polite"` per il successo, `role="alert" aria-live="assertive"`
+per l'errore) restano montate a permanenza fuori dal flusso visivo — non
+essendo elementi di flex, il `gap` non le tocca — e portano solo il testo
+per l'annuncio. Il riquadro visibile (`.success`/`.error`, senza ruoli
+ARIA: è solo presentazione) torna un semplice `v-if`, esattamente come
+prima di questa voce.
 
 ## Do's and Don'ts
 
