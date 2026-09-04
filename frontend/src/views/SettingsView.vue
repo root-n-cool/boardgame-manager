@@ -78,7 +78,12 @@ async function save() {
       aiApiKey: aiApiKey.value,
       aiModel: aiModel.value,
       smtpHost: smtpHost.value,
-      smtpPort: smtpPort.value,
+      // v-model.number su un <input type="number"> svuotato torna la stringa
+      // vuota, non NaN (looseToNumber la lascia com'è quando parseFloat
+      // fallisce): senza questa coercizione il backend riceverebbe
+      // "smtpPort": "" al posto di un numero. 0 è già il valore che il
+      // backend tratta come "porta non impostata".
+      smtpPort: Number(smtpPort.value) || 0,
       smtpUsername: smtpUsername.value,
       smtpPassword: smtpPassword.value,
       smtpFromAddress: smtpFromAddress.value,
@@ -218,6 +223,12 @@ onMounted(async () => {
           segnare i punti — e l'avviso di annullamento. Lasciandolo vuoto
           funziona come prima: il codice resta solo a schermo e il link di
           invito si copia a mano.
+        </p>
+        <p v-if="smtpConfigured && !publicBaseUrl" class="field-hint">
+          Manca l'indirizzo pubblico, qui sopra in "Generale": senza,
+          l'invito di un amministratore e l'avviso di annullamento portano
+          un link composto dall'indirizzo con cui stai navigando adesso, che
+          chi lo riceve potrebbe non riuscire a raggiungere.
         </p>
 
         <label>

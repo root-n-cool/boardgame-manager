@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"boardgames-manager/internal/mailer"
@@ -88,19 +89,43 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateSettingsRequest struct {
-	DefaultLanguage string `json:"defaultLanguage"`
-	PublicBaseURL   string `json:"publicBaseUrl"`
-	BGGAPIToken     string `json:"bggApiToken"`
-	AIBaseURL       string `json:"aiBaseUrl"`
-	AIAPIKey        string `json:"aiApiKey"`
-	AIModel         string `json:"aiModel"`
-	SMTPHost        string `json:"smtpHost"`
-	SMTPPort        int    `json:"smtpPort"`
-	SMTPUsername    string `json:"smtpUsername"`
-	SMTPPassword    string `json:"smtpPassword"`
-	SMTPFromAddress string `json:"smtpFromAddress"`
-	SMTPFromName    string `json:"smtpFromName"`
-	SMTPTLSMode     string `json:"smtpTlsMode"`
+	DefaultLanguage string        `json:"defaultLanguage"`
+	PublicBaseURL   string        `json:"publicBaseUrl"`
+	BGGAPIToken     string        `json:"bggApiToken"`
+	AIBaseURL       string        `json:"aiBaseUrl"`
+	AIAPIKey        string        `json:"aiApiKey"`
+	AIModel         string        `json:"aiModel"`
+	SMTPHost        string        `json:"smtpHost"`
+	SMTPPort        smtpPortValue `json:"smtpPort"`
+	SMTPUsername    string        `json:"smtpUsername"`
+	SMTPPassword    string        `json:"smtpPassword"`
+	SMTPFromAddress string        `json:"smtpFromAddress"`
+	SMTPFromName    string        `json:"smtpFromName"`
+	SMTPTLSMode     string        `json:"smtpTlsMode"`
+}
+
+// smtpPortValue decodes SMTPPort tolerantly. No SMTP field is required, so a
+// malformed one must not fail the whole settings save: it can arrive as a
+// JSON number, a numeric string, an empty string (a number input cleared by
+// the admin decodes to "" client-side), or be missing entirely. Anything
+// that is not a clean integer — including outright garbage — becomes 0,
+// which the rest of the code already treats as "not set", same as before
+// this type existed.
+type smtpPortValue int
+
+func (v *smtpPortValue) UnmarshalJSON(data []byte) error {
+	s := strings.TrimSpace(strings.Trim(string(data), `"`))
+	if s == "" || s == "null" {
+		*v = 0
+		return nil
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		*v = 0
+		return nil
+	}
+	*v = smtpPortValue(n)
+	return nil
 }
 
 // normalizePublicBaseURL accepts an empty value — that is how the admin says
@@ -135,7 +160,11 @@ func normalizeTLSMode(raw string) (string, bool) {
 
 func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	var req updateSettingsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.DefaultLanguage == "" {
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.DefaultLanguage == "" {
 		writeError(w, http.StatusBadRequest, "defaultLanguage is required")
 		return
 	}
@@ -174,7 +203,7 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		AIModel:         strings.TrimSpace(req.AIModel),
 		AIAPIKey:        current.AIAPIKey,
 		SMTPHost:        strings.TrimSpace(req.SMTPHost),
-		SMTPPort:        req.SMTPPort,
+		SMTPPort:        int(req.SMTPPort),
 		SMTPUsername:    strings.TrimSpace(req.SMTPUsername),
 		SMTPPassword:    current.SMTPPassword,
 		SMTPFromAddress: strings.TrimSpace(req.SMTPFromAddress),

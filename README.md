@@ -243,7 +243,11 @@ senza toccare la descrizione esistente.
 
 Il link di invito contiene un token che vale un accesso da amministratore:
 mandalo su un canale privato, e cancella dalla lista un invito che non
-serve più. Come ogni URL, finisce anche nei log del container.
+serve più. Come ogni URL, finisce anche nei log del container. Da quando
+esiste l'invio via email anche il `booking_code` viaggia in un URL (i link
+per gestire la prenotazione o inserire il punteggio): può quindi comparire
+nei log di un reverse proxy e nella cronologia del telefono di chi
+prenota.
 
 ### Email (SMTP) (opzionale)
 
@@ -277,6 +281,12 @@ dell'admin con la sessione attiva, usando la configurazione **salvata**
 (non quella ancora nel form): salva prima di provare. Se l'invio
 fallisce mostra l'errore reale restituito dal server SMTP, utile per
 distinguere una porta sbagliata da una password rifiutata.
+
+Fuori da quel bottone, un invio che fallisce davvero (server irraggiungibile,
+credenziali scadute dopo la prova) è silenzioso: nessun avviso in pagina, né
+per l'admin né per il partecipante, perché l'esito della mail non deve mai
+condizionare quello della prenotazione o dell'invito. L'unica traccia è una
+riga nel log del container (`docker compose logs`).
 
 I link dentro le email si costruiscono a partire dall'**Indirizzo
 pubblico** delle impostazioni; se è vuoto si ripiega sull'host della

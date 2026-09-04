@@ -516,6 +516,56 @@ func TestPutSettings_RejectsAnUnknownTLSMode(t *testing.T) {
 	}
 }
 
+// Un <input type="number"> svuotato manda "" al posto di un numero (bug
+// noto di Vue: looseToNumber('') torna la stringa, non NaN). Prima del
+// fix questo faceva fallire l'intero decode JSON, che collassava
+// sull'errore "defaultLanguage is required" pur essendo presente — e
+// l'admin restava con la vecchia configurazione SMTP attiva credendo di
+// averla appena cancellata. Una porta vuota o incomprensibile non deve
+// mai bloccare il salvataggio delle altre impostazioni.
+func TestPutSettings_MalformedSMTPPortDoesNotBreakTheSave(t *testing.T) {
+	cases := []struct {
+		name string
+		port any
+	}{
+		{"empty string", ""},
+		{"garbage string", "abc"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := newTestServer(t)
+			router := httpapi.NewRouter(server)
+			cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+			payload, _ := json.Marshal(map[string]any{
+				"defaultLanguage": "it",
+				"smtpHost":        "smtp.example.org",
+				"smtpPort":        tc.port,
+				"smtpFromAddress": "serate@example.org",
+			})
+			req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(payload))
+			req.AddCookie(cookie)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+			}
+
+			body := getSettings(t, router, cookie)
+			if body["defaultLanguage"] != "it" {
+				t.Fatalf("defaultLanguage non salvata: %v", body["defaultLanguage"])
+			}
+			if body["smtpHost"] != "smtp.example.org" || body["smtpFromAddress"] != "serate@example.org" {
+				t.Fatalf("host/mittente non salvati: %v/%v", body["smtpHost"], body["smtpFromAddress"])
+			}
+			if port, _ := body["smtpPort"].(float64); port != 0 {
+				t.Errorf("porta = %v, attesa 0 (non impostata) per un valore %s", body["smtpPort"], tc.name)
+			}
+		})
+	}
+}
+
 func TestSMTPTest_RequiresAuth(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)

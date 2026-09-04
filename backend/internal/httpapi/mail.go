@@ -172,7 +172,18 @@ func (s *Server) bookingMailDataFor(ctx context.Context, b events.Booking) (book
 // Un errore nel raccogliere i dati non risale: la prenotazione è già
 // fatta, e non mandare una mail è meglio che rispondere con un errore
 // per qualcosa che è andato bene.
+//
+// Deriva subito un context senza cancellazione (context.WithoutCancel) e
+// riusa r con quello: un partecipante che perde il segnale subito dopo che
+// la prenotazione è stata scritta non deve perdere anche la mail col
+// codice, che è esattamente quello che gli servirebbe al posto della
+// risposta HTTP che non è arrivata. Solo la cancellazione è tolta: una
+// scadenza a monte (se mai aggiunta) resterebbe valida. mailEnabled,
+// mailSender, publicBaseURL (via r) e bookingMailDataFor leggono tutte da
+// qui, così l'intera raccolta — non solo l'invio — sopravvive alla
+// disconnessione del client.
 func (s *Server) sendBookingConfirmation(r *http.Request, b events.Booking) {
+	r = r.WithContext(context.WithoutCancel(r.Context()))
 	if !s.mailEnabled(r.Context()) {
 		return
 	}
@@ -193,7 +204,12 @@ func (s *Server) sendBookingConfirmation(r *http.Request, b events.Booking) {
 // non il destinatario: la mail va sempre a chi aveva prenotato, ed è
 // nel caso dell'admin che serve davvero — è l'unico modo in cui il
 // partecipante scopre di non avere più il posto.
+//
+// Come sendBookingConfirmation, raccoglie con un context senza
+// cancellazione: non è la richiesta che deve arrivare a chi disdice, è
+// la mail a chi aveva prenotato.
 func (s *Server) sendBookingCancelled(r *http.Request, b events.Booking, byAdmin bool) {
+	r = r.WithContext(context.WithoutCancel(r.Context()))
 	if !s.mailEnabled(r.Context()) {
 		return
 	}

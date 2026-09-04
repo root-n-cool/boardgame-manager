@@ -60,6 +60,15 @@ func NewRouter(s *Server) http.Handler {
 	// al minuto bastano a sistemare una configurazione sbagliata e non
 	// trasformano il bottone in un modo di mandare mail a raffica.
 	smtpTestLimiter := newRateLimiter(5, time.Minute)
+	// Anche una prenotazione apre una connessione SMTP e manda mail a un
+	// indirizzo scelto dal chiamante: senza limite è un modo di far
+	// spedire mail a raffica con le credenziali del club. rateLimiter
+	// chiave su r.RemoteAddr (ratelimit.go), che dietro un reverse proxy è
+	// l'indirizzo del proxy: tutti i partecipanti a un tavolo condividono
+	// lo stesso bucket. 30 al minuto restano ben sopra l'uso reale — anche
+	// un gruppo che prenota insieme a inizio serata — e comunque limitano
+	// l'abuso.
+	bookingLimiter := newRateLimiter(30, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
@@ -75,7 +84,7 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/events", s.listEventsHandler)
 	r.Get("/api/events/{id}", s.getEventHandler)
 	r.Get("/api/games/{id}/leaderboard", s.getLeaderboardHandler)
-	r.Post("/api/events/{id}/bookings", s.createBookingHandler)
+	r.With(bookingLimiter.middleware).Post("/api/events/{id}/bookings", s.createBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/lookup", s.lookupBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/{id}/cancel", s.cancelBookingHandler)
 	r.With(matchResultLimiter.middleware).Post("/api/bookings/{id}/match-result", s.submitMatchResultHandler)
