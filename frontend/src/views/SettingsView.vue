@@ -293,8 +293,18 @@ onMounted(async () => {
             </template>
           </p>
         </div>
-        <p v-if="smtpTestMessage" class="success" role="status">{{ smtpTestMessage }}</p>
-        <p v-if="smtpTestError" class="error" role="alert">{{ smtpTestError }}</p>
+        <!--
+          Restano montate sempre, testo vuoto compreso: una regione live che
+          entra nel DOM già col contenuto dentro (v-if) è il caso classico
+          che gli screen reader non annunciano. Qui cambia solo il testo, non
+          l'elemento — la mutazione è quella che l'AT osserva davvero.
+        -->
+        <p class="success" :class="{ 'is-empty': !smtpTestMessage }" role="status" aria-live="polite">
+          {{ smtpTestMessage }}
+        </p>
+        <p class="error" :class="{ 'is-empty': !smtpTestError }" role="alert" aria-live="assertive">
+          {{ smtpTestError }}
+        </p>
       </div>
 
       <div class="form-actions">

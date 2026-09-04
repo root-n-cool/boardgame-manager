@@ -637,6 +637,18 @@ li button.btn-select {
   border: 1px solid rgb(47 107 69 / 25%);
 }
 
+/* Un `.error`/`.success` montato a permanenza per far annunciare il suo
+   contenuto agli screen reader (v. `.smtp-test`): a vuoto il riquadro
+   colorato deve sparire del tutto, non lasciare un rigo cieco. */
+.error.is-empty,
+.success.is-empty {
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 0;
+  line-height: 0;
+}
+
 /* Link che si comportano da azione primaria (Crea evento, Aggiungi gioco). */
 .action-link {
   display: inline-block;

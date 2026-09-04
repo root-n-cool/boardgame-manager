@@ -648,6 +648,15 @@ esplicitamente. `.field-row`, che qui allinea porta e sicurezza sulla
 stessa riga, esisteva già (vedi min/max giocatori) e non è un
 componente nuovo.
 
+L'esito della prova (`.success`/`.error` sotto il blocco) resta montato a
+permanenza, con `role="status"`/`aria-live="polite"` per il successo e
+`role="alert"`/`aria-live="assertive"` per l'errore — stesso principio di
+`BggSearchSelect`/`VenueSearchSelect`: una regione live che nasce nel DOM
+già col testo dentro (`v-if`) è il caso che gli screen reader in pratica
+non annunciano. A vuoto il riquadro non deve occupare spazio né lasciare
+un rigo cieco: la classe `.is-empty` azzera riquadro e altezza di riga
+senza smontare l'elemento.
+
 ## Do's and Don'ts
 
 ### Do:
