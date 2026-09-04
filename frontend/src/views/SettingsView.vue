@@ -293,8 +293,8 @@ onMounted(async () => {
             </template>
           </p>
         </div>
-        <p v-if="smtpTestMessage" class="success">{{ smtpTestMessage }}</p>
-        <p v-if="smtpTestError" class="error">{{ smtpTestError }}</p>
+        <p v-if="smtpTestMessage" class="success" role="status">{{ smtpTestMessage }}</p>
+        <p v-if="smtpTestError" class="error" role="alert">{{ smtpTestError }}</p>
       </div>
 
       <div class="form-actions">

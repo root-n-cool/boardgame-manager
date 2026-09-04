@@ -148,7 +148,13 @@ onMounted(async () => {
   await lookup()
   if (props.mode === 'score' && booking.value?.status === 'active') {
     await nextTick()
-    scoreSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    const form = scoreSection.value
+    // Lo scroll da solo non basta: su una pagina corta (il caso comune, una
+    // prenotazione sola) non c'è nulla da scorrere e il link "punteggio"
+    // finisce identico al link "gestisci". Il focus sul primo nome è il
+    // segnale — sposta il cursore e apre la tastiera sul telefono.
+    form?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    form?.querySelector<HTMLInputElement>('input')?.focus()
   }
 })
 </script>
@@ -167,6 +173,11 @@ onMounted(async () => {
         <button type="submit">Cerca</button>
       </form>
       <p v-if="error" class="error">{{ error }}</p>
+      <p v-if="error && deepLinked">
+        <router-link :to="{ name: 'manage-booking' }" @click="error = ''"
+          >Cerca un'altra prenotazione</router-link
+        >
+      </p>
 
       <div v-if="booking">
         <div class="booking-summary">
