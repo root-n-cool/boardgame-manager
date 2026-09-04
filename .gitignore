@@ -6,3 +6,4 @@
 /backend/internal/webui/dist/*
 !/backend/internal/webui/dist/.gitkeep
 /bin/
+/.worktrees/
