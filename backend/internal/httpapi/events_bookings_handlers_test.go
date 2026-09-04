@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -391,5 +392,144 @@ func TestAdminCancelBooking_RequiresAuth(t *testing.T) {
 	found, err := server.Events.LookupBooking(context.Background(), booking.BookingCode)
 	if err != nil || found.Status != events.BookingStatusActive {
 		t.Fatalf("expected the booking to stay active, got %+v (err %v)", found, err)
+	}
+}
+
+func TestCreateBooking_EmailsTheCodeAndBothLinks(t *testing.T) {
+	mail := newFakeMailer()
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	payload, _ := json.Marshal(map[string]any{
+		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
+		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload))
+	req.Host = "giochi.local"
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		BookingCode string `json:"bookingCode"`
+		MailQueued  bool   `json:"mailQueued"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.MailQueued {
+		t.Error("expected mailQueued to be true with SMTP configured")
+	}
+
+	m := mail.waitForMail(t)
+	if m.To != "mario@example.com" || m.ToName != "Mario Rossi" {
+		t.Errorf("recipient = %q / %q", m.To, m.ToName)
+	}
+	for _, want := range []string{
+		body.BookingCode,
+		"Catan",
+		"Serata giochi",
+		"http://giochi.local/prenotazione/" + body.BookingCode,
+		"http://giochi.local/prenotazione/" + body.BookingCode + "/punteggio",
+	} {
+		if !strings.Contains(m.TextBody, want) {
+			t.Errorf("missing %q in the mail:\n%s", want, m.TextBody)
+		}
+	}
+}
+
+// Il vincolo globale, sul flusso prenotazione.
+func TestCreateBooking_WithoutSMTPBehavesExactlyAsBefore(t *testing.T) {
+	server := newTestServer(t) // Mail resta nil
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	payload, _ := json.Marshal(map[string]any{
+		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
+		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		BookingCode string `json:"bookingCode"`
+		MailQueued  bool   `json:"mailQueued"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.BookingCode) != 8 {
+		t.Errorf("expected the code on screen as before, got %q", body.BookingCode)
+	}
+	if body.MailQueued {
+		t.Error("expected mailQueued to be false without SMTP")
+	}
+}
+
+// Un errore SMTP non deve annullare una prenotazione valida.
+func TestCreateBooking_SMTPFailureKeepsTheBooking(t *testing.T) {
+	mail := newFakeMailer()
+	mail.err = errors.New("autenticazione rifiutata")
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	payload, _ := json.Marshal(map[string]any{
+		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
+		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 despite the SMTP failure, got %d: %s", rec.Code, rec.Body.String())
+	}
+	mail.waitForMail(t)
+
+	// E la prenotazione è davvero nel database, non solo nella risposta.
+	bookings, err := server.Events.ListBookingsForEvent(context.Background(), eventID)
+	if err != nil {
+		t.Fatalf("list bookings: %v", err)
+	}
+	if len(bookings) != 1 {
+		t.Fatalf("expected 1 booking, got %d", len(bookings))
+	}
+}
+
+// Con una copia sola il "#1" è rumore, con due il numero serve: la mail
+// segue la stessa regola della pagina pubblica.
+func TestCreateBooking_MailLabelsTheCopyOnlyWithMoreThanOne(t *testing.T) {
+	mail := newFakeMailer()
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 2)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	payload, _ := json.Marshal(map[string]any{
+		"eventGameId": eventGames[1].ID, "participantName": "Mario Rossi",
+		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	m := mail.waitForMail(t)
+	if !strings.Contains(m.TextBody, "Catan #2") {
+		t.Errorf("expected 'Catan #2' with two copies in the event:\n%s", m.TextBody)
 	}
 }

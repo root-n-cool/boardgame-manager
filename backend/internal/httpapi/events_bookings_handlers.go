@@ -41,7 +41,13 @@ func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "could not create booking")
 	default:
-		writeJSON(w, http.StatusCreated, toBookingResponse(booking))
+		s.sendBookingConfirmation(r, booking)
+		resp := toBookingResponse(booking)
+		// mailQueued dice alla pagina se promettere una mail: senza SMTP
+		// il codice a schermo è l'unica cosa che il partecipante si porta
+		// via, e la pagina lo dice così com'è sempre stato.
+		resp["mailQueued"] = s.mailEnabled(r.Context())
+		writeJSON(w, http.StatusCreated, resp)
 	}
 }
 

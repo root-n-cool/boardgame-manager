@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/mailer"
 )
 
@@ -120,4 +121,70 @@ func bookingScoreURL(base, code string) string {
 
 func eventPublicURL(base string, eventID int64) string {
 	return fmt.Sprintf("%s/events/%d", base, eventID)
+}
+
+// bookingMailDataFor raccoglie quello che le due mail di prenotazione
+// devono dire. Ripercorre la stessa strada di toBookingDetailResponse
+// perché le due superfici devono raccontare la stessa prenotazione: se
+// la pagina dice "Catan #2", la mail non può dire "Catan".
+func (s *Server) bookingMailDataFor(ctx context.Context, b events.Booking) (bookingMailData, error) {
+	event, err := s.Events.GetEvent(ctx, b.EventID)
+	if err != nil {
+		return bookingMailData{}, err
+	}
+	eventGame, err := s.Events.GetEventGame(ctx, b.EventGameID)
+	if err != nil {
+		return bookingMailData{}, err
+	}
+	game, err := s.Games.GetGame(ctx, eventGame.GameID)
+	if err != nil {
+		return bookingMailData{}, err
+	}
+	copies, err := s.Events.CountEventGameCopies(ctx, b.EventID, eventGame.GameID)
+	if err != nil {
+		return bookingMailData{}, err
+	}
+
+	// Il numero della copia serve solo quando l'evento porta più copie di
+	// questo gioco, esattamente come in ManageBookingView.
+	label := game.Name
+	if copies > 1 {
+		label = fmt.Sprintf("%s #%d", game.Name, eventGame.CopyIndex)
+	}
+
+	return bookingMailData{
+		ParticipantName:  b.ParticipantName,
+		ParticipantEmail: b.ParticipantEmail,
+		BookingCode:      b.BookingCode,
+		GameLabel:        label,
+		EventTitle:       event.Title,
+		EventDate:        event.EventDate,
+		StartTime:        event.StartTime,
+		EventID:          b.EventID,
+		SharedTable:      eventGame.Seats > 1,
+	}, nil
+}
+
+// sendBookingConfirmation manda la conferma, o non fa niente se non c'è
+// posta. Raccoglie i dati in modo sincrono — servono il context della
+// richiesta e il database — e spedisce in modo asincrono.
+//
+// Un errore nel raccogliere i dati non risale: la prenotazione è già
+// fatta, e non mandare una mail è meglio che rispondere con un errore
+// per qualcosa che è andato bene.
+func (s *Server) sendBookingConfirmation(r *http.Request, b events.Booking) {
+	if !s.mailEnabled(r.Context()) {
+		return
+	}
+	data, err := s.bookingMailDataFor(r.Context(), b)
+	if err != nil {
+		log.Printf("mail: could not gather booking %d data: %v", b.ID, err)
+		return
+	}
+	base := s.publicBaseURL(r)
+	s.sendMailAsync(s.mailSender(r.Context()), bookingConfirmationMail(
+		data,
+		bookingManageURL(base, b.BookingCode),
+		bookingScoreURL(base, b.BookingCode),
+	))
 }
