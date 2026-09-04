@@ -826,7 +826,7 @@ Aggiungi a `backend/internal/settings/store_test.go`:
 
 ```go
 func TestUpdateAndGet_RoundTripsTheSMTPConfiguration(t *testing.T) {
-	store, _ := newTestStore(t)
+	store := newTestStore(t)
 	ctx := context.Background()
 
 	in := settings.Settings{
@@ -865,7 +865,7 @@ func TestUpdateAndGet_RoundTripsTheSMTPConfiguration(t *testing.T) {
 // impostazioni senza errori e trovare i campi SMTP vuoti: e' lo stato
 // normale, non un dato mancante.
 func TestGet_FreshDatabaseHasNoSMTPConfiguration(t *testing.T) {
-	store, _ := newTestStore(t)
+	store := newTestStore(t)
 
 	out, err := store.Get(context.Background())
 	if err != nil {
@@ -878,7 +878,7 @@ func TestGet_FreshDatabaseHasNoSMTPConfiguration(t *testing.T) {
 }
 ```
 
-Se `newTestStore` non esiste con questa firma in `store_test.go`, riusa l'helper già presente nel file invece di aggiungerne uno.
+`newTestStore(t) *settings.Store` esiste già in cima a `store_test.go` (riga 11) e apre un DB in memoria già migrato: riusala, non aggiungerne una.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
