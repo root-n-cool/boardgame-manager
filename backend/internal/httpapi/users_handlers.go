@@ -50,8 +50,10 @@ type inviteUserRequest struct {
 }
 
 // createUserHandler no longer accepts a password: whoever invites must not
-// know another admin's. It mints an invite link instead, which the caller
-// copies and delivers by hand (no SMTP in v1).
+// know another admin's. It mints an invite link, manda la mail se l'SMTP
+// è configurato, e in ogni caso restituisce il token — il bottone "Copia
+// link" resta il modo di consegnare l'invito a mano, ed è l'unico su
+// un'installazione senza posta.
 func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 	var req inviteUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -80,7 +82,22 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusCreated, userResponse(user))
+	// La mail è un extra: l'invito è già valido e la risposta non
+	// aspetta l'SMTP. mailQueued dice solo se l'invio è stato affidato,
+	// non se è arrivato.
+	queued := s.mailEnabled(r.Context())
+	if queued {
+		inviter := "Un amministratore"
+		if actor, ok := currentUser(r); ok {
+			inviter = actor.Email
+		}
+		link := inviteURL(s.publicBaseURL(r), token)
+		s.sendMailAsync(s.mailSender(r.Context()), inviteMail(email, inviter, link))
+	}
+
+	resp := userResponse(user)
+	resp["mailQueued"] = queued
+	writeJSON(w, http.StatusCreated, resp)
 }
 
 func (s *Server) deleteUserHandler(w http.ResponseWriter, r *http.Request) {

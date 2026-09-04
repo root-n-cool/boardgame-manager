@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -95,4 +96,28 @@ func (s *Server) publicBaseURL(r *http.Request) string {
 		scheme = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
 	}
 	return scheme + "://" + r.Host
+}
+
+// Gli indirizzi che finiscono nelle mail. Stanno insieme perché devono
+// restare allineati alle rotte del frontend: cambiare un path in
+// frontend/src/router/index.ts vuol dire cambiare qui.
+//
+// Né i token d'invito (hex) né i codici di prenotazione (lettere e cifre
+// da un alfabeto senza caratteri ambigui) contengono caratteri da
+// codificare, quindi la concatenazione basta e resta leggibile in una mail.
+
+func inviteURL(base, token string) string {
+	return base + "/invito/" + token
+}
+
+func bookingManageURL(base, code string) string {
+	return base + "/prenotazione/" + code
+}
+
+func bookingScoreURL(base, code string) string {
+	return base + "/prenotazione/" + code + "/punteggio"
+}
+
+func eventPublicURL(base string, eventID int64) string {
+	return fmt.Sprintf("%s/events/%d", base, eventID)
 }

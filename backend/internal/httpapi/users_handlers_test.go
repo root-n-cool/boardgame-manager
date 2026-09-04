@@ -3,9 +3,11 @@ package httpapi_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/httpapi"
@@ -250,6 +252,115 @@ func TestDeleteUser_UnknownIDReturnsNotFound(t *testing.T) {
 	if delRec.Code != http.StatusNotFound {
 		t.Fatalf("expected 404 deleting an unknown user id, got %d: %s", delRec.Code, delRec.Body.String())
 	}
+}
+
+func TestCreateUser_SendsTheInviteWhenSMTPIsConfigured(t *testing.T) {
+	mail := newFakeMailer()
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "capo@example.com", "supersecret1")
+
+	// L'indirizzo pubblico configurato deve vincere sull'host della
+	// richiesta: chi riceve l'invito raggiunge l'app dal dominio
+	// dell'associazione, non da quello dell'admin.
+	settingsPayload, _ := json.Marshal(map[string]any{
+		"defaultLanguage": "it", "publicBaseUrl": "https://giochi.example.org",
+	})
+	setReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(settingsPayload))
+	setReq.AddCookie(cookie)
+	setRec := httptest.NewRecorder()
+	router.ServeHTTP(setRec, setReq)
+	if setRec.Code != http.StatusOK {
+		t.Fatalf("put settings: %d %s", setRec.Code, setRec.Body.String())
+	}
+
+	payload, _ := json.Marshal(map[string]string{"email": "nuovo@example.com"})
+	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var body struct {
+		InviteToken string `json:"inviteToken"`
+		MailQueued  bool   `json:"mailQueued"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.MailQueued {
+		t.Error("expected mailQueued to be true with SMTP configured")
+	}
+	// Il token continua a tornare: il bottone "Copia link" resta il
+	// fallback quando la mail non arriva.
+	if body.InviteToken == "" {
+		t.Error("expected the invite token to keep coming back")
+	}
+
+	m := mail.waitForMail(t)
+	if m.To != "nuovo@example.com" {
+		t.Errorf("mail sent to %q", m.To)
+	}
+	wantLink := "https://giochi.example.org/invito/" + body.InviteToken
+	if !strings.Contains(m.TextBody, wantLink) {
+		t.Errorf("expected %q in the mail body:\n%s", wantLink, m.TextBody)
+	}
+	if !strings.Contains(m.TextBody, "capo@example.com") {
+		t.Errorf("expected the inviter to be named:\n%s", m.TextBody)
+	}
+}
+
+// Il vincolo globale, sul flusso invito: senza SMTP l'invito funziona
+// esattamente come prima.
+func TestCreateUser_WithoutSMTPStillMintsTheInvite(t *testing.T) {
+	server := newTestServer(t) // Mail resta nil
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "capo@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]string{"email": "nuovo@example.com"})
+	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		InviteToken string `json:"inviteToken"`
+		MailQueued  bool   `json:"mailQueued"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.InviteToken == "" {
+		t.Error("expected an invite token")
+	}
+	if body.MailQueued {
+		t.Error("expected mailQueued to be false without SMTP: no mail will arrive")
+	}
+}
+
+// Un guasto SMTP non deve trasformare un invito riuscito in un errore.
+func TestCreateUser_SMTPFailureDoesNotBreakTheInvite(t *testing.T) {
+	mail := newFakeMailer()
+	mail.err = errors.New("connessione rifiutata")
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "capo@example.com", "supersecret1")
+
+	payload, _ := json.Marshal(map[string]string{"email": "nuovo@example.com"})
+	req := httptest.NewRequest(http.MethodPost, "/api/users", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201 despite the SMTP failure, got %d: %s", rec.Code, rec.Body.String())
+	}
+	mail.waitForMail(t) // l'invio è stato tentato
 }
 
 // TestDeleteUser_DeletedUsersSessionIsRejected covers the ON DELETE CASCADE on
