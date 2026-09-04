@@ -1,0 +1,98 @@
+package httpapi
+
+import (
+	"context"
+	"errors"
+	"log"
+	"net/http"
+	"strings"
+	"time"
+
+	"boardgames-manager/internal/mailer"
+)
+
+// mailSendTimeout è il tetto su un singolo invio. Vive nella goroutine,
+// non nella richiesta HTTP: il partecipante ha già avuto la sua risposta.
+const mailSendTimeout = 20 * time.Second
+
+// mailSender restituisce il sender per questa richiesta: quello iniettato
+// se c'è (i test), altrimenti uno costruito al volo dalle impostazioni
+// salvate. Costruirlo per richiesta è ciò che permette all'admin di
+// cambiare provider senza riavviare il container, come per il traduttore.
+func (s *Server) mailSender(ctx context.Context) mailer.Sender {
+	if s.Mail != nil {
+		return s.Mail
+	}
+	cfg, err := s.Settings.Get(ctx)
+	if err != nil {
+		// Senza impostazioni non si manda niente; un sender vuoto
+		// restituisce ErrNotConfigured, che è l'esito giusto.
+		log.Printf("mail: could not load settings: %v", err)
+		return mailer.NewSMTPSender(mailer.Config{})
+	}
+	return mailer.NewSMTPSender(smtpConfigFrom(cfg))
+}
+
+// mailEnabled dice se una mail partirà davvero. Serve alle risposte che
+// portano "mailQueued": promettere una mail che non partirà è peggio
+// che non prometterla.
+func (s *Server) mailEnabled(ctx context.Context) bool {
+	if s.Mail != nil {
+		return true
+	}
+	cfg, err := s.Settings.Get(ctx)
+	if err != nil {
+		return false
+	}
+	return smtpConfigFrom(cfg).Configured()
+}
+
+// sendMailAsync spedisce senza far aspettare la risposta HTTP. Il sender
+// arriva risolto dal chiamante di proposito: costruirlo dentro la
+// goroutine vorrebbe dire leggere le impostazioni con un context che la
+// richiesta ha già chiuso.
+//
+// Nessun errore risale: una prenotazione, un annullamento e un invito
+// riescono o falliscono per i loro motivi, mai per la posta.
+// ErrNotConfigured non finisce nemmeno nei log — è l'app senza SMTP, che
+// è una configurazione valida.
+func (s *Server) sendMailAsync(sender mailer.Sender, m mailer.Message) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), mailSendTimeout)
+		defer cancel()
+
+		err := sender.Send(ctx, m)
+		if err == nil || errors.Is(err, mailer.ErrNotConfigured) {
+			return
+		}
+		log.Printf("mail to %s (%q) failed: %v", m.To, m.Subject, err)
+	}()
+}
+
+// publicBaseURL è la radice degli indirizzi che finiscono nelle mail,
+// senza slash finale. Vince l'indirizzo pubblico configurato: chi riceve
+// il link deve raggiungere l'app dal dominio dell'associazione, non da
+// quello con cui il browser dell'admin sta navigando.
+//
+// Il ripiego sulla richiesta esiste perché una mail non ha un browser su
+// cui contare, e vale per l'installazione locale che non ha configurato
+// niente. Si fida di X-Forwarded-Proto perché il deploy previsto sta
+// dietro il proprio reverse proxy; l'host invece resta quello della
+// richiesta, e un'installazione esposta dovrebbe configurare l'indirizzo
+// pubblico e non dipendere da questo ramo.
+func (s *Server) publicBaseURL(r *http.Request) string {
+	if s.Settings != nil {
+		if cfg, err := s.Settings.Get(r.Context()); err == nil && cfg.PublicBaseURL != "" {
+			return strings.TrimRight(cfg.PublicBaseURL, "/")
+		}
+	}
+
+	scheme := "http"
+	if r.TLS != nil {
+		scheme = "https"
+	}
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
+	}
+	return scheme + "://" + r.Host
+}

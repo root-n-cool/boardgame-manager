@@ -14,6 +14,7 @@ import (
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/geocode"
 	"boardgames-manager/internal/leaderboard"
+	"boardgames-manager/internal/mailer"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
@@ -34,6 +35,13 @@ type Server struct {
 	// cambiare provider non richiede un riavvio, e i test possono iniettare
 	// un finto.
 	AI ai.Translator
+	// Mail, quando è valorizzato, è il sender da usare. Lasciato a nil il
+	// server ne costruisce uno per richiesta dalle impostazioni: come per
+	// AI, cambiare provider non richiede un riavvio e i test possono
+	// iniettare un finto. Nil e SMTP non configurato sono lo stesso caso
+	// dal punto di vista di chi usa l'app: nessuna mail, tutto il resto
+	// invariato.
+	Mail mailer.Sender
 }
 
 func NewRouter(s *Server) http.Handler {
