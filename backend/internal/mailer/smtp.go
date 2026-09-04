@@ -51,7 +51,10 @@ func (s *SMTPSender) Send(ctx context.Context, m Message) error {
 	if err != nil {
 		return fmt.Errorf("connessione a %s non riuscita: %w", addr, err)
 	}
-	defer conn.Close()
+	// Il defer chiude conn com'è al momento in cui gira, non com'è ora:
+	// con TLS implicito la variabile viene riassegnata al *tls.Conn subito
+	// sotto, e vogliamo chiudere quello, non la connessione grezza sostituita.
+	defer func() { conn.Close() }()
 	// Una scadenza sul socket: senza, un server che apre la connessione e
 	// poi tace terrebbe la goroutine appesa a tempo indeterminato.
 	if deadline, ok := ctx.Deadline(); ok {
@@ -107,7 +110,10 @@ func (s *SMTPSender) Send(ctx context.Context, m Message) error {
 	if err := wc.Close(); err != nil {
 		return fmt.Errorf("il server ha rifiutato il messaggio: %w", err)
 	}
-	return client.Quit()
+	if err := client.Quit(); err != nil {
+		return fmt.Errorf("chiusura della sessione SMTP non riuscita: %w", err)
+	}
+	return nil
 }
 
 // compose genera le parti che devono cambiare a ogni messaggio e delega a
