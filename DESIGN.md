@@ -489,8 +489,11 @@ Il codice di prenotazione compare **due volte**, dallo stesso componente
 (`BookingConfirmation.vue`): dentro la modale appena confermata — con un
 "Ho segnato il codice" che è l'uscita esplicita, non solo la X — e poi in
 cima al tavolo (`.booking-recap`, bordo oro) finché si resta in pagina.
-Nessuna email parte: quel codice si vede una volta sola, e una modale si
-chiude d'istinto.
+Senza SMTP configurato quel codice si vede solo qui, ed è per questo che
+una modale che si chiude d'istinto non basta da sola: da lì il riepilogo
+in cima al tavolo. Con SMTP configurato lo stesso codice arriva anche per
+email — vedi "Email transazionali" più sotto — ma la UI a schermo resta
+la stessa in entrambi i casi: non sa se la mail è partita o no.
 
 Il riepilogo **accumula**: al tavolo un telefono solo prenota per due o tre
 persone, quindi ogni conferma si aggiunge invece di sostituire la
@@ -613,6 +616,52 @@ sotto ognuno diventava rumore.
   piccola + codice in mono 2rem tracciato — l'unico elemento della UI che
   usa il bordo oro invece del bordo cartoncino standard, per segnalare
   "questo va conservato".
+
+### Email transazionali
+Una superficie nuova, non un'estensione della UI: quel che il sistema
+mail visualizza non è il browser dell'associazione ma un client di posta
+qualunque, spesso il peggiore possibile in fatto di CSS. Le tre mail
+(invito, conferma di prenotazione, annullamento) e quella di prova
+condividono una cornice (`mailShell`) fatta di tabelle e stili inline —
+niente CSS esterno, niente immagine, niente font caricato da fuori —
+larga al massimo 560px, con intestazione in feltro (col nome dell'app),
+corpo su cartoncino, bottoni nell'accento rosso e il codice di
+prenotazione nello stesso mono con cui compare a schermo
+(`.booking-code-card`). È la stessa palette del resto dell'app, non una
+sua reinterpretazione.
+
+**La versione in solo testo è di pari rango, non un ripiego.** Ogni mail
+esce come `multipart/alternative` con la parte testo scritta per intero
+prima di quella HTML: chi legge in solo testo trova comunque il codice e
+tutti i link, non un rimando a "vedi la versione HTML".
+
+### Impostazioni SMTP (`.smtp-test`)
+Il bottone "Invia email di prova" è un'azione secondaria dentro un form
+lungo, non l'ultimo campo prima del submit: sta nel suo blocco
+(`.smtp-test`), separato dal `.form-actions` di salvataggio in fondo
+alla pagina, con la spiegazione di cosa farà accanto al bottone invece
+che sopra o sotto — la stessa riga risponde "cosa succede se premo
+questo" mentre lo si guarda. Il bottone resta `.btn-secondary`
+disabilitato finché la configurazione non è salvata: prova quella sul
+server, non quella ancora nel form, e la spiegazione a fianco lo dice
+esplicitamente. `.field-row`, che qui allinea porta e sicurezza sulla
+stessa riga, esisteva già (vedi min/max giocatori) e non è un
+componente nuovo.
+
+L'esito della prova sdoppia annuncio e riquadro invece di farli coincidere
+nello stesso elemento. Una regione live ha bisogno di stare nel DOM
+**prima** che il testo cambi — nata già col contenuto dentro (`v-if`) è
+il caso che gli screen reader in pratica non annunciano, stesso principio
+di `BggSearchSelect`/`VenueSearchSelect` — ma `.panel-card` è un flex
+column con `gap`, che non collassa per un elemento a vuoto come farebbe
+un margine: un riquadro sempre montato lascerebbe uno spazio morto anche
+senza risultato. Perciò due `p.visually-hidden` (`role="status"
+aria-live="polite"` per il successo, `role="alert" aria-live="assertive"`
+per l'errore) restano montate a permanenza fuori dal flusso visivo — non
+essendo elementi di flex, il `gap` non le tocca — e portano solo il testo
+per l'annuncio. Il riquadro visibile (`.success`/`.error`, senza ruoli
+ARIA: è solo presentazione) torna un semplice `v-if`, esattamente come
+prima di questa voce.
 
 ## Do's and Don'ts
 

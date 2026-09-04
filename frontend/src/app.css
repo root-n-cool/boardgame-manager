@@ -2882,6 +2882,21 @@ tbody tr:nth-child(3) .rank-medal {
   flex: 1 1 8rem;
 }
 
+/* Il bottone di prova e la sua spiegazione: un'azione secondaria dentro un
+   form, separata dal bottone di salvataggio in fondo alla pagina. */
+.smtp-test {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.smtp-test .field-hint {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
 /* ── Luogo dell'evento ──────────────────────────────────────────────────
    Cercare un indirizzo è cercare un gioco su BGG: si scrive, la lista si
    aggiorna da sé, si sceglie una riga. La differenza è la via d'uscita —

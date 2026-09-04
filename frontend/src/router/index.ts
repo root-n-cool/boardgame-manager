@@ -32,6 +32,25 @@ const router = createRouter({
     { path: '/', name: 'events', component: EventsView, meta: { public: true } },
     { path: '/events/:id', name: 'event-detail', component: EventDetailView, meta: { public: true } },
     { path: '/manage-booking', name: 'manage-booking', component: ManageBookingView, meta: { public: true } },
+    // I due link che partono nella mail di conferma. Stesso componente di
+    // /manage-booking: la pagina sa già fare entrambe le cose, e il path
+    // decide solo se il codice arriva dall'indirizzo o dal form.
+    // `props` è una funzione perché il codice viene dai params mentre
+    // `mode` è fisso per rotta.
+    {
+      path: '/prenotazione/:code',
+      name: 'booking-manage',
+      component: ManageBookingView,
+      props: (route) => ({ code: String(route.params.code), mode: 'manage' }),
+      meta: { public: true },
+    },
+    {
+      path: '/prenotazione/:code/punteggio',
+      name: 'booking-score',
+      component: ManageBookingView,
+      props: (route) => ({ code: String(route.params.code), mode: 'score' }),
+      meta: { public: true },
+    },
     {
       path: '/invito/:token',
       name: 'invite-accept',

@@ -60,3 +60,15 @@ func newTestServerWithTranslator(t *testing.T, tr *fakeTranslator) (*httpapi.Ser
 	server.AI = tr
 	return server, conn
 }
+
+// newTestServerWithMailer monta il server con un server SMTP finto già
+// configurato. I test che vogliono l'app senza posta usano gli altri
+// helper e lasciano il campo a nil: è lo stato in cui gira
+// un'installazione che non ha configurato niente, e ogni flusso ha un
+// test in quella forma.
+func newTestServerWithMailer(t *testing.T, m *fakeMailer) (*httpapi.Server, *sql.DB) {
+	t.Helper()
+	server, conn := newTestServerWithDB(t)
+	server.Mail = m
+	return server, conn
+}

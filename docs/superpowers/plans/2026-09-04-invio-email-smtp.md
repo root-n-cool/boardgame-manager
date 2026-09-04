@@ -23,6 +23,7 @@
   Non sostituire i due volumi nominati. `npm` invece gira in locale in `frontend/`.
 - **Migrazioni forward-only:** un file nuovo `NNNN_nome.sql` in `backend/internal/db/migrations/`, mai una modifica a uno già rilasciato.
 - **UI in italiano**, stringhe dirette nei componenti, nessun i18n. Messaggi d'errore rivolti all'admin o al partecipante in italiano; i codici d'errore interni dell'API restano in inglese come il resto del progetto.
+- **Accenti veri, sempre:** `è`, `più`, `così`, `può`, `già`, `perché` — mai la forma apostrofata `e'` / `piu'` / `puo'`. Vale per le stringhe utente (il quoted-printable delle mail le codifica correttamente, lo prova il Task 1) e per i commenti Go: `grep` sul backend esistente dà 130 accenti veri e zero apostrofi, e i blocchi di codice di questo piano vanno normalizzati a quella convenzione mentre li si trascrive.
 - **Palette delle mail** da `DESIGN.md`: feltro `#1f4d3a`, carta `#faf6ec`, carta-alt `#f2ead4`, inchiostro `#241f18`, inchiostro tenue `#6e6250`, accento `#9c2b2b`. Stili inline, tabelle per il layout, max 560px, nessuna immagine e nessun font esterno.
 - **Git:** branch `main`, commit in inglese in stile conventional commits. Nessun push: i commit restano locali.
 - **Ultimo task obbligatorio:** `/impeccable` sulla superficie frontend toccata, come richiede il CLAUDE.md.
@@ -452,7 +453,12 @@ func (s *fakeSMTPServer) handle(conn net.Conn) {
 		if err != nil {
 			return
 		}
-		cmd := strings.ToUpper(strings.TrimSpace(line))
+		// raw conserva le maiuscole/minuscole originali, cmd serve solo a
+		// riconoscere il comando: gli indirizzi si estraggono da raw, o
+		// "serate@example.org" tornerebbe maiuscolo e nessuna asserzione
+		// del test corrisponderebbe.
+		raw := strings.TrimSpace(line)
+		cmd := strings.ToUpper(raw)
 		switch {
 		case strings.HasPrefix(cmd, "EHLO"), strings.HasPrefix(cmd, "HELO"):
 			// Risposta multi-riga: tutte con "-" tranne l'ultima.
@@ -463,14 +469,14 @@ func (s *fakeSMTPServer) handle(conn net.Conn) {
 			s.authSeen = true
 			s.mu.Unlock()
 			write("235 2.7.0 accettata")
-		case strings.HasPrefix(cmd, "MAIL FROM"):
+		case strings.HasPrefix(cmd, "MAIL FROM:"):
 			s.mu.Lock()
-			s.from = strings.TrimSpace(strings.TrimPrefix(cmd, "MAIL FROM:"))
+			s.from = strings.TrimSpace(raw[len("MAIL FROM:"):])
 			s.mu.Unlock()
 			write("250 ok")
-		case strings.HasPrefix(cmd, "RCPT TO"):
+		case strings.HasPrefix(cmd, "RCPT TO:"):
 			s.mu.Lock()
-			s.rcpt = append(s.rcpt, strings.TrimSpace(strings.TrimPrefix(cmd, "RCPT TO:")))
+			s.rcpt = append(s.rcpt, strings.TrimSpace(raw[len("RCPT TO:"):]))
 			s.mu.Unlock()
 			write("250 ok")
 		case cmd == "DATA":
@@ -820,7 +826,7 @@ Aggiungi a `backend/internal/settings/store_test.go`:
 
 ```go
 func TestUpdateAndGet_RoundTripsTheSMTPConfiguration(t *testing.T) {
-	store, _ := newTestStore(t)
+	store := newTestStore(t)
 	ctx := context.Background()
 
 	in := settings.Settings{
@@ -859,7 +865,7 @@ func TestUpdateAndGet_RoundTripsTheSMTPConfiguration(t *testing.T) {
 // impostazioni senza errori e trovare i campi SMTP vuoti: e' lo stato
 // normale, non un dato mancante.
 func TestGet_FreshDatabaseHasNoSMTPConfiguration(t *testing.T) {
-	store, _ := newTestStore(t)
+	store := newTestStore(t)
 
 	out, err := store.Get(context.Background())
 	if err != nil {
@@ -872,7 +878,7 @@ func TestGet_FreshDatabaseHasNoSMTPConfiguration(t *testing.T) {
 }
 ```
 
-Se `newTestStore` non esiste con questa firma in `store_test.go`, riusa l'helper già presente nel file invece di aggiungerne uno.
+`newTestStore(t) *settings.Store` esiste già in cima a `store_test.go` (riga 11) e apre un DB in memoria già migrato: riusala, non aggiungerne una.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1769,12 +1775,6 @@ func TestBookingCancelledMail_DistinguishesWhoCancelled(t *testing.T) {
 	if !strings.Contains(byAdmin.TextBody, "organizzazione") {
 		t.Errorf("la variante admin deve dire chi ha annullato:\n%s", byAdmin.TextBody)
 	}
-	for _, m := range []struct {
-		name string
-		msg  interface{ GetTo() string }
-	}{} {
-		_ = m
-	}
 	for _, body := range []string{
 		byParticipant.TextBody, byParticipant.HTMLBody, byAdmin.TextBody, byAdmin.HTMLBody,
 	} {
@@ -1800,7 +1800,10 @@ func TestSMTPTestMail_IsSelfExplanatory(t *testing.T) {
 
 // Nessun template deve lasciare un placeholder non sostituito in giro.
 func TestTemplates_LeaveNoPlaceholders(t *testing.T) {
-	messages := []mailerMessageForTest{
+	messages := []struct {
+		name string
+		m    mailer.Message
+	}{
 		{"invito", inviteMail("a@b.org", "c@d.org", "https://x/invito/t")},
 		{"conferma", bookingConfirmationMail(testBookingData(), "https://x/m", "https://x/s")},
 		{"annullamento", bookingCancelledMail(testBookingData(), "https://x/e", true)},
@@ -1818,22 +1821,7 @@ func TestTemplates_LeaveNoPlaceholders(t *testing.T) {
 }
 ```
 
-Aggiungi in cima al file, sotto gli import, il tipo di appoggio usato dall'ultimo test:
-
-```go
-type mailerMessageForTest struct {
-	name string
-	m    mailerMessage
-}
-```
-
-dove `mailerMessage` è un alias locale per tenere l'import corto:
-
-```go
-type mailerMessage = mailer.Message
-```
-
-con `"boardgames-manager/internal/mailer"` fra gli import. Rimuovi dal test `TestBookingCancelledMail_DistinguishesWhoCancelled` il ciclo vuoto `for _, m := range []struct{...}{}{}` — è rumore: cancellalo prima di eseguire.
+Gli import del file sono `"strings"`, `"testing"` e `"boardgames-manager/internal/mailer"`.
 
 - [ ] **Step 2: Run the test to verify it fails**
 
@@ -1970,7 +1958,7 @@ func inviteMail(to, invitedBy, inviteURL string) mailer.Message {
 		"Apri questo link per scegliere la tua password ed entrare:",
 		inviteURL,
 		"",
-		"Il link e' personale e vale una volta sola: chi ti ha invitato non vedra' mai la password che scegli.",
+		"Il link è personale e vale una volta sola: chi ti ha invitato non vedrà mai la password che scegli.",
 	}, "\n")
 
 	body := mailParagraph("Ciao,") +
@@ -1988,12 +1976,12 @@ func inviteMail(to, invitedBy, inviteURL string) mailer.Message {
 }
 
 func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mailer.Message {
-	sharedNote := "Questo tavolo ha piu' posti prenotabili, uno a testa: il punteggio finale e' uno per tavolo, e chiunque sieda qui puo' inserirlo o correggerlo col proprio codice."
+	sharedNote := "Questo tavolo ha più posti prenotabili, uno a testa: il punteggio finale è uno per tavolo, e chiunque sieda qui può inserirlo o correggerlo col proprio codice."
 
 	lines := []string{
 		fmt.Sprintf("Ciao %s,", d.ParticipantName),
 		"",
-		fmt.Sprintf("la tua prenotazione per %s e' confermata.", d.GameLabel),
+		fmt.Sprintf("la tua prenotazione per %s è confermata.", d.GameLabel),
 		"",
 		"Evento:   " + d.EventTitle,
 		"Data:     " + d.EventDate,
@@ -2041,13 +2029,13 @@ func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mail
 }
 
 func bookingCancelledMail(d bookingMailData, eventURL string, byAdmin bool) mailer.Message {
-	opening := fmt.Sprintf("la tua prenotazione per %s e' stata annullata, come hai chiesto.", d.GameLabel)
-	openingHTML := fmt.Sprintf("la tua prenotazione per %s è stata annullata, come hai chiesto.", d.GameLabel)
+	// Testo e HTML dicono la stessa frase: una variabile sola, cosi' non
+	// possono divergere a una modifica futura.
+	opening := fmt.Sprintf("la tua prenotazione per %s è stata annullata, come hai chiesto.", d.GameLabel)
 	closing := "Se hai cambiato idea puoi prenotare di nuovo, se restano posti."
 	if byAdmin {
-		opening = fmt.Sprintf("la tua prenotazione per %s e' stata annullata dall'organizzazione.", d.GameLabel)
-		openingHTML = fmt.Sprintf("la tua prenotazione per %s è stata annullata dall'organizzazione.", d.GameLabel)
-		closing = "Il posto e' tornato libero: puoi prenotare un altro gioco della serata."
+		opening = fmt.Sprintf("la tua prenotazione per %s è stata annullata dall'organizzazione.", d.GameLabel)
+		closing = "Il posto è tornato libero: puoi prenotare un altro gioco della serata."
 	}
 
 	text := strings.Join([]string{
@@ -2062,7 +2050,7 @@ func bookingCancelledMail(d bookingMailData, eventURL string, byAdmin bool) mail
 		closing,
 		eventURL,
 		"",
-		"Il codice " + d.BookingCode + " non e' piu' valido.",
+		"Il codice " + d.BookingCode + " non è più valido.",
 	}, "\n")
 
 	facts := `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px;border-collapse:collapse;">` +
@@ -2072,7 +2060,7 @@ func bookingCancelledMail(d bookingMailData, eventURL string, byAdmin bool) mail
 		`</table>`
 
 	body := mailParagraph(fmt.Sprintf("Ciao %s,", d.ParticipantName)) +
-		mailParagraph(openingHTML) +
+		mailParagraph(opening) +
 		facts +
 		mailParagraph(closing) +
 		mailButton("Vedi la serata", eventURL) +
@@ -3419,32 +3407,21 @@ Nel `<template>`, dopo il `panel-card` "Provider AI" e prima di `<div class="for
       </div>
 ```
 
-- [ ] **Step 5: Add the two styles the panel needs**
+- [ ] **Step 5: Add the one style the panel needs**
 
-`field-row` e `smtp-test` sono pattern nuovi: aggiungili a `frontend/src/app.css`, accanto agli altri stili di form, e annota il pattern in `DESIGN.md` al Task 14.
+**`.field-row` esiste già** in `frontend/src/app.css:2874` (`display:flex; flex-wrap:wrap; gap:1rem; max-width:30rem` con `> label { flex: 1 1 8rem }`), nata per la coppia min/max giocatori. Porta e sicurezza sono lo stesso pattern — due campi corti che sono una cosa sola — quindi **riusala così com'è e non ridefinirla**.
+
+L'unico stile nuovo è `.smtp-test`. Aggiungilo accanto agli altri stili di form. Il file non ha token di spaziatura (`--space-*` non esiste): i valori si scrivono in `rem`, come tutto il resto di `app.css`.
 
 ```css
-/* Due campi corti sulla stessa riga: porta e sicurezza si leggono come
-   una cosa sola, e da soli sprecherebbero mezza larghezza ciascuno. Su
-   schermo stretto tornano incolonnati. */
-.field-row {
-  display: flex;
-  gap: var(--space-md, 1rem);
-  flex-wrap: wrap;
-}
-
-.field-row > label {
-  flex: 1 1 12rem;
-}
-
 /* Il bottone di prova e la sua spiegazione: un'azione secondaria dentro un
-   form, separata dal bottone di salvataggio che sta in fondo alla pagina. */
+   form, separata dal bottone di salvataggio in fondo alla pagina. */
 .smtp-test {
   display: flex;
   align-items: center;
-  gap: var(--space-md, 1rem);
   flex-wrap: wrap;
-  margin-top: var(--space-md, 1rem);
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .smtp-test .field-hint {
@@ -3452,8 +3429,6 @@ Nel `<template>`, dopo il `panel-card` "Provider AI" e prima di `<div class="for
   margin: 0;
 }
 ```
-
-Verifica i nomi delle variabili di spaziatura già in uso in `app.css` (`grep -n "space-md\|--space" frontend/src/app.css`) e usa quelli invece dei fallback se esistono.
 
 - [ ] **Step 6: Type-check and build**
 
@@ -3535,7 +3510,7 @@ withDefaults(
 e aggiungi nel template, subito dopo il `<p v-if="hint">`:
 
 ```vue
-    <p v-if="mailed" class="booking-mailed">
+    <p v-if="mailed">
       Ti abbiamo mandato una mail con il codice e i link per annullare o segnare
       i punti.
     </p>
@@ -3710,7 +3685,7 @@ va sostituita con la decisione vera:
 Aggiungi due voci:
 
 - **Email transazionali** come superficie nuova: tabelle, stili inline, max 560px, nessuna immagine e nessun font esterno, palette del sistema (feltro per l'intestazione, carta per il corpo, accento per i bottoni, mono per il codice). Il testo semplice è la versione di riferimento, non un ripiego.
-- I due componenti CSS nuovi `field-row` (due campi corti in linea) e `smtp-test` (azione secondaria dentro un form, con la sua spiegazione accanto).
+- Il componente CSS nuovo `smtp-test` (azione secondaria dentro un form, con la sua spiegazione accanto). `field-row`, riusata per la coppia porta/sicurezza, esisteva già.
 
 - [ ] **Step 4: Commit**
 

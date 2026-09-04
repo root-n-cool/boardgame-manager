@@ -62,8 +62,11 @@ binario/container, SQLite come unico storage.
 - Un evento può includere più copie dello stesso gioco.
 - Classifica per gioco calcolata sul nome giocatore normalizzato,
   nessun registro giocatori separato.
-- Niente email/SMTP in v1: nessuna notifica inviata, il booking_code
-  è l'unico strumento di gestione post-prenotazione.
+- Email/SMTP opzionale: senza configurazione il `booking_code` resta
+  l'unico strumento di gestione post-prenotazione, mostrato a schermo;
+  configurando un server SMTP nelle impostazioni l'app manda anche una
+  conferma di prenotazione, un avviso di annullamento e l'invito di un
+  amministratore.
 
 ## Brand Commitments
 

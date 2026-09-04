@@ -115,7 +115,13 @@ risultato di una sessione di brainstorming con l'utente.
 - Prenotazioni anonime: nome, email, telefono. Vincolo: un solo booking
   attivo per coppia `(event_id, telefono)`.
 - Alla prenotazione si genera un `booking_code` mostrato a schermo.
-  **Nessuna email inviata** (niente SMTP in v1).
+  L'invio email è **opzionale**: configurando un server SMTP nelle
+  impostazioni partono la conferma di prenotazione (col codice e i link
+  diretti a disdetta e punteggi), l'invito di un amministratore e
+  l'avviso di annullamento. Senza SMTP l'app funziona per intero come
+  prima — il codice resta a schermo e il link d'invito si copia a mano.
+  Vale la stessa regola del provider AI: nessun campo obbligatorio,
+  nessun errore in UI perché la posta manca.
 - Il `booking_code` da solo permette poi di cancellare la prenotazione
   oppure inserire il punteggio finale (nomi giocatori liberi +
   punteggio numerico per ciascuno, vince il punteggio più alto).

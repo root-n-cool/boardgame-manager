@@ -14,6 +14,7 @@ import (
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/geocode"
 	"boardgames-manager/internal/leaderboard"
+	"boardgames-manager/internal/mailer"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
@@ -34,6 +35,13 @@ type Server struct {
 	// cambiare provider non richiede un riavvio, e i test possono iniettare
 	// un finto.
 	AI ai.Translator
+	// Mail, quando è valorizzato, è il sender da usare. Lasciato a nil il
+	// server ne costruisce uno per richiesta dalle impostazioni: come per
+	// AI, cambiare provider non richiede un riavvio e i test possono
+	// iniettare un finto. Nil e SMTP non configurato sono lo stesso caso
+	// dal punto di vista di chi usa l'app: nessuna mail, tutto il resto
+	// invariato.
+	Mail mailer.Sender
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -48,6 +56,19 @@ func NewRouter(s *Server) http.Handler {
 	// lasciano scrivere un indirizzo con calma e restano dentro il limite
 	// anche se due admin cercano insieme.
 	geocodeLimiter := newRateLimiter(30, time.Minute)
+	// Un invio di prova apre una connessione verso un server esterno: cinque
+	// al minuto bastano a sistemare una configurazione sbagliata e non
+	// trasformano il bottone in un modo di mandare mail a raffica.
+	smtpTestLimiter := newRateLimiter(5, time.Minute)
+	// Anche una prenotazione apre una connessione SMTP e manda mail a un
+	// indirizzo scelto dal chiamante: senza limite è un modo di far
+	// spedire mail a raffica con le credenziali del club. rateLimiter
+	// chiave su r.RemoteAddr (ratelimit.go), che dietro un reverse proxy è
+	// l'indirizzo del proxy: tutti i partecipanti a un tavolo condividono
+	// lo stesso bucket. 30 al minuto restano ben sopra l'uso reale — anche
+	// un gruppo che prenota insieme a inizio serata — e comunque limitano
+	// l'abuso.
+	bookingLimiter := newRateLimiter(30, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
@@ -63,7 +84,7 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/events", s.listEventsHandler)
 	r.Get("/api/events/{id}", s.getEventHandler)
 	r.Get("/api/games/{id}/leaderboard", s.getLeaderboardHandler)
-	r.Post("/api/events/{id}/bookings", s.createBookingHandler)
+	r.With(bookingLimiter.middleware).Post("/api/events/{id}/bookings", s.createBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/lookup", s.lookupBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/{id}/cancel", s.cancelBookingHandler)
 	r.With(matchResultLimiter.middleware).Post("/api/bookings/{id}/match-result", s.submitMatchResultHandler)
@@ -77,6 +98,7 @@ func NewRouter(s *Server) http.Handler {
 		protected.Delete("/api/users/{id}", s.deleteUserHandler)
 		protected.Get("/api/settings", s.getSettingsHandler)
 		protected.Put("/api/settings", s.putSettingsHandler)
+		protected.With(smtpTestLimiter.middleware).Post("/api/settings/smtp/test", s.testSMTPHandler)
 		protected.Get("/api/games/search", s.searchGamesHandler)
 		protected.With(geocodeLimiter.middleware).Get("/api/geocode/search", s.searchPlacesHandler)
 		protected.Post("/api/games", s.createGameHandler)
