@@ -1,7 +1,21 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref, nextTick } from 'vue'
 import { api } from '../api/client'
 import PublicHeader from '../components/PublicHeader.vue'
+
+/**
+ * `code` arriva dai link mandati per mail: quando c'è, la pagina si
+ * risolve da sé e il form del codice non compare — chiederlo a chi ha
+ * appena cliccato un link che lo contiene sarebbe un passaggio in più
+ * davanti a un tavolo di gioco.
+ *
+ * `mode` dice su cosa aprire: 'score' è il link "segna i punti a fine
+ * partita", che porta direttamente al form del punteggio.
+ */
+const props = withDefaults(
+  defineProps<{ code?: string; mode?: 'manage' | 'score' }>(),
+  { code: '', mode: 'manage' },
+)
 
 interface PlayerScore {
   name: string
@@ -35,6 +49,10 @@ const scoreError = ref('')
 const scoreMessage = ref('')
 const players = ref<PlayerScore[]>([{ name: '', score: 0 }])
 
+/** Vero quando il codice arriva dall'indirizzo invece che dal form. */
+const deepLinked = computed(() => props.code !== '')
+const scoreSection = ref<HTMLFormElement | null>(null)
+
 /** Un tavolo condiviso: più di un posto prenotabile e più di un prenotato. */
 const isSharedTable = computed(
   () => (booking.value?.seats ?? 1) > 1 && (booking.value?.tableBookings ?? 1) > 1,
@@ -66,7 +84,13 @@ async function lookup() {
       : [{ name: '', score: 0 }]
   } catch (e) {
     booking.value = null
-    error.value = (e as Error).message
+    // Chi arriva da un link non ha sbagliato a digitare: il codice è
+    // quello che gli abbiamo mandato noi. Se non risolve, la
+    // prenotazione è stata annullata — LookupBooking cerca solo fra le
+    // attive — e dirlo così evita di far sembrare un guasto nostro.
+    error.value = deepLinked.value
+      ? 'Questa prenotazione non è più attiva, o il link non è più valido.'
+      : (e as Error).message
   }
 }
 
@@ -115,6 +139,18 @@ async function submitScore() {
     scoreError.value = (e as Error).message
   }
 }
+
+onMounted(async () => {
+  if (!deepLinked.value) {
+    return
+  }
+  bookingCode.value = props.code
+  await lookup()
+  if (props.mode === 'score' && booking.value?.status === 'active') {
+    await nextTick()
+    scoreSection.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+})
 </script>
 
 <template>
@@ -123,7 +159,7 @@ async function submitScore() {
     <div class="public-page">
       <h1>Gestisci prenotazione</h1>
 
-      <form @submit.prevent="lookup">
+      <form v-if="!deepLinked" @submit.prevent="lookup">
         <label>
           Codice prenotazione
           <input v-model="bookingCode" required />
@@ -154,7 +190,11 @@ async function submitScore() {
         </button>
         <p v-if="cancelMessage" class="success">{{ cancelMessage }}</p>
 
-        <form v-if="booking.status === 'active'" @submit.prevent="submitScore">
+        <form
+          v-if="booking.status === 'active'"
+          ref="scoreSection"
+          @submit.prevent="submitScore"
+        >
           <h2>Punteggio finale</h2>
           <p v-if="isSharedTable" class="row-meta">
             Il punteggio è del tavolo: lo vedono e lo possono correggere tutti
