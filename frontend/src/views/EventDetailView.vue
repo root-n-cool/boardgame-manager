@@ -40,6 +40,7 @@ interface EventVenue {
 interface BookingResult {
   id: number
   bookingCode: string
+  mailQueued: boolean
 }
 
 /** Una prenotazione andata a buon fine in questa visita alla pagina. */
@@ -47,6 +48,8 @@ interface ConfirmedBooking {
   code: string
   label: string
   multiSeat: boolean
+  /** Se per questa prenotazione è partita davvero una mail. */
+  mailed: boolean
 }
 
 // Leaflet pesa quanto tutto il resto dell'app: si scarica solo quando un
@@ -176,6 +179,7 @@ async function submitBooking() {
       code: result.bookingCode,
       label: selectedLabel.value,
       multiSeat: !!selectedGame.value && selectedGame.value.seats > 1,
+      mailed: result.mailQueued,
     })
     await load()
   } catch (e) {
@@ -252,6 +256,7 @@ onMounted(async () => {
           :code="b.code"
           :multi-seat="b.multiSeat"
           :hint="false"
+          :mailed="b.mailed"
         />
         <p class="recap-hint">
           {{ confirmed.length > 1 ? 'Conservali' : 'Conservalo' }} per gestire la prenotazione o
@@ -327,6 +332,7 @@ onMounted(async () => {
           :game-label="selectedLabel"
           :code="bookingResult.bookingCode"
           :multi-seat="!!selectedGame && selectedGame.seats > 1"
+          :mailed="bookingResult.mailQueued"
         />
         <div class="form-actions">
           <button type="button" @click="bookingOpen = false">Ho segnato il codice</button>

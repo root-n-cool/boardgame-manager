@@ -36,6 +36,9 @@ const emailInput = ref<HTMLInputElement | null>(null)
 const saving = ref(false)
 const copiedId = ref<number | null>(null)
 const pendingDelete = ref<AdminUser | null>(null)
+// Quale invito è stato anche mandato per mail: senza SMTP resta vuoto e la
+// pagina si comporta come prima, col solo link da copiare.
+const mailedTo = ref('')
 
 const countLabel = computed(() =>
   users.value.length === 1 ? '1 amministratore' : `${users.value.length} amministratori`,
@@ -71,6 +74,7 @@ async function startAdding() {
   adding.value = true
   newEmail.value = ''
   error.value = ''
+  mailedTo.value = ''
   await nextTick()
   emailInput.value?.focus()
 }
@@ -84,7 +88,10 @@ async function invite() {
   error.value = ''
   saving.value = true
   try {
-    await api.post<AdminUser>('/users', { email: newEmail.value })
+    const created = await api.post<AdminUser & { mailQueued: boolean }>('/users', {
+      email: newEmail.value,
+    })
+    mailedTo.value = created.mailQueued ? created.email : ''
     cancelAdding()
     await loadUsers()
   } catch (e) {
@@ -147,6 +154,10 @@ onMounted(async () => {
     </div>
 
     <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="mailedTo" class="success">
+      Invito inviato a {{ mailedTo }}. Il link resta qui sotto, se serve
+      consegnarlo a mano.
+    </p>
 
     <div class="panel-card">
       <ul role="list" class="admin-list">
