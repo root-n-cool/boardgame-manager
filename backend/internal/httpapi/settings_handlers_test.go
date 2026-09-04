@@ -3,8 +3,10 @@ package httpapi_test
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/httpapi"
@@ -511,5 +513,85 @@ func TestPutSettings_RejectsAnUnknownTLSMode(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSMTPTest_RequiresAuth(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil))
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestSMTPTest_NotConfiguredReturns409(t *testing.T) {
+	server := newTestServer(t) // Mail nil e nessuna impostazione SMTP
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestSMTPTest_SendsToTheLoggedInAdmin(t *testing.T) {
+	mail := newFakeMailer()
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		To string `json:"to"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.To != "admin@example.com" {
+		t.Errorf("to = %q, atteso l'indirizzo dell'admin in sessione", body.To)
+	}
+
+	m := mail.waitForMail(t)
+	if m.To != "admin@example.com" {
+		t.Errorf("mail sent to %q", m.To)
+	}
+}
+
+// A differenza di tutto il resto, qui l'errore SMTP deve arrivare a
+// schermo: è l'unico modo di capire che host, porta o password sono
+// sbagliate senza aspettare una prenotazione vera.
+func TestSMTPTest_FailureReturns502WithTheRealError(t *testing.T) {
+	mail := newFakeMailer()
+	mail.err = errors.New("autenticazione rifiutata: 535 credenziali non valide")
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	req := httptest.NewRequest(http.MethodPost, "/api/settings/smtp/test", nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "535") {
+		t.Errorf("expected the real SMTP error in the response, got: %s", rec.Body.String())
 	}
 }

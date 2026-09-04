@@ -56,6 +56,10 @@ func NewRouter(s *Server) http.Handler {
 	// lasciano scrivere un indirizzo con calma e restano dentro il limite
 	// anche se due admin cercano insieme.
 	geocodeLimiter := newRateLimiter(30, time.Minute)
+	// Un invio di prova apre una connessione verso un server esterno: cinque
+	// al minuto bastano a sistemare una configurazione sbagliata e non
+	// trasformano il bottone in un modo di mandare mail a raffica.
+	smtpTestLimiter := newRateLimiter(5, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
@@ -85,6 +89,7 @@ func NewRouter(s *Server) http.Handler {
 		protected.Delete("/api/users/{id}", s.deleteUserHandler)
 		protected.Get("/api/settings", s.getSettingsHandler)
 		protected.Put("/api/settings", s.putSettingsHandler)
+		protected.With(smtpTestLimiter.middleware).Post("/api/settings/smtp/test", s.testSMTPHandler)
 		protected.Get("/api/games/search", s.searchGamesHandler)
 		protected.With(geocodeLimiter.middleware).Get("/api/geocode/search", s.searchPlacesHandler)
 		protected.Post("/api/games", s.createGameHandler)

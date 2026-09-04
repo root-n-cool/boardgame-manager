@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -213,4 +216,37 @@ func smtpConfigFrom(cfg settings.Settings) mailer.Config {
 		FromName:    cfg.SMTPFromName,
 		TLSMode:     cfg.SMTPTLSMode,
 	}
+}
+
+// testSMTPHandler manda una mail all'admin in sessione e riferisce
+// l'esito. È l'unica eccezione al silenzio sugli errori di posta: qui
+// l'admin ha premuto un bottone, e un guasto muto lo lascerebbe a
+// indovinare fra host, porta, cifratura e password.
+//
+// Prova la configurazione salvata, non quella nel form: è quella che
+// verrà usata davvero, e la UI dice di salvare prima.
+func (s *Server) testSMTPHandler(w http.ResponseWriter, r *http.Request) {
+	admin, ok := currentUser(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), mailSendTimeout)
+	defer cancel()
+
+	err := s.mailSender(ctx).Send(ctx, smtpTestMail(admin.Email))
+	if errors.Is(err, mailer.ErrNotConfigured) {
+		writeError(w, http.StatusConflict, "SMTP non configurato: compila server, porta e indirizzo mittente, poi salva")
+		return
+	}
+	if err != nil {
+		log.Printf("smtp test send to %s: %v", admin.Email, err)
+		// Il messaggio del provider esce così com'è: è rivolto a un
+		// admin autenticato, ed è l'informazione che serve.
+		writeError(w, http.StatusBadGateway, "invio non riuscito: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "sent", "to": admin.Email})
 }
