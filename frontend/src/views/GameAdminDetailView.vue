@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import ModalDialog from '../components/ModalDialog.vue'
@@ -20,6 +20,8 @@ const editDescription = ref('')
 const saveMessage = ref('')
 
 const newLangCode = ref('')
+const newLangSource = ref('bgg')
+const addingLanguage = ref(false)
 const languageModalOpen = ref(false)
 const languageError = ref('')
 
@@ -131,8 +133,26 @@ async function saveSeats() {
   }
 }
 
+// Le descrizioni da cui si può partire: l'originale BoardGameGeek in cima
+// quando c'è, poi una voce per ogni lingua già presente. Con una sola voce il
+// select non si mostra — sarebbe una scelta senza alternative.
+const languageSources = computed(() => {
+  const sources: { value: string; label: string }[] = []
+  if (game.value?.canTranslate) {
+    sources.push({ value: 'bgg', label: 'BoardGameGeek (originale inglese)' })
+  }
+  for (const l of game.value?.languages || []) {
+    sources.push({
+      value: l.code,
+      label: l.isBaseLanguage ? `${languageName(l.code)} — lingua base` : languageName(l.code),
+    })
+  }
+  return sources
+})
+
 function openLanguageModal() {
   newLangCode.value = ''
+  newLangSource.value = languageSources.value[0]?.value || 'bgg'
   languageError.value = ''
   languageModalOpen.value = true
 }
@@ -140,14 +160,20 @@ function openLanguageModal() {
 async function addLanguage() {
   languageError.value = ''
   const code = newLangCode.value.trim().toLowerCase()
+  addingLanguage.value = true
   try {
-    await api.post(`/games/${gameId}/languages`, { languageCode: code })
+    await api.post(`/games/${gameId}/languages`, {
+      languageCode: code,
+      source: newLangSource.value,
+    })
     languageModalOpen.value = false
     newLangCode.value = ''
     await load()
     selectLanguage(code)
   } catch (e) {
     languageError.value = (e as Error).message
+  } finally {
+    addingLanguage.value = false
   }
 }
 
@@ -503,10 +529,33 @@ onMounted(async () => {
           <input v-model="newLangCode" placeholder="es. en" required autofocus />
         </label>
         <p class="field-hint">Due lettere, come <code>it</code>, <code>en</code>, <code>de</code>.</p>
+
+        <label v-if="languageSources.length > 1">
+          Parti da
+          <select v-model="newLangSource">
+            <option v-for="s in languageSources" :key="s.value" :value="s.value">{{ s.label }}</option>
+          </select>
+        </label>
+        <p v-if="languageSources.length > 1" class="field-hint">
+          <template v-if="aiConfigured">
+            La descrizione scelta viene tradotta nella lingua nuova. Una descrizione
+            già corretta a mano è spesso un punto di partenza migliore
+            dell'originale di BoardGameGeek.
+          </template>
+          <template v-else>
+            Senza un provider AI configurato la descrizione scelta viene copiata
+            così com'è, pronta da tradurre a mano.
+          </template>
+        </p>
+
         <p v-if="languageError" class="error">{{ languageError }}</p>
         <div class="form-actions">
-          <button type="button" class="btn-secondary" @click="languageModalOpen = false">Annulla</button>
-          <button type="submit">Aggiungi lingua</button>
+          <button type="button" class="btn-secondary" :disabled="addingLanguage" @click="languageModalOpen = false">
+            Annulla
+          </button>
+          <button type="submit" :disabled="addingLanguage">
+            {{ addingLanguage ? (aiConfigured ? 'Traduzione in corso…' : 'Aggiunta…') : 'Aggiungi lingua' }}
+          </button>
         </div>
       </form>
     </ModalDialog>

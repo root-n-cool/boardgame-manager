@@ -220,6 +220,12 @@ La descrizione tradotta resta modificabile a mano dalla scheda del gioco.
 Il bottone *Traduci* ritraduce sempre dall'originale BoardGameGeek e
 sostituisce il testo corrente.
 
+Aggiungendo una lingua si sceglie da quale descrizione partire: l'originale
+di BoardGameGeek, oppure una delle lingue già presenti. La seconda opzione
+serve quando quella descrizione è stata corretta a mano, ed è quindi un
+punto di partenza migliore dell'inglese grezzo. Senza provider configurato
+la descrizione scelta viene copiata invariata, pronta da tradurre a mano.
+
 Se il provider è configurato ma non risponde (chiave sbagliata, servizio
 non raggiungibile, credito esaurito), l'import automatico fallisce in
 silenzio: il gioco entra comunque in catalogo con la descrizione in

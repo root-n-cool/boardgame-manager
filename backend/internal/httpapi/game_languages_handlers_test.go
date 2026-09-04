@@ -262,3 +262,126 @@ func TestUpdateLanguage_NotFoundReturns404(t *testing.T) {
 		t.Fatalf("expected 404, got %d", rec.Code)
 	}
 }
+
+// postLanguage aggiunge una lingua a un gioco. body è il JSON grezzo, così i
+// test possono mandare anche una sorgente inesistente o un campo assente.
+func postLanguage(router http.Handler, cookie *http.Cookie, gameID int64, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/languages", gameID), bytes.NewReader([]byte(body)))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+// wingspanWithItalianBase crea Wingspan da BGG con lingua base italiana e
+// rimette a zero il contatore del traduttore, che quella creazione ha già
+// usato una volta per la lingua base.
+func wingspanWithItalianBase(t *testing.T, tr *fakeTranslator) (http.Handler, *http.Cookie) {
+	t.Helper()
+	server, _ := newTestServerWithTranslator(t, tr)
+	router, cookie := setupWingspanFromBGG(t, server)
+	if rec := postGame(router, cookie, `{"bggId":"266192","languageCode":"it"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("setup: expected 201 creating the game, got %d: %s", rec.Code, rec.Body.String())
+	}
+	tr.calls, tr.lastText, tr.lastLang = 0, "", ""
+	return router, cookie
+}
+
+func TestCreateLanguage_SourceBGGTranslatesTheOriginal(t *testing.T) {
+	tr := &fakeTranslator{out: "Ein Spiel über Vögel."}
+	router, cookie := wingspanWithItalianBase(t, tr)
+
+	rec := postLanguage(router, cookie, 1, `{"languageCode":"de","source":"bgg"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if tr.lastText != "A worker placement game about birds." || tr.lastLang != "de" {
+		t.Fatalf("expected the raw BGG text translated into de, got %q / %q", tr.lastText, tr.lastLang)
+	}
+}
+
+func TestCreateLanguage_SourceExistingLanguageTranslatesThatText(t *testing.T) {
+	tr := &fakeTranslator{out: "Ein Spiel über Vögel."}
+	router, cookie := wingspanWithItalianBase(t, tr)
+
+	// L'admin corregge a mano l'italiano: da lì in poi è una sorgente
+	// migliore dell'inglese di BGG, ed è il motivo per cui si può sceglierla.
+	editPayload, _ := json.Marshal(map[string]string{"name": "Wingspan", "description": "Un gioco corretto a mano."})
+	editReq := httptest.NewRequest(http.MethodPatch, "/api/games/1/languages/it", bytes.NewReader(editPayload))
+	editReq.AddCookie(cookie)
+	editRec := httptest.NewRecorder()
+	router.ServeHTTP(editRec, editReq)
+	if editRec.Code != http.StatusOK {
+		t.Fatalf("setup: expected 200 editing the base language, got %d", editRec.Code)
+	}
+
+	rec := postLanguage(router, cookie, 1, `{"languageCode":"de","source":"it"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if tr.lastText != "Un gioco corretto a mano." {
+		t.Fatalf("expected the hand-corrected Italian as the source, got %q", tr.lastText)
+	}
+}
+
+func TestCreateLanguage_UnknownSourceIsNotFound(t *testing.T) {
+	tr := &fakeTranslator{out: "irrilevante"}
+	router, cookie := wingspanWithItalianBase(t, tr)
+
+	rec := postLanguage(router, cookie, 1, `{"languageCode":"de","source":"fr"}`)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 for a source language the game does not have, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if tr.calls != 0 {
+		t.Fatalf("expected no translation call for an unknown source, got %d", tr.calls)
+	}
+}
+
+func TestCreateLanguage_EmptySourceKeepsTheOldBehaviour(t *testing.T) {
+	tr := &fakeTranslator{out: "Ein Spiel über Vögel."}
+	router, cookie := wingspanWithItalianBase(t, tr)
+
+	rec := postLanguage(router, cookie, 1, `{"languageCode":"de"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	// Sorgente assente: si continua a partire dall'originale BGG, come prima
+	// che la scelta esistesse.
+	if tr.lastText != "A worker placement game about birds." {
+		t.Fatalf("expected the BGG original as the default source, got %q", tr.lastText)
+	}
+}
+
+func TestCreateLanguage_SourceWithoutAICopiesItVerbatim(t *testing.T) {
+	server := newTestServer(t)
+	router, cookie := setupWingspanFromBGG(t, server)
+	if rec := postGame(router, cookie, `{"bggId":"266192","languageCode":"it"}`); rec.Code != http.StatusCreated {
+		t.Fatalf("setup: expected 201, got %d", rec.Code)
+	}
+
+	// Senza AI la lingua base ha ricevuto il testo BGG invariato: la si
+	// modifica, altrimenti il test passerebbe anche leggendo la sorgente
+	// sbagliata, perché i due testi coinciderebbero.
+	editPayload, _ := json.Marshal(map[string]string{"name": "Wingspan", "description": "Testo italiano scritto a mano."})
+	editReq := httptest.NewRequest(http.MethodPatch, "/api/games/1/languages/it", bytes.NewReader(editPayload))
+	editReq.AddCookie(cookie)
+	editRec := httptest.NewRecorder()
+	router.ServeHTTP(editRec, editReq)
+	if editRec.Code != http.StatusOK {
+		t.Fatalf("setup: expected 200 editing the base language, got %d", editRec.Code)
+	}
+
+	rec := postLanguage(router, cookie, 1, `{"languageCode":"de","source":"it"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Description *string `json:"description"`
+	}
+	json.NewDecoder(rec.Body).Decode(&body)
+	// Senza provider il select è un "copia da": arriva il testo della lingua
+	// scelta, invariato.
+	if body.Description == nil || *body.Description != "Testo italiano scritto a mano." {
+		t.Fatalf("expected the chosen source copied verbatim, got %v", body.Description)
+	}
+}

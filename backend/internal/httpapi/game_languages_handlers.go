@@ -13,6 +13,11 @@ import (
 
 type createLanguageRequest struct {
 	LanguageCode string `json:"languageCode"`
+	// Source dice da quale testo partire: "bgg" per l'originale di
+	// BoardGameGeek, oppure il codice di una lingua già presente. Vuoto
+	// significa "scegli tu", il comportamento che c'era prima che la scelta
+	// esistesse: l'originale BGG se c'è, altrimenti la lingua base.
+	Source string `json:"source"`
 }
 
 func (s *Server) createLanguageHandler(w http.ResponseWriter, r *http.Request) {
@@ -42,25 +47,33 @@ func (s *Server) createLanguageHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Con l'originale BGG a disposizione si traduce da lì: partire dalla
-	// lingua base darebbe la traduzione di una traduzione. Senza originale
-	// — gioco inserito a mano, o entrato in catalogo prima della 0011 —
-	// resta il ripiego di sempre, il testo della lingua base come punto di
-	// partenza per una correzione a mano.
+	// Il nome della nuova lingua parte sempre da quello della lingua base:
+	// è il titolo dell'edizione, non un testo da tradurre.
 	name := game.Name
-	var description *string
+	var baseDescription *string
 	existing, err := s.Games.ListLanguages(r.Context(), gameID)
 	if err == nil {
 		for _, l := range existing {
 			if l.IsBaseLanguage {
 				name = l.Name
-				description = l.Description
+				baseDescription = l.Description
 				break
 			}
 		}
 	}
-	if game.BGGDescription != nil && *game.BGGDescription != "" {
-		translated := s.translateDescription(r.Context(), *game.BGGDescription, req.LanguageCode)
+
+	source, ok := resolveTranslationSource(req.Source, game, existing, baseDescription)
+	if !ok {
+		writeError(w, http.StatusNotFound, "la descrizione di partenza non esiste su questo gioco")
+		return
+	}
+
+	description := baseDescription
+	if source != "" {
+		// translateDescription restituisce la sorgente invariata quando l'AI
+		// non è configurata: senza provider la scelta è un "copia da", che
+		// resta utile per tradurre a mano.
+		translated := s.translateDescription(r.Context(), source, req.LanguageCode)
 		description = &translated
 	}
 
@@ -85,6 +98,43 @@ func (s *Server) createLanguageHandler(w http.ResponseWriter, r *http.Request) {
 type updateLanguageRequest struct {
 	Name        string  `json:"name"`
 	Description *string `json:"description"`
+}
+
+// resolveTranslationSource sceglie il testo da cui partire. "bgg" prende
+// l'originale di BoardGameGeek, un codice lingua prende la descrizione di
+// quella lingua, e la stringa vuota lascia decidere al server come prima:
+// l'originale BGG se c'è, altrimenti la lingua base.
+//
+// Scegliere una lingua esistente significa tradurre una traduzione, cosa che
+// il flusso automatico evita apposta. Qui è una decisione esplicita
+// dell'admin, e spesso è quella giusta: una descrizione corretta a mano è una
+// sorgente migliore dell'inglese grezzo di BGG.
+func resolveTranslationSource(requested string, game games.Game, existing []games.GameLanguage, baseDescription *string) (string, bool) {
+	bggOriginal := ""
+	if game.BGGDescription != nil {
+		bggOriginal = *game.BGGDescription
+	}
+
+	switch strings.ToLower(strings.TrimSpace(requested)) {
+	case "":
+		return bggOriginal, true
+	case "bgg":
+		if bggOriginal == "" {
+			return "", false
+		}
+		return bggOriginal, true
+	default:
+		code := strings.ToLower(strings.TrimSpace(requested))
+		for _, l := range existing {
+			if strings.ToLower(l.LanguageCode) == code {
+				if l.Description == nil {
+					return "", true
+				}
+				return *l.Description, true
+			}
+		}
+		return "", false
+	}
 }
 
 func (s *Server) updateLanguageHandler(w http.ResponseWriter, r *http.Request) {
