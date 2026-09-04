@@ -188,3 +188,23 @@ func (s *Server) sendBookingConfirmation(r *http.Request, b events.Booking) {
 		bookingScoreURL(base, b.BookingCode),
 	))
 }
+
+// sendBookingCancelled avvisa il partecipante. byAdmin cambia il testo,
+// non il destinatario: la mail va sempre a chi aveva prenotato, ed è
+// nel caso dell'admin che serve davvero — è l'unico modo in cui il
+// partecipante scopre di non avere più il posto.
+func (s *Server) sendBookingCancelled(r *http.Request, b events.Booking, byAdmin bool) {
+	if !s.mailEnabled(r.Context()) {
+		return
+	}
+	data, err := s.bookingMailDataFor(r.Context(), b)
+	if err != nil {
+		log.Printf("mail: could not gather cancelled booking %d data: %v", b.ID, err)
+		return
+	}
+	s.sendMailAsync(s.mailSender(r.Context()), bookingCancelledMail(
+		data,
+		eventPublicURL(s.publicBaseURL(r), data.EventID),
+		byAdmin,
+	))
+}

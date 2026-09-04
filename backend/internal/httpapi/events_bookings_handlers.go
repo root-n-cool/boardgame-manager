@@ -98,6 +98,7 @@ func (s *Server) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not cancel booking")
 		return
 	}
+	s.sendBookingCancelled(r, booking, false)
 	resp, err := s.toBookingDetailResponse(r.Context(), booking)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not build response")
@@ -115,12 +116,16 @@ func (s *Server) adminCancelBookingHandler(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid booking id")
 		return
 	}
-	if _, err := s.Events.AdminCancelBooking(r.Context(), id); errors.Is(err, events.ErrNotFound) {
+	booking, err := s.Events.AdminCancelBooking(r.Context(), id)
+	if errors.Is(err, events.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "booking not found")
 		return
 	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not cancel booking")
 		return
 	}
+	// La prenotazione serve per sapere chi avvisare: è l'unico modo in cui
+	// il partecipante scopre che il suo posto è stato liberato.
+	s.sendBookingCancelled(r, booking, true)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
 }
