@@ -1027,3 +1027,109 @@ func TestListEvents_IncludesTheVenue(t *testing.T) {
 		t.Fatalf("expected the venue in the list, got %+v", list[0].Venue)
 	}
 }
+
+func TestCreateEventDefaultsToBookableCopies(t *testing.T) {
+	store, gameStore := newTestStore(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	if len(copies) != 1 {
+		t.Fatalf("copies = %d, want 1", len(copies))
+	}
+	if !copies[0].Bookable {
+		t.Fatal("una copia creata senza dire niente deve essere prenotabile")
+	}
+}
+
+func TestCreateEventStoresUnbookableCopies(t *testing.T) {
+	store, gameStore := newTestStore(t)
+	gameID := mustCreateGame(t, gameStore, "Love Letter")
+	no := false
+
+	event, err := store.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 2, Bookable: &no}},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	if len(copies) != 2 {
+		t.Fatalf("copies = %d, want 2", len(copies))
+	}
+	for _, c := range copies {
+		if c.Bookable {
+			t.Fatalf("copia #%d prenotabile, doveva non esserlo", c.CopyIndex)
+		}
+	}
+}
+
+func TestUpdateEventTogglesBookable(t *testing.T) {
+	store, gameStore := newTestStore(t)
+	gameID := mustCreateGame(t, gameStore, "Love Letter")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	no := false
+
+	if _, err := store.UpdateEvent(context.Background(), event.ID, events.EventInput{
+		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 2, Bookable: &no}},
+	}); err != nil {
+		t.Fatalf("update event: %v", err)
+	}
+
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	if len(copies) != 2 {
+		t.Fatalf("copies = %d, want 2", len(copies))
+	}
+	// Sia la copia che c'era prima sia quella aggiunta ora devono seguire
+	// il flag: il gioco è non prenotabile, non "metà non prenotabile".
+	for _, c := range copies {
+		if c.Bookable {
+			t.Fatalf("copia #%d prenotabile dopo lo spegnimento del flag", c.CopyIndex)
+		}
+	}
+}
+
+func TestUpdateEventRefusesUnbookableWithActiveBookings(t *testing.T) {
+	store, gameStore := newTestStore(t)
+	gameID := mustCreateGame(t, gameStore, "Wingspan")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	if err := store.TestInsertBooking(event.ID, copies[0].ID, events.BookingStatusActive); err != nil {
+		t.Fatalf("insert booking: %v", err)
+	}
+	no := false
+
+	_, err = store.UpdateEvent(context.Background(), event.ID, events.EventInput{
+		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 1, Bookable: &no}},
+	})
+	if !errors.Is(err, events.ErrUnbookableWithActiveBookings) {
+		t.Fatalf("err = %v, want ErrUnbookableWithActiveBookings", err)
+	}
+
+	// Il rifiuto arriva prima di qualunque scrittura: la copia è ancora
+	// prenotabile.
+	after, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	if !after[0].Bookable {
+		t.Fatal("il flag è stato spento nonostante il rifiuto")
+	}
+}
