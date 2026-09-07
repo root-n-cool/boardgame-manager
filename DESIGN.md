@@ -542,6 +542,20 @@ sotto ognuno diventava rumore.
   copia sola), non si può togliere e il campo copie non scende sotto
   quel numero: il backend rifiuterebbe, e un campo che non scende è più
   onesto di un 409 dopo il salvataggio.
+- **La spunta "prenotabile" sta accanto al campo copie**
+  (`.game-select-bookable`): sono le due cose che si decidono insieme
+  mentre si scelgono i giochi. Le prenotazioni attive la bloccano come
+  bloccano il resto della riga, e **il blocco si spiega una volta sola**:
+  `.game-select-locked` — "Ha prenotazioni attive: annullale nella
+  sezione Prenotazioni per togliere il gioco, ridurre le copie o
+  renderlo non prenotabile" — nomina la causa, dove si risolve e i tre
+  effetti, uno per controllo, e i tre controlli la puntano con
+  `aria-describedby`. Una spunta grigia senza spiegazione legata al
+  controllo lascia chi usa uno screen reader col solo "disabilitato", e
+  chi legge a schermo con una frase scritta per un campo diverso. La
+  frase sta su una riga sua (`flex-basis: 100%`, che vuole
+  `flex-wrap: wrap` sul contenitore), e la spunta bloccata si smorza a
+  `opacity: 0.7` — non oltre: "prenotabile" resta da leggere.
 - **Prenotazioni e risultati riusano la lista di `/users`** (`.admin-list`
   + `.admin-row` + `.admin-pawn`): pedina con l'iniziale, nome e contatti,
   il gioco come pastiglia quieta (`.booking-game` — dice a cosa si
@@ -552,6 +566,58 @@ sotto ognuno diventava rumore.
   codice non più valido), quindi si chiama "Annulla" e non "Elimina". Il
   bottone eredita il rosso dalla regola dei bottoni in `<li>`, con
   conferma che nomina partecipante e gioco.
+
+### Banco prestiti (`/admin/events/:id/prestiti`)
+- **Riga-bersaglio** (`.loan-row`, dentro `.loan-list`): ogni riga è un
+  `<button>` intero, alta almeno 3.5rem, testo a sinistra e verbo
+  dell'azione a destra (`.loan-row-action`: "Consegna" o "Restituito").
+  Il banco si usa in piedi, spesso con una scatola in una mano: un
+  bersaglio piccolo, o diviso in più bottoni, costringerebbe a mirare
+  due volte. Fuori e Disponibili, le due sezioni della pagina dove c'è
+  un gesto da compiere (restituire, consegnare), condividono la stessa
+  riga-bottone: cambiano i dati e il verbo, non la forma. Restituiti,
+  il registro della serata, non ha un gesto da offrire — riusa invece
+  `.admin-list`/`.admin-row`, la stessa riga non interattiva di
+  Prenotazioni e Risultati (vedi sopra): una riga bottone su un
+  prestito già chiuso avrebbe promesso un'azione che non c'è.
+  `.loan-list` e `.loan-booking-picks` si **spogliano** come
+  `.admin-list` (fondo, bordo, raggio, ombra, `overflow`, e il padding e
+  il filetto che la regola globale mette su ogni `li`): la card è già il
+  `.panel-card`, e la riga è il bottone. E `.loan-row` dichiara il fondo
+  anche nell'hover: `li button:hover` lo tingeva di `--danger-bg`, il
+  colore di "Rimuovi", su un bottone che consegna — la stessa eredità
+  che `.loan-booking-picks` doveva già rifiutare.
+- **Pastiglia di stato** (`.loan-tag`, gemella di `.seat-state`): un
+  gioco senza prenotazione porta la stessa pastiglia quieta, con la
+  stessa scritta — "Senza prenotazione" — sia qui sia sulla scheda
+  pubblica dell'evento, a dire "questo si gioca ma non si prenota". È la
+  stessa informazione letta da due persone diverse — l'organizzatore al
+  banco, chi guarda il tavolo — e due forme diverse per lo stesso dato
+  l'avrebbero fatto sembrare due fatti distinti. La nota sotto il tavolo
+  pubblico ne cita la scritta parola per parola.
+- **L'avviso della consegna fuori prenotazione è oro, non rosso**
+  (`.loan-warning`): fondo `--gold-bg` e bordo `--gold`, la famiglia dei
+  distintivi, con il testo in `--ink` pieno. Consegnare una copia
+  prenotata a un altro nome **si fa comunque** — alle 21:30 chi non si è
+  presentato non tiene in ostaggio la scatola — quindi `--danger`
+  direbbe "non puoi", e `--ink-muted` su fondo neutro lo faceva leggere
+  come una postilla: al banco, distratti, è l'unica riga che può fermare
+  uno sbaglio. L'oro resta bordo e superficie, mai colore del testo.
+- **Avviso ed errore delle due modali si annunciano da regioni live
+  montate a permanenza**, come l'esito della prova SMTP (vedi sotto):
+  due `p.visually-hidden` dentro il form (`role="status"
+  aria-live="polite"` per l'avviso, `role="alert" aria-live="assertive"`
+  per l'errore) nascono vuote all'apertura della modale e si riempiono
+  dopo, perché una regione live nata già col testo dentro è il caso che
+  gli screen reader in pratica non annunciano. L'avviso è `polite`:
+  arriva mentre si scrive il nome, non deve interrompere la digitazione
+  né rubare il focus. I riquadri visibili restano `v-if` e senza ruoli
+  ARIA: sono sola presentazione.
+- **Nel registro la nota è testo, il resto è dato**: telefono e orari in
+  mono (`.row-meta`), la nota libera con la stessa resa che ha nella
+  riga di "Fuori" (`.loan-row-notes`, corsivo nel font di corpo). La
+  stessa nota in due font avrebbe fatto sembrare due cose diverse la
+  stessa frase.
 
 ### Aggiungi gioco (`/admin/games/new`)
 - **Un form solo, due fogli** (`.panel-form` + `.panel-card`): *Gioco* e
@@ -742,3 +808,19 @@ prima di questa voce.
   griglia: i 2px in più restringono il contenuto e sfalsano le copertine
   della riga. Il bordo c'è sempre, `transparent` a riposo, e lo stato lo
   colora (`.event-games li.is-full`).
+- **Don't** mettere una `<ul>` dentro un `.panel-card` senza spogliarla: la
+  regola globale `ul` la veste da card (fondo, bordo, raggio, ombra,
+  `overflow: hidden`) e `li` le dà padding e filetto propri, quindi ogni
+  riga finisce incorniciata due volte, rientrata, e con l'anello di focus
+  ritagliato. Si copia il blocco di `.admin-list` (bug reale su
+  `.loan-list` e `.loan-booking-picks`).
+- **Don't** usare un `<label>` come riga senza dichiarare
+  `flex-direction: row`: la regola globale `label` impila in colonna, e una
+  spunta con la sua etichetta finisce con la casella **sopra** la parola
+  invece che accanto (bug reale su `.game-select-bookable`; già risolto
+  così in `.game-select-copies` e `.checkbox-label`).
+- **Don't** mettere due `margin-left: auto` nella stessa
+  `.section-head`: conteggio e bottone si spartiscono lo spazio libero e il
+  numero galleggia in mezzo alla riga, fuori dalla colonna dove sta nelle
+  sezioni accanto. Spinge il gruppo il primo dei due
+  (`.section-head .section-count + button { margin-left: 0 }`).

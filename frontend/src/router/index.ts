@@ -16,6 +16,7 @@ import InviteAcceptView from '../views/InviteAcceptView.vue'
 import EventsAdminView from '../views/EventsAdminView.vue'
 import EventNewView from '../views/EventNewView.vue'
 import EventAdminDetailView from '../views/EventAdminDetailView.vue'
+import LoanDeskView from '../views/LoanDeskView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -66,6 +67,7 @@ const router = createRouter({
     { path: '/admin/events', name: 'admin-events', component: EventsAdminView },
     { path: '/admin/events/new', name: 'admin-event-new', component: EventNewView },
     { path: '/admin/events/:id', name: 'admin-event-detail', component: EventAdminDetailView },
+    { path: '/admin/events/:id/prestiti', name: 'admin-event-loans', component: LoanDeskView },
     { path: '/admin/games', name: 'admin-games', component: GamesView },
     { path: '/admin/games/new', name: 'admin-game-new', component: GameNewView },
     { path: '/admin/games/:id', name: 'admin-game-detail', component: GameAdminDetailView },

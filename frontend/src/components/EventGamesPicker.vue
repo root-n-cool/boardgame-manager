@@ -19,6 +19,12 @@ export interface PickerGame {
 export interface SelectedGame {
   gameId: number
   copies: number
+  /**
+   * Se il gioco si può prenotare in anticipo. Falso è il filler lasciato
+   * sul tavolo per chi arriva senza prenotazione: sta nella serata, non
+   * nel form pubblico.
+   */
+  bookable: boolean
 }
 
 const props = defineProps<{
@@ -49,8 +55,11 @@ const query = ref('')
 
 const selectedRows = computed(() =>
   props.modelValue
-    .map((s) => ({ game: props.games.find((g) => g.id === s.gameId), copies: s.copies }))
-    .filter((row): row is { game: PickerGame; copies: number } => row.game !== undefined),
+    .map((s) => ({ game: props.games.find((g) => g.id === s.gameId), copies: s.copies, bookable: s.bookable }))
+    .filter(
+      (row): row is { game: PickerGame; copies: number; bookable: boolean } =>
+        row.game !== undefined,
+    ),
 )
 
 const available = computed(() =>
@@ -74,7 +83,7 @@ function occupiedFor(gameId: number) {
 }
 
 function add(gameId: number) {
-  emit('update:modelValue', [...props.modelValue, { gameId, copies: 1 }])
+  emit('update:modelValue', [...props.modelValue, { gameId, copies: 1, bookable: true }])
 }
 
 function remove(gameId: number) {
@@ -88,6 +97,13 @@ function setCopies(gameId: number, copies: number) {
     props.modelValue.map((s) =>
       s.gameId === gameId ? { ...s, copies: Number.isFinite(copies) ? Math.max(min, copies) : min } : s,
     ),
+  )
+}
+
+function setBookable(gameId: number, bookable: boolean) {
+  emit(
+    'update:modelValue',
+    props.modelValue.map((s) => (s.gameId === gameId ? { ...s, bookable } : s)),
   )
 }
 
@@ -110,11 +126,18 @@ function capacityLabel(game: PickerGame, copies: number) {
   <div class="games-picker">
     <ul v-if="selectedRows.length > 0" role="list" class="games-picker-chosen">
       <li v-for="row in selectedRows" :key="row.game.id" class="game-select-row">
+        <!--
+          Le prenotazioni attive bloccano tre controlli di questa riga con
+          la stessa causa, e `.game-select-locked` è la sola frase che la
+          spiega: `aria-describedby` la lega a tutti tre, altrimenti chi
+          usa uno screen reader sente "disabilitato" senza sapere perché.
+        -->
         <label class="checkbox-label">
           <input
             type="checkbox"
             checked
             :disabled="occupiedFor(row.game.id) > 0"
+            :aria-describedby="occupiedFor(row.game.id) > 0 ? `game-lock-${row.game.id}` : undefined"
             @change="remove(row.game.id)"
           />
           {{ row.game.name }}
@@ -128,16 +151,35 @@ function capacityLabel(game: PickerGame, copies: number) {
             }}
           </span>
           <label class="game-select-copies">
-            copie
+            copie<span class="visually-hidden"> di {{ row.game.name }}</span>
             <input
               type="number"
               :min="Math.max(1, occupiedFor(row.game.id))"
               :value="row.copies"
+              :aria-describedby="occupiedFor(row.game.id) > 0 ? `game-lock-${row.game.id}` : undefined"
               @input="setCopies(row.game.id, Number(($event.target as HTMLInputElement).value))"
             />
           </label>
+          <label class="game-select-bookable">
+            <input
+              type="checkbox"
+              :checked="row.bookable"
+              :disabled="occupiedFor(row.game.id) > 0"
+              :aria-describedby="occupiedFor(row.game.id) > 0 ? `game-lock-${row.game.id}` : undefined"
+              @change="setBookable(row.game.id, ($event.target as HTMLInputElement).checked)"
+            />
+            prenotabile<span class="visually-hidden"> di {{ row.game.name }}</span>
+          </label>
           <span v-if="capacityLabel(row.game, row.copies)" class="game-select-seats">
             {{ capacityLabel(row.game, row.copies) }}
+          </span>
+          <span
+            v-if="occupiedFor(row.game.id) > 0"
+            :id="`game-lock-${row.game.id}`"
+            class="game-select-locked"
+          >
+            Ha prenotazioni attive: annullale nella sezione Prenotazioni per
+            togliere il gioco, ridurre le copie o renderlo non prenotabile.
           </span>
         </span>
       </li>

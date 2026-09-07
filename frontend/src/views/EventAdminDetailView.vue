@@ -14,6 +14,7 @@ interface EventGameInfo {
   copyIndex: number
   seats: number
   remaining: number
+  bookable: boolean
 }
 
 interface EventDetail {
@@ -137,17 +138,22 @@ async function load() {
   availableGames.value = games
   const copies: Record<number, number> = {}
   const occupied: Record<number, number> = {}
+  const bookable: Record<number, boolean> = {}
   for (const g of event.games) {
     copies[g.gameId] = (copies[g.gameId] ?? 0) + 1
     if (g.seats - g.remaining > 0) {
       occupied[g.gameId] = (occupied[g.gameId] ?? 0) + 1
     }
+    // Tutte le copie di un gioco condividono il flag: l'ultima che si
+    // legge dice la stessa cosa della prima.
+    bookable[g.gameId] = g.bookable
   }
   copiesByGame.value = copies
   occupiedCopiesByGame.value = occupied
   selectedGames.value = Object.entries(copies).map(([gameId, count]) => ({
     gameId: Number(gameId),
     copies: count,
+    bookable: bookable[Number(gameId)] ?? true,
   }))
   bookings.value = await api.get<BookingAdminInfo[]>(`/events/${eventId}/bookings`)
   matchResults.value = await api.get<MatchResultAdminInfo[]>(`/events/${eventId}/match-results`)
@@ -258,6 +264,21 @@ onMounted(async () => {
         <p v-if="eventWhen" class="page-meta">{{ eventWhen }}</p>
       </div>
       <div class="page-head-actions">
+        <router-link
+          class="action-link is-compact"
+          :to="{ name: 'admin-event-loans', params: { id: eventId } }"
+        >
+          Banco prestiti
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M4 7.5h9.5M4 12h9.5M4 16.5h6M17 9l3 3-3 3"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </router-link>
         <a
           class="action-link is-compact"
           :href="`/events/${eventId}`"

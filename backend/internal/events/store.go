@@ -59,6 +59,10 @@ type EventGame struct {
 	// cui la copia è entrata nell'evento: cambiare il catalogo dopo non
 	// muove la capienza di una serata già aperta alle prenotazioni.
 	Seats int
+	// Bookable dice se questa copia si può prenotare in anticipo. Falso è
+	// il filler lasciato sul tavolo per chi arriva senza prenotazione:
+	// presente nella serata, assente dal form pubblico.
+	Bookable bool
 }
 
 // EventInput è una serata come l'admin la descrive: i suoi dati più i
@@ -79,12 +83,18 @@ type EventInput struct {
 type EventGameInput struct {
 	GameID int64
 	Copies int
+	// Bookable è un puntatore perché la sua assenza ha un significato:
+	// nil vuol dire prenotabile. È la stessa regola del corpo HTTP, e
+	// tiene in piedi ogni chiamante che non sa niente di questo campo.
+	Bookable *bool
 }
 
 var (
-	ErrNotFound                    = errors.New("not found")
-	ErrGameNotFound                = errors.New("referenced game not found")
-	ErrQuantityBelowActiveBookings = errors.New("quantity below active bookings")
+	ErrNotFound                     = errors.New("not found")
+	ErrGameNotFound                 = errors.New("referenced game not found")
+	ErrQuantityBelowActiveBookings  = errors.New("quantity below active bookings")
+	ErrUnbookableWithActiveBookings = errors.New("cannot unbook a game with active bookings")
+	ErrCopyOnLoan                   = errors.New("copy is on loan")
 )
 
 type Store struct {
@@ -143,7 +153,7 @@ func insertEventGames(ctx context.Context, tx execQueryer, eventID int64, gamesI
 		if err != nil {
 			return err
 		}
-		if err := insertCopies(ctx, tx, eventID, g.GameID, seats, 1, g.Copies); err != nil {
+		if err := insertCopies(ctx, tx, eventID, g.GameID, seats, bookableValue(g.Bookable), 1, g.Copies); err != nil {
 			return err
 		}
 	}
@@ -151,11 +161,11 @@ func insertEventGames(ctx context.Context, tx execQueryer, eventID int64, gamesI
 }
 
 // insertCopies scrive `count` copie consecutive a partire da firstIndex.
-func insertCopies(ctx context.Context, tx execer, eventID, gameID int64, seats, firstIndex, count int) error {
+func insertCopies(ctx context.Context, tx execer, eventID, gameID int64, seats int, bookable bool, firstIndex, count int) error {
 	for i := 0; i < count; i++ {
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO event_games (event_id, game_id, copy_index, seats) VALUES (?, ?, ?, ?)`,
-			eventID, gameID, firstIndex+i, seats,
+			`INSERT INTO event_games (event_id, game_id, copy_index, seats, bookable) VALUES (?, ?, ?, ?, ?)`,
+			eventID, gameID, firstIndex+i, seats, boolToInt(bookable),
 		); err != nil {
 			return err
 		}
@@ -311,7 +321,7 @@ func (s *Store) ListEventGames(ctx context.Context, eventID int64) ([]EventGame,
 
 func listEventGames(ctx context.Context, q queryer, eventID int64) ([]EventGame, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT id, event_id, game_id, copy_index, seats FROM event_games
+		`SELECT id, event_id, game_id, copy_index, seats, bookable FROM event_games
 		 WHERE event_id = ? ORDER BY game_id, copy_index`, eventID)
 	if err != nil {
 		return nil, err
@@ -321,9 +331,11 @@ func listEventGames(ctx context.Context, q queryer, eventID int64) ([]EventGame,
 	var out []EventGame
 	for rows.Next() {
 		var eg EventGame
-		if err := rows.Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.CopyIndex, &eg.Seats); err != nil {
+		var bookable int
+		if err := rows.Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.CopyIndex, &eg.Seats, &bookable); err != nil {
 			return nil, err
 		}
+		eg.Bookable = bookable == 1
 		out = append(out, eg)
 	}
 	return out, rows.Err()
@@ -331,12 +343,14 @@ func listEventGames(ctx context.Context, q queryer, eventID int64) ([]EventGame,
 
 func (s *Store) GetEventGame(ctx context.Context, id int64) (EventGame, error) {
 	var eg EventGame
+	var bookable int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, event_id, game_id, copy_index, seats FROM event_games WHERE id = ?`, id,
-	).Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.CopyIndex, &eg.Seats)
+		`SELECT id, event_id, game_id, copy_index, seats, bookable FROM event_games WHERE id = ?`, id,
+	).Scan(&eg.ID, &eg.EventID, &eg.GameID, &eg.CopyIndex, &eg.Seats, &bookable)
 	if errors.Is(err, sql.ErrNoRows) {
 		return EventGame{}, ErrNotFound
 	}
+	eg.Bookable = bookable == 1
 	return eg, err
 }
 
@@ -402,10 +416,23 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 		return Event{}, err
 	}
 
+	onLoan, err := openLoanCopies(ctx, tx, id)
+	if err != nil {
+		return Event{}, err
+	}
+
+	withHistory, err := loanHistoryCopies(ctx, tx, id)
+	if err != nil {
+		return Event{}, err
+	}
+
 	// Un passaggio a parte per validare tutti i giochi richiesti e leggere
 	// i posti prenotabili: se uno non esiste, si esce prima di scrivere.
+	// Lo stesso vale per il flag: spegnerlo su un gioco che qualcuno ha
+	// già prenotato è un rifiuto, e deve arrivare prima delle scritture.
 	seatsByGame := map[int64]int{}
 	wanted := map[int64]int{}
+	bookableByGame := map[int64]bool{}
 	for _, g := range in.Games {
 		seats, err := gameSeats(ctx, tx, g.GameID)
 		if err != nil {
@@ -413,12 +440,21 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 		}
 		seatsByGame[g.GameID] = seats
 		wanted[g.GameID] = g.Copies
+		bookable := bookableValue(g.Bookable)
+		bookableByGame[g.GameID] = bookable
+		if !bookable {
+			for _, c := range copiesByGame[g.GameID] {
+				if occupied[c.ID] > 0 {
+					return Event{}, ErrUnbookableWithActiveBookings
+				}
+			}
+		}
 	}
 
 	// Giochi spariti dalla selezione: via tutte le loro copie, se libere.
 	for gameID, copies := range copiesByGame {
 		if _, stillWanted := wanted[gameID]; !stillWanted {
-			if err := dropCopies(ctx, tx, copies, occupied, len(copies)); err != nil {
+			if err := dropCopies(ctx, tx, copies, occupied, onLoan, withHistory, len(copies)); err != nil {
 				return Event{}, err
 			}
 		}
@@ -428,7 +464,7 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 		copies := copiesByGame[g.GameID]
 		switch {
 		case g.Copies < len(copies):
-			if err := dropCopies(ctx, tx, copies, occupied, len(copies)-g.Copies); err != nil {
+			if err := dropCopies(ctx, tx, copies, occupied, onLoan, withHistory, len(copies)-g.Copies); err != nil {
 				return Event{}, err
 			}
 		case g.Copies > len(copies):
@@ -439,9 +475,19 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 			if len(copies) > 0 {
 				next = copies[len(copies)-1].CopyIndex + 1
 			}
-			if err := insertCopies(ctx, tx, id, g.GameID, seatsByGame[g.GameID], next, g.Copies-len(copies)); err != nil {
+			if err := insertCopies(ctx, tx, id, g.GameID, seatsByGame[g.GameID], bookableByGame[g.GameID], next, g.Copies-len(copies)); err != nil {
 				return Event{}, err
 			}
+		}
+
+		// Le copie appena inserite nascono già col flag giusto; questa
+		// riga serve a quelle che c'erano prima, e farlo per tutte è più
+		// semplice che tenere il conto di quali.
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE event_games SET bookable = ? WHERE event_id = ? AND game_id = ?`,
+			boolToInt(bookableByGame[g.GameID]), id, g.GameID,
+		); err != nil {
+			return Event{}, err
 		}
 	}
 
@@ -451,22 +497,59 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 	return s.GetEvent(ctx, id)
 }
 
-// dropCopies elimina `count` copie partendo dalla più alta, saltando quelle
-// con prenotazioni attive. Se le copie libere non bastano l'operazione
-// fallisce e la transazione del chiamante viene annullata: meglio un errore
-// che una prenotazione cancellata a cascata sotto il naso di chi l'ha fatta.
-func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, count int) error {
-	dropped := 0
-	for i := len(copies) - 1; i >= 0 && dropped < count; i-- {
+// dropCopies elimina `count` copie partendo dalla più alta, saltando
+// quelle con prenotazioni attive e quelle che qualcuno ha in mano. Se le
+// copie libere non bastano l'operazione fallisce e la transazione del
+// chiamante viene annullata: meglio un errore che una prenotazione
+// cancellata a cascata sotto il naso di chi l'ha fatta, o una scatola
+// che sparisce dal registro mentre è ancora fuori.
+//
+// Quando entrambi i motivi bloccano, vince il prestito nel messaggio:
+// è quello che l'organizzatore può risolvere subito, facendosi
+// restituire la scatola.
+//
+// Tra le copie eliminabili, si preferisce sacrificare quelle senza
+// nessuna riga in game_loans: cancellare una copia con storico la porta
+// via a cascata (0013_loans.sql, ON DELETE CASCADE), quindi se una copia
+// libera non ha mai avuto un prestito e un'altra sì, cade prima quella
+// senza storico. Non è un blocco: se le uniche copie eliminabili hanno
+// tutte storico, la cancellazione procede lo stesso — rifiutarla
+// lascerebbe come unica alternativa cancellare l'intero evento, che
+// perderebbe di più.
+func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, onLoan map[int64]bool, withHistory map[int64]bool, count int) error {
+	var withoutHistory, withHistoryQueue []EventGame
+	blockedByLoan := false
+	for i := len(copies) - 1; i >= 0; i-- {
 		if occupied[copies[i].ID] > 0 {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, copies[i].ID); err != nil {
-			return err
+		if onLoan[copies[i].ID] {
+			blockedByLoan = true
+			continue
 		}
-		dropped++
+		if withHistory[copies[i].ID] {
+			withHistoryQueue = append(withHistoryQueue, copies[i])
+		} else {
+			withoutHistory = append(withoutHistory, copies[i])
+		}
+	}
+
+	dropped := 0
+	for _, queue := range [][]EventGame{withoutHistory, withHistoryQueue} {
+		for _, c := range queue {
+			if dropped >= count {
+				break
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, c.ID); err != nil {
+				return err
+			}
+			dropped++
+		}
 	}
 	if dropped < count {
+		if blockedByLoan {
+			return ErrCopyOnLoan
+		}
 		return ErrQuantityBelowActiveBookings
 	}
 	return nil
@@ -552,4 +635,18 @@ func (s *Store) TestInsertBooking(eventID, eventGameID int64, status string) err
 
 func isUniqueConstraintErr(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "UNIQUE constraint failed")
+}
+
+// bookableValue scioglie il puntatore: nessuna indicazione significa
+// prenotabile, che è come si sono sempre comportati gli eventi.
+func bookableValue(v *bool) bool {
+	return v == nil || *v
+}
+
+// boolToInt traduce per SQLite, che non ha un tipo booleano.
+func boolToInt(v bool) int {
+	if v {
+		return 1
+	}
+	return 0
 }

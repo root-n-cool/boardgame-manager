@@ -1563,6 +1563,14 @@ form.panel-form > .form-actions {
   margin-left: auto;
 }
 
+/* Conteggio e azione nella stessa intestazione: due `margin-left: auto` si
+   spartiscono lo spazio libero e il numero finiva a galleggiare in mezzo
+   alla riga, fuori dalla colonna dove sta nelle sezioni accanto. Spinge il
+   gruppo il primo dei due; il bottone lo segue. */
+.section-head .section-count + button {
+  margin-left: 0;
+}
+
 .section-head > button svg {
   flex: none;
   width: 0.8rem;
@@ -2311,14 +2319,21 @@ ul.game-grid {
 .game-select-row {
   display: flex;
   align-items: center;
+  /* Nome del gioco e gruppo delle quantità: su uno schermo stretto il
+     secondo scende sotto il primo invece di schiacciarlo. */
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.4rem 0;
 }
 
+/* `flex-wrap: wrap` è quel che rende vero il `flex-basis: 100%` di
+   `.game-select-locked`: senza, la frase di blocco restava sulla stessa
+   riga del campo copie e la schiacciava invece di andare sotto. */
 .game-select-quantity {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.6rem;
 }
 
@@ -2335,6 +2350,41 @@ ul.game-grid {
 .game-select-booked {
   font-family: 'Data', monospace;
   font-size: 0.75rem;
+  color: var(--ink-muted);
+}
+
+/* La spunta "prenotabile" sta sulla stessa riga del campo copie: sono le
+   due cose che si decidono insieme mentre si scelgono i giochi. */
+.game-select-bookable {
+  display: inline-flex;
+  /* `label` di base impila in colonna: senza questa riga la spunta finiva
+     sopra la parola "prenotabile" invece che accanto, e non si leggeva più
+     come una casella con la sua etichetta. Stessa correzione che
+     `.game-select-copies` fa per il campo copie. */
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.game-select-bookable input[type='checkbox'] {
+  margin: 0;
+}
+
+/* La spunta bloccata si smorza, ma la parola resta da leggere: a 0.55
+   `--ink-muted` scendeva a 2.3:1 sul cartoncino, e questa è l'unica riga
+   dove compare la parola "prenotabile". */
+.game-select-bookable:has(input:disabled) {
+  opacity: 0.7;
+}
+
+.game-select-locked {
+  flex-basis: 100%;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.78rem;
   color: var(--ink-muted);
 }
 
@@ -3383,4 +3433,183 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--ink);
   background: var(--card);
   border-color: var(--card-line);
+}
+
+/* Banco prestiti: si usa in piedi, con una mano, quindi ogni riga è un
+   bersaglio grande e l'azione sta a destra dove arriva il pollice.
+   La lista si spoglia come `.admin-list`: la regola globale `ul` veste ogni
+   lista da card (fondo, bordo, raggio, ombra, `overflow`) e `li` è una
+   flex-row con padding e filetto propri. Qui la card è già il `.panel-card`
+   e la riga è il bottone, quindi senza spogliarla ogni riga finiva
+   incorniciata due volte, rientrata di 15px e separata da un filetto che
+   non c'entra col `gap`. */
+.loan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.loan-list li {
+  display: block;
+  padding: 0;
+  border-bottom: none;
+}
+
+.loan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Il fondo dell'hover va dichiarato qui: `li button:hover` (0,1,2) batte
+   `.loan-row` (0,1,0) e tingeva la riga di `--danger-bg`, il colore di
+   "Rimuovi", su un bottone che consegna o registra un rientro — la stessa
+   eredità che `.loan-booking-picks` aveva già dovuto rifiutare. L'hover è
+   il cartoncino alternativo, come sulle altre superfici che si accendono. */
+.loan-row:hover,
+.loan-row:focus-visible {
+  border-color: var(--accent);
+  background: var(--card-alt);
+}
+
+.loan-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  /* Nome, telefono e note li scrive l'organizzatore: una parola lunga senza
+     spazi (un URL incollato nelle note) spingerebbe la riga fuori dal
+     telefono invece di andare a capo. `min-width: 0` da solo non basta. */
+  overflow-wrap: anywhere;
+}
+
+.loan-row-title {
+  font-weight: 600;
+}
+
+/* La nota vale in due posti — la riga di "Fuori" e il registro — e nel
+   registro sta dentro `.admin-email`, che è in 600: il peso va dichiarato,
+   altrimenti la stessa frase è corsiva leggera di là e corsiva grassa di
+   qua. */
+.loan-row-notes {
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.loan-row-action {
+  flex-shrink: 0;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* La pastiglia dei giochi che stanno nella serata ma non a prenotazione:
+   stesso disegno di .seat-state sulla pagina pubblica, così la stessa
+   informazione ha la stessa forma nei due posti in cui compare. */
+.loan-tag {
+  align-self: flex-start;
+  padding: 0.14rem 0.45rem;
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-muted);
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Stessa spoliazione di `.loan-list`: la lista è una pila di bottoni dentro
+   la modale, non una card, e la cornice della regola globale `ul` la
+   incastonava dentro una seconda scatola. */
+.loan-booking-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.loan-booking-picks li {
+  display: block;
+  padding: 0;
+  border-bottom: none;
+}
+
+.loan-booking-picks button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  /* Si sceglie in piedi, col pollice, come le righe del banco: il bersaglio
+     non scende sotto i 44px anche quando il nome sta su una riga sola. */
+  min-height: 44px;
+  justify-content: center;
+  text-align: left;
+  /* `li button` di base è pensato per "Rimuovi" (rosso allarme): scegliere
+     una prenotazione non è un'azione distruttiva e non deve leggersi come
+     tale, quindi la riga torna a un tono neutro col bordo cartoncino. */
+  padding: 0.5rem 0.65rem;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--card-line);
+}
+
+.loan-booking-picks button:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
+
+/* L'avviso della consegna fuori prenotazione: bordo e fondo oro, la famiglia
+   dei distintivi, perché è un'attenzione e non un errore — il rosso `danger`
+   direbbe "non puoi", e questa consegna si fa comunque. Il testo è
+   inchiostro pieno, non `--ink-muted`: al banco, distratti, l'unica riga che
+   può fermare uno sbaglio non può leggersi come una postilla. L'oro resta
+   bordo e superficie, mai colore del testo (regola dell'oro non-testo). */
+.loan-warning {
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius);
+  background: var(--gold-bg);
+  border: 1px solid var(--gold);
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.loan-modal-meta {
+  margin: 0 0 0.5rem;
+  font-family: 'Body', system-ui, sans-serif;
+  color: var(--ink-muted);
+  overflow-wrap: anywhere;
 }

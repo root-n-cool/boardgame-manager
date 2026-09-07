@@ -16,6 +16,7 @@ interface EventGameInfo {
   seats: number
   remaining: number
   weight: number | null
+  bookable: boolean
 }
 
 interface EventDetail {
@@ -161,6 +162,15 @@ function seatsLabel(g: EventGameInfo) {
     : `${g.remaining} posti prenotabili liberi`
 }
 
+/**
+ * Un gioco che la serata porta ma non mette a prenotazione: si vede —
+ * "stasera c'è anche Love Letter" è informazione utile — ma non ha un
+ * bottone, perché non c'è niente da prenotare.
+ */
+function tableOnly(g: EventGameInfo) {
+  return !g.bookable
+}
+
 async function submitBooking() {
   bookingError.value = ''
   if (selectedEventGameId.value === null) {
@@ -290,12 +300,13 @@ onMounted(async () => {
         <div class="event-game-body">
           <h3>{{ copyLabel(g) }}</h3>
           <GameDifficulty :weight="g.weight" />
-          <p v-if="isFull(g)" class="seat-state">Al completo</p>
+          <p v-if="tableOnly(g)" class="seat-state">Senza prenotazione</p>
+          <p v-else-if="isFull(g)" class="seat-state">Al completo</p>
           <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
         </div>
         <div class="event-game-actions">
           <button
-            v-if="!hasStarted && !isFull(g)"
+            v-if="!hasStarted && !isFull(g) && !tableOnly(g)"
             type="button"
             @click="startBooking(g.eventGameId)"
           >
@@ -309,6 +320,10 @@ onMounted(async () => {
         </div>
       </li>
     </ul>
+    <p v-if="event.games.some(tableOnly)" class="table-note">
+      I giochi segnati "Senza prenotazione" sono a disposizione al tavolo:
+      chiedili all'organizzatore quando arrivi.
+    </p>
     <p v-if="event.games.length === 0" class="empty-note">
       Per questa serata non è ancora stato messo in tavola nessun gioco.
     </p>

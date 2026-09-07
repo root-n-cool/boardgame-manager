@@ -718,3 +718,155 @@ func TestGetEvent_ExposesGameWeight(t *testing.T) {
 		t.Fatalf("expected null weight for a game without one, got %v", *got)
 	}
 }
+
+// eventDetailGames è la lista giochi della risposta pubblica, quanto basta
+// per guardare il flag.
+type eventDetailGames struct {
+	Games []struct {
+		EventGameID int64 `json:"eventGameId"`
+		Bookable    bool  `json:"bookable"`
+	} `json:"games"`
+}
+
+func getEventDetailGames(t *testing.T, router http.Handler, eventID int64) eventDetailGames {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d", eventID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET event: %d %s", rec.Code, rec.Body.String())
+	}
+	var body eventDetailGames
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode event: %v", err)
+	}
+	return body
+}
+
+func TestCreateEvent_BookableDefaultsToTrue(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+
+	// Nessun campo "bookable" nel corpo: è il corpo che manderebbe un
+	// client scritto prima di questa feature.
+	body := fmt.Sprintf(
+		`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","games":[{"gameId":%d,"copies":1}]}`,
+		gameID)
+	rec := doLoanRequest(router, http.MethodPost, "/api/events", cookie, body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created: %v", err)
+	}
+
+	detail := getEventDetailGames(t, router, created.ID)
+	if len(detail.Games) != 1 {
+		t.Fatalf("games = %d, want 1", len(detail.Games))
+	}
+	if !detail.Games[0].Bookable {
+		t.Fatal("bookable = false: l'assenza del campo deve significare prenotabile")
+	}
+}
+
+func TestCreateEvent_StoresBookableFalseAndRefusesTheBooking(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Love Letter")
+
+	body := fmt.Sprintf(
+		`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","games":[{"gameId":%d,"copies":1,"bookable":false}]}`,
+		gameID)
+	rec := doLoanRequest(router, http.MethodPost, "/api/events", cookie, body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil {
+		t.Fatalf("decode created: %v", err)
+	}
+
+	detail := getEventDetailGames(t, router, created.ID)
+	if detail.Games[0].Bookable {
+		t.Fatal("bookable = true dopo averlo mandato false")
+	}
+
+	// E prenotarla non si può, nemmeno chiamando l'endpoint a mano.
+	booking := fmt.Sprintf(
+		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","participantPhone":"3331234567"}`,
+		detail.Games[0].EventGameID)
+	rec = doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", created.ID), nil, booking)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("booking status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateEvent_UnbookableWithActiveBookingsIs409(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Wingspan")
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata", EventDate: "2099-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	detail := getEventDetailGames(t, router, event.ID)
+	booking := fmt.Sprintf(
+		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","participantPhone":"3331234567"}`,
+		detail.Games[0].EventGameID)
+	if rec := doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", event.ID), nil, booking); rec.Code != http.StatusCreated {
+		t.Fatalf("booking: %d %s", rec.Code, rec.Body.String())
+	}
+
+	body := fmt.Sprintf(
+		`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","games":[{"gameId":%d,"copies":1,"bookable":false}]}`,
+		gameID)
+	rec := doLoanRequest(router, http.MethodPut, fmt.Sprintf("/api/events/%d", event.ID), cookie, body)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestUpdateEvent_DroppingACopyOnLoanIs409(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata", EventDate: "2099-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, err := server.Events.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	// Copia unica e fuori in prestito: nessuna copia libera con cui
+	// soddisfare la richiesta di togliere il gioco dall'evento. Con due
+	// copie dropCopies ne sacrifica una libera e risparmia quella in
+	// prestito (vedi events.TestUpdateEventShrinkingSpareTheCopyOnLoan):
+	// qui invece non ce n'è una libera, quindi il conflitto è inevitabile.
+	if _, err := server.Events.LendCopy(context.Background(), event.ID, events.LoanInput{
+		EventGameID: eventGames[0].ID, BorrowerName: "Anna", BorrowerPhone: "3331234567",
+	}); err != nil {
+		t.Fatalf("lend: %v", err)
+	}
+
+	body := `{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","games":[]}`
+	rec := doLoanRequest(router, http.MethodPut, fmt.Sprintf("/api/events/%d", event.ID), cookie, body)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+}

@@ -44,6 +44,22 @@ esterno obbligatorio.
   giocate, vittorie e punteggio medio/totale nel tempo — ogni copia
   conta come una partita sola, indipendentemente da quanti hanno
   prenotato quel tavolo.
+- **Banco prestiti**: durante la serata l'organizzatore registra dal
+  banco prestiti (raggiungibile dalla scheda evento) chi ritira ogni
+  copia e chi la restituisce, con l'orario preso automaticamente e delle
+  note libere; la lista delle copie disponibili mostra solo le scatole
+  che non sono fuori in quel momento. Una copia restituita può tornare
+  in prestito subito dopo, e il registro tiene traccia di ogni passaggio
+  della serata. Abbassare il numero di copie di un gioco può far sparire
+  i prestiti registrati sulla copia tolta: l'app cerca di eliminare per
+  prima una copia senza storico, ma se tutte quelle libere ne hanno uno
+  procede comunque, perché l'unica alternativa sarebbe cancellare
+  l'intero evento.
+- **Giochi senza prenotazione**: un gioco può stare in un evento senza
+  essere prenotabile — un riempitivo sempre disponibile al tavolo, tipo
+  Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio
+  resta legato al codice di prenotazione: un gioco mai prenotabile non
+  entra in classifica, anche se in prestito è passato di mano più volte.
 - **Amministrazione**: bootstrap del primo admin al primo avvio (come
   n8n); dopo, un admin ne invita un altro inserendo solo l'email — il
   sistema genera un link di invito che chi lo riceve apre per scegliere la

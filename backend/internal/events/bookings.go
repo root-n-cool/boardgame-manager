@@ -32,6 +32,7 @@ var (
 	ErrGameSoldOut               = errors.New("game sold out")
 	ErrDuplicatePhoneBooking     = errors.New("phone already has an active booking for this event")
 	ErrInvalidBookingCredentials = errors.New("invalid email or booking code")
+	ErrGameNotBookable           = errors.New("game is not bookable at this event")
 )
 
 // bookingCodeAlphabet excludes visually ambiguous characters (0/O, 1/I).
@@ -65,14 +66,22 @@ func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, n
 		return Booking{}, ErrEventAlreadyStarted
 	}
 
-	var eventGameCount int
-	if err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM event_games WHERE id = ? AND event_id = ?`, eventGameID, eventID,
-	).Scan(&eventGameCount); err != nil {
+	// La stessa lettura fa due lavori: dice se la copia appartiene
+	// all'evento e se è prenotabile. Un gioco lasciato sul tavolo per chi
+	// arriva senza prenotazione non deve poter essere prenotato nemmeno
+	// da chi chiama l'endpoint a mano.
+	var bookable int
+	err = s.db.QueryRowContext(ctx,
+		`SELECT bookable FROM event_games WHERE id = ? AND event_id = ?`, eventGameID, eventID,
+	).Scan(&bookable)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Booking{}, ErrNotFound
+	}
+	if err != nil {
 		return Booking{}, err
 	}
-	if eventGameCount == 0 {
-		return Booking{}, ErrNotFound
+	if bookable == 0 {
+		return Booking{}, ErrGameNotBookable
 	}
 
 	code, err := generateBookingCode()
