@@ -198,8 +198,12 @@ async function submitLend() {
       borrowerPhone: borrowerPhone.value,
       notes: lendNotes.value.trim() || null,
     })
-    lending.value = null
+    // load() prima di chiudere la modale: se la consegna va a segno ma
+    // l'aggiornamento del banco fallisce, l'errore ha ancora una modale
+    // aperta su cui comparire, invece di sparire nel nulla insieme al
+    // form.
     await load()
+    lending.value = null
   } catch (e) {
     lendError.value = (e as Error).message
   } finally {
@@ -224,8 +228,10 @@ async function submitReturn() {
     await api.post(`/loans/${current.loan.id}/return`, {
       notes: returnNotes.value.trim() || null,
     })
-    returning.value = null
+    // Stesso ordine di submitLend: se la restituzione va a segno ma il
+    // refresh fallisce, la modale resta aperta e l'errore si vede.
     await load()
+    returning.value = null
   } catch (e) {
     returnError.value = (e as Error).message
   } finally {
