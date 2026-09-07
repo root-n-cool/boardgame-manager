@@ -2177,7 +2177,7 @@ func TestUpdateEvent_DroppingACopyOnLoanIs409(t *testing.T) {
 	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
 	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
 		Title: "Serata", EventDate: "2099-01-01", StartTime: "21:00",
-		Games: []events.EventGameInput{{GameID: gameID, Copies: 2}},
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 1}},
 	})
 	if err != nil {
 		t.Fatalf("create event: %v", err)
@@ -2186,16 +2186,18 @@ func TestUpdateEvent_DroppingACopyOnLoanIs409(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list event games: %v", err)
 	}
-	// Il prestito va sull'ultima copia, quella che dropCopies sacrificherebbe.
+	// Copia unica e fuori in prestito: nessuna copia libera con cui
+	// soddisfare la richiesta di togliere il gioco dall'evento. Con due
+	// copie dropCopies ne sacrifica una libera e risparmia quella in
+	// prestito (vedi events.TestUpdateEventShrinkingSpareTheCopyOnLoan):
+	// qui invece non ce n'è una libera, quindi il conflitto è inevitabile.
 	if _, err := server.Events.LendCopy(context.Background(), event.ID, events.LoanInput{
-		EventGameID: eventGames[1].ID, BorrowerName: "Anna", BorrowerPhone: "3331234567",
+		EventGameID: eventGames[0].ID, BorrowerName: "Anna", BorrowerPhone: "3331234567",
 	}); err != nil {
 		t.Fatalf("lend: %v", err)
 	}
 
-	body := fmt.Sprintf(
-		`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","games":[{"gameId":%d,"copies":1}]}`,
-		gameID)
+	body := `{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","games":[]}`
 	rec := doLoanRequest(router, http.MethodPut, fmt.Sprintf("/api/events/%d", event.ID), cookie, body)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
