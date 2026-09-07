@@ -229,9 +229,9 @@ func (s *Server) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, events.ErrGameNotFound):
 		writeError(w, http.StatusBadRequest, "one of the selected games does not exist")
 	case errors.Is(err, events.ErrQuantityBelowActiveBookings):
-		writeError(w, http.StatusConflict, "fewer copies than the ones with active bookings")
+		writeError(w, http.StatusConflict, "meno copie di quelle con prenotazioni attive")
 	case errors.Is(err, events.ErrUnbookableWithActiveBookings):
-		writeError(w, http.StatusConflict, "questo gioco ha già prenotazioni: non si può togliere dalla prenotazione")
+		writeError(w, http.StatusConflict, "questo gioco ha già prenotazioni: non si può renderlo non prenotabile")
 	case errors.Is(err, events.ErrCopyOnLoan):
 		writeError(w, http.StatusConflict, "una copia è in prestito: farsela restituire prima di togliere le copie")
 	case err != nil:
