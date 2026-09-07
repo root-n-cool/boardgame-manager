@@ -546,15 +546,19 @@ sotto ognuno diventava rumore.
   dell'azione a destra (`.loan-row-action`: "Consegna" o "Restituito").
   Il banco si usa in piedi, spesso con una scatola in una mano: un
   bersaglio piccolo, o diviso in più bottoni, costringerebbe a mirare
-  due volte. Le tre sezioni della pagina — Fuori, Disponibili,
-  Restituiti, in quest'ordine — condividono la stessa riga: cambiano i
-  dati e il verbo, non la forma.
+  due volte. Fuori e Disponibili, le due sezioni della pagina dove c'è
+  un gesto da compiere (restituire, consegnare), condividono la stessa
+  riga-bottone: cambiano i dati e il verbo, non la forma. Restituiti,
+  il registro della serata, non ha un gesto da offrire — riusa invece
+  `.admin-list`/`.admin-row`, la stessa riga non interattiva di
+  Prenotazioni e Risultati (vedi sopra): una riga bottone su un
+  prestito già chiuso avrebbe promesso un'azione che non c'è.
 - **Pastiglia di stato** (`.loan-tag`, gemella di `.seat-state`): un
-  gioco senza prenotazione porta la stessa pastiglia quieta, "senza
-  prenotazione", sia qui sia sulla scheda pubblica dell'evento. È la
-  stessa informazione letta da due persone diverse — l'organizzatore al
-  banco, chi guarda il tavolo — e due forme diverse per lo stesso dato
-  l'avrebbero fatto sembrare due fatti distinti.
+  gioco senza prenotazione porta la stessa pastiglia quieta sia qui sia
+  sulla scheda pubblica dell'evento, a dire "questo si gioca ma non si
+  prenota". È la stessa informazione letta da due persone diverse —
+  l'organizzatore al banco, chi guarda il tavolo — e due forme diverse
+  per lo stesso dato l'avrebbero fatto sembrare due fatti distinti.
 
 ### Aggiungi gioco (`/admin/games/new`)
 - **Un form solo, due fogli** (`.panel-form` + `.panel-card`): *Gioco* e
