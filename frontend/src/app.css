@@ -3299,6 +3299,18 @@ tbody tr:nth-child(3) .rank-medal {
   gap: 0.1rem;
   width: 100%;
   text-align: left;
+  /* `li button` di base è pensato per "Rimuovi" (rosso allarme): scegliere
+     una prenotazione non è un'azione distruttiva e non deve leggersi come
+     tale, quindi la riga torna a un tono neutro col bordo cartoncino. */
+  padding: 0.5rem 0.65rem;
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--card-line);
+}
+
+.loan-booking-picks button:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
 }
 
 .loan-warning {
