@@ -19,7 +19,7 @@ func (s *Server) listEventLoansHandler(w http.ResponseWriter, r *http.Request) {
 	// questo controllo la risposta sarebbe {copies: [], returned: []}, che
 	// è indistinguibile da un evento senza giochi.
 	if _, err := s.Events.GetEvent(r.Context(), eventID); errors.Is(err, events.ErrNotFound) {
-		writeError(w, http.StatusNotFound, "event not found")
+		writeError(w, http.StatusNotFound, "questa serata non esiste più")
 		return
 	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load event")
@@ -63,9 +63,9 @@ func (s *Server) createLoanHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	switch {
 	case errors.Is(err, events.ErrBorrowerRequired):
-		writeError(w, http.StatusBadRequest, "borrowerName and borrowerPhone are required")
+		writeError(w, http.StatusBadRequest, "nome e telefono di chi ritira sono obbligatori")
 	case errors.Is(err, events.ErrNotFound):
-		writeError(w, http.StatusNotFound, "copy or booking not found for this event")
+		writeError(w, http.StatusNotFound, "copia o prenotazione non più disponibili: ricarica il banco")
 	case errors.Is(err, events.ErrCopyAlreadyOut):
 		writeError(w, http.StatusConflict, "questa copia è già in prestito")
 	case err != nil:
@@ -95,7 +95,7 @@ func (s *Server) returnLoanHandler(w http.ResponseWriter, r *http.Request) {
 	loan, err := s.Events.ReturnLoan(r.Context(), id, req.Notes)
 	switch {
 	case errors.Is(err, events.ErrNotFound):
-		writeError(w, http.StatusNotFound, "loan not found")
+		writeError(w, http.StatusNotFound, "questo prestito non esiste più: ricarica il banco")
 	case errors.Is(err, events.ErrLoanAlreadyReturned):
 		writeError(w, http.StatusConflict, "questo prestito è già stato chiuso")
 	case err != nil:
