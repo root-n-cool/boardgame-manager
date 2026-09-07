@@ -50,7 +50,11 @@ esterno obbligatorio.
   note libere; la lista delle copie disponibili mostra solo le scatole
   che non sono fuori in quel momento. Una copia restituita può tornare
   in prestito subito dopo, e il registro tiene traccia di ogni passaggio
-  della serata.
+  della serata. Abbassare il numero di copie di un gioco può far sparire
+  i prestiti registrati sulla copia tolta: l'app cerca di eliminare per
+  prima una copia senza storico, ma se tutte quelle libere ne hanno uno
+  procede comunque, perché l'unica alternativa sarebbe cancellare
+  l'intero evento.
 - **Giochi senza prenotazione**: un gioco può stare in un evento senza
   essere prenotabile — un riempitivo sempre disponibile al tavolo, tipo
   Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio

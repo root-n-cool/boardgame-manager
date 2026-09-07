@@ -244,3 +244,29 @@ func openLoanCopies(ctx context.Context, q queryer, eventID int64) (map[int64]bo
 	}
 	return out, rows.Err()
 }
+
+// loanHistoryCopies dice quali copie dell'evento hanno almeno una riga in
+// game_loans, aperta o chiusa. Serve a dropCopies per preferire di
+// eliminare le copie senza storico: cancellare una copia con storico se
+// lo porta via a cascata (game_loans.event_game_id è ON DELETE CASCADE),
+// quindi conviene spendere per prima quella che non perde niente.
+func loanHistoryCopies(ctx context.Context, q queryer, eventID int64) (map[int64]bool, error) {
+	rows, err := q.QueryContext(ctx,
+		`SELECT l.event_game_id FROM game_loans l
+		 JOIN event_games eg ON l.event_game_id = eg.id
+		 WHERE eg.event_id = ?`, eventID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[int64]bool{}
+	for rows.Next() {
+		var eventGameID int64
+		if err := rows.Scan(&eventGameID); err != nil {
+			return nil, err
+		}
+		out[eventGameID] = true
+	}
+	return out, rows.Err()
+}

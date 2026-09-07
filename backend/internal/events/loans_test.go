@@ -330,7 +330,15 @@ func TestUpdateEventRefusesToDropACopyOnLoan(t *testing.T) {
 	}
 }
 
-func TestUpdateEventDropsACopyOnceReturned(t *testing.T) {
+// TestUpdateEventDropsAnOnlyCopyEvenWithClosedHistory copre il caso in cui
+// l'unica copia eliminabile porta con sé dello storico chiuso: il guard
+// blocca solo i prestiti aperti, e qui non ce ne sono. La cancellazione
+// procede — non c'è nessun'altra copia libera a cui appoggiarsi — e con
+// essa sparisce anche la riga di game_loans, per ON DELETE CASCADE: è il
+// prezzo di non avere un'alternativa migliore che cancellare l'evento
+// intero, e questo test lo verifica invece di fermarsi al conteggio delle
+// copie rimaste.
+func TestUpdateEventDropsAnOnlyCopyEvenWithClosedHistory(t *testing.T) {
 	store, gameStore := newTestStore(t)
 	gameID := mustCreateGame(t, gameStore, "Carcassonne")
 	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
@@ -353,6 +361,63 @@ func TestUpdateEventDropsACopyOnceReturned(t *testing.T) {
 	}
 	if len(after) != 0 {
 		t.Fatalf("copie = %d, want 0", len(after))
+	}
+
+	// La riga di game_loans deve essere sparita in cascata con la copia:
+	// una seconda restituzione dà ErrNotFound (riga assente), non
+	// ErrLoanAlreadyReturned (riga ancora lì, già chiusa).
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); !errors.Is(err, events.ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound: la riga di game_loans doveva sparire con la copia", err)
+	}
+}
+
+// TestUpdateEventPrefersDroppingACopyWithNoLoanHistory copre il caso che
+// il branch conteneva senza accorgersene: fra due copie libere, una con
+// storico chiuso e una senza, deve cadere quella senza — anche quando non
+// è la copia con l'indice più alto, che è il criterio di scelta di
+// default. Perdere zero righe di game_loans quando è possibile non è
+// negoziabile.
+func TestUpdateEventPrefersDroppingACopyWithNoLoanHistory(t *testing.T) {
+	store, gameStore := newTestStore(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event, err := store.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 2}},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	// La copia #2, quella con l'indice più alto, è l'unica con storico: se
+	// dropCopies seguisse solo "dalla più alta in giù" la eliminerebbe lei
+	// per prima, perdendo la riga. La #1 non ha mai avuto un prestito.
+	loan := mustLend(t, store, event.ID, copies[1].ID, "Anna")
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); err != nil {
+		t.Fatalf("return loan: %v", err)
+	}
+
+	if _, err := store.UpdateEvent(context.Background(), event.ID, events.EventInput{
+		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	}); err != nil {
+		t.Fatalf("update event: %v", err)
+	}
+
+	after, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	if len(after) != 1 || after[0].ID != copies[1].ID {
+		t.Fatalf("copia sopravvissuta = %+v, want la #2 (quella con lo storico)", after)
+	}
+
+	// La riga del prestito chiuso è ancora lì: ErrLoanAlreadyReturned
+	// (non ErrNotFound) prova che la copia #2 non è stata toccata.
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); !errors.Is(err, events.ErrLoanAlreadyReturned) {
+		t.Fatalf("err = %v, want ErrLoanAlreadyReturned: lo storico doveva restare intatto", err)
 	}
 }
 

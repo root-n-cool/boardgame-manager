@@ -421,6 +421,11 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 		return Event{}, err
 	}
 
+	withHistory, err := loanHistoryCopies(ctx, tx, id)
+	if err != nil {
+		return Event{}, err
+	}
+
 	// Un passaggio a parte per validare tutti i giochi richiesti e leggere
 	// i posti prenotabili: se uno non esiste, si esce prima di scrivere.
 	// Lo stesso vale per il flag: spegnerlo su un gioco che qualcuno ha
@@ -449,7 +454,7 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 	// Giochi spariti dalla selezione: via tutte le loro copie, se libere.
 	for gameID, copies := range copiesByGame {
 		if _, stillWanted := wanted[gameID]; !stillWanted {
-			if err := dropCopies(ctx, tx, copies, occupied, onLoan, len(copies)); err != nil {
+			if err := dropCopies(ctx, tx, copies, occupied, onLoan, withHistory, len(copies)); err != nil {
 				return Event{}, err
 			}
 		}
@@ -459,7 +464,7 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 		copies := copiesByGame[g.GameID]
 		switch {
 		case g.Copies < len(copies):
-			if err := dropCopies(ctx, tx, copies, occupied, onLoan, len(copies)-g.Copies); err != nil {
+			if err := dropCopies(ctx, tx, copies, occupied, onLoan, withHistory, len(copies)-g.Copies); err != nil {
 				return Event{}, err
 			}
 		case g.Copies > len(copies):
@@ -502,10 +507,19 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 // Quando entrambi i motivi bloccano, vince il prestito nel messaggio:
 // è quello che l'organizzatore può risolvere subito, facendosi
 // restituire la scatola.
-func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, onLoan map[int64]bool, count int) error {
-	dropped := 0
+//
+// Tra le copie eliminabili, si preferisce sacrificare quelle senza
+// nessuna riga in game_loans: cancellare una copia con storico la porta
+// via a cascata (0013_loans.sql, ON DELETE CASCADE), quindi se una copia
+// libera non ha mai avuto un prestito e un'altra sì, cade prima quella
+// senza storico. Non è un blocco: se le uniche copie eliminabili hanno
+// tutte storico, la cancellazione procede lo stesso — rifiutarla
+// lascerebbe come unica alternativa cancellare l'intero evento, che
+// perderebbe di più.
+func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, onLoan map[int64]bool, withHistory map[int64]bool, count int) error {
+	var withoutHistory, withHistoryQueue []EventGame
 	blockedByLoan := false
-	for i := len(copies) - 1; i >= 0 && dropped < count; i-- {
+	for i := len(copies) - 1; i >= 0; i-- {
 		if occupied[copies[i].ID] > 0 {
 			continue
 		}
@@ -513,10 +527,24 @@ func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map
 			blockedByLoan = true
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, copies[i].ID); err != nil {
-			return err
+		if withHistory[copies[i].ID] {
+			withHistoryQueue = append(withHistoryQueue, copies[i])
+		} else {
+			withoutHistory = append(withoutHistory, copies[i])
 		}
-		dropped++
+	}
+
+	dropped := 0
+	for _, queue := range [][]EventGame{withoutHistory, withHistoryQueue} {
+		for _, c := range queue {
+			if dropped >= count {
+				break
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, c.ID); err != nil {
+				return err
+			}
+			dropped++
+		}
 	}
 	if dropped < count {
 		if blockedByLoan {
