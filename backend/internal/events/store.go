@@ -94,6 +94,7 @@ var (
 	ErrGameNotFound                 = errors.New("referenced game not found")
 	ErrQuantityBelowActiveBookings  = errors.New("quantity below active bookings")
 	ErrUnbookableWithActiveBookings = errors.New("cannot unbook a game with active bookings")
+	ErrCopyOnLoan                   = errors.New("copy is on loan")
 )
 
 type Store struct {
@@ -415,6 +416,11 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 		return Event{}, err
 	}
 
+	onLoan, err := openLoanCopies(ctx, tx, id)
+	if err != nil {
+		return Event{}, err
+	}
+
 	// Un passaggio a parte per validare tutti i giochi richiesti e leggere
 	// i posti prenotabili: se uno non esiste, si esce prima di scrivere.
 	// Lo stesso vale per il flag: spegnerlo su un gioco che qualcuno ha
@@ -443,7 +449,7 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 	// Giochi spariti dalla selezione: via tutte le loro copie, se libere.
 	for gameID, copies := range copiesByGame {
 		if _, stillWanted := wanted[gameID]; !stillWanted {
-			if err := dropCopies(ctx, tx, copies, occupied, len(copies)); err != nil {
+			if err := dropCopies(ctx, tx, copies, occupied, onLoan, len(copies)); err != nil {
 				return Event{}, err
 			}
 		}
@@ -453,7 +459,7 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 		copies := copiesByGame[g.GameID]
 		switch {
 		case g.Copies < len(copies):
-			if err := dropCopies(ctx, tx, copies, occupied, len(copies)-g.Copies); err != nil {
+			if err := dropCopies(ctx, tx, copies, occupied, onLoan, len(copies)-g.Copies); err != nil {
 				return Event{}, err
 			}
 		case g.Copies > len(copies):
@@ -486,14 +492,25 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 	return s.GetEvent(ctx, id)
 }
 
-// dropCopies elimina `count` copie partendo dalla più alta, saltando quelle
-// con prenotazioni attive. Se le copie libere non bastano l'operazione
-// fallisce e la transazione del chiamante viene annullata: meglio un errore
-// che una prenotazione cancellata a cascata sotto il naso di chi l'ha fatta.
-func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, count int) error {
+// dropCopies elimina `count` copie partendo dalla più alta, saltando
+// quelle con prenotazioni attive e quelle che qualcuno ha in mano. Se le
+// copie libere non bastano l'operazione fallisce e la transazione del
+// chiamante viene annullata: meglio un errore che una prenotazione
+// cancellata a cascata sotto il naso di chi l'ha fatta, o una scatola
+// che sparisce dal registro mentre è ancora fuori.
+//
+// Quando entrambi i motivi bloccano, vince il prestito nel messaggio:
+// è quello che l'organizzatore può risolvere subito, facendosi
+// restituire la scatola.
+func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, onLoan map[int64]bool, count int) error {
 	dropped := 0
+	blockedByLoan := false
 	for i := len(copies) - 1; i >= 0 && dropped < count; i-- {
 		if occupied[copies[i].ID] > 0 {
+			continue
+		}
+		if onLoan[copies[i].ID] {
+			blockedByLoan = true
 			continue
 		}
 		if _, err := tx.ExecContext(ctx, `DELETE FROM event_games WHERE id = ?`, copies[i].ID); err != nil {
@@ -502,6 +519,9 @@ func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map
 		dropped++
 	}
 	if dropped < count {
+		if blockedByLoan {
+			return ErrCopyOnLoan
+		}
 		return ErrQuantityBelowActiveBookings
 	}
 	return nil
