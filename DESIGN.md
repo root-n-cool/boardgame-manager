@@ -540,6 +540,22 @@ sotto ognuno diventava rumore.
   bottone eredita il rosso dalla regola dei bottoni in `<li>`, con
   conferma che nomina partecipante e gioco.
 
+### Banco prestiti (`/admin/events/:id/prestiti`)
+- **Riga-bersaglio** (`.loan-row`, dentro `.loan-list`): ogni riga è un
+  `<button>` intero, alta almeno 3.5rem, testo a sinistra e verbo
+  dell'azione a destra (`.loan-row-action`: "Consegna" o "Restituito").
+  Il banco si usa in piedi, spesso con una scatola in una mano: un
+  bersaglio piccolo, o diviso in più bottoni, costringerebbe a mirare
+  due volte. Le tre sezioni della pagina — Fuori, Disponibili,
+  Restituiti, in quest'ordine — condividono la stessa riga: cambiano i
+  dati e il verbo, non la forma.
+- **Pastiglia di stato** (`.loan-tag`, gemella di `.seat-state`): un
+  gioco senza prenotazione porta la stessa pastiglia quieta, "senza
+  prenotazione", sia qui sia sulla scheda pubblica dell'evento. È la
+  stessa informazione letta da due persone diverse — l'organizzatore al
+  banco, chi guarda il tavolo — e due forme diverse per lo stesso dato
+  l'avrebbero fatto sembrare due fatti distinti.
+
 ### Aggiungi gioco (`/admin/games/new`)
 - **Un form solo, due fogli** (`.panel-form` + `.panel-card`): *Gioco* e
   *Dettagli* (lingua base, proprietario), un unico submit in fondo,
