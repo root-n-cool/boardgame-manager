@@ -38,6 +38,8 @@ func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "non ci sono più posti prenotabili su questa copia")
 	case errors.Is(err, events.ErrDuplicatePhoneBooking):
 		writeError(w, http.StatusConflict, "hai già una prenotazione attiva per questo evento")
+	case errors.Is(err, events.ErrGameNotBookable):
+		writeError(w, http.StatusConflict, "questo gioco non è prenotabile: è a disposizione al tavolo")
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "could not create booking")
 	default:

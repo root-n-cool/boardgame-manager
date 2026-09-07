@@ -683,3 +683,26 @@ func TestCancelBooking_KeepsTheTableResultWhileSomeoneRemains(t *testing.T) {
 		t.Fatalf("expected the result to be gone, got %+v", result)
 	}
 }
+
+func TestCreateBookingRefusesAnUnbookableCopy(t *testing.T) {
+	store, gameStore := newTestStore(t)
+	gameID := mustCreateGame(t, gameStore, "Love Letter")
+	no := false
+	event, err := store.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 1, Bookable: &no}},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+
+	_, err = store.CreateBooking(context.Background(), event.ID, copies[0].ID,
+		"Anna", "anna@example.com", "3331234567", time.Date(2029, 12, 31, 20, 0, 0, 0, time.UTC))
+	if !errors.Is(err, events.ErrGameNotBookable) {
+		t.Fatalf("err = %v, want ErrGameNotBookable", err)
+	}
+}

@@ -32,10 +32,11 @@ func toEventListItem(e events.Event) map[string]any {
 	return item
 }
 
-func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int) map[string]any {
+func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int, bookable bool) map[string]any {
 	return map[string]any{
 		"eventGameId": eventGameID, "gameId": g.ID, "name": g.Name, "coverPath": g.CoverPath,
 		"copyIndex": copyIndex, "seats": seats, "remaining": remaining, "weight": g.Weight,
+		"bookable": bookable,
 	}
 }
 
@@ -67,7 +68,7 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 			gameCache[eg.GameID] = game
 		}
 		remaining := eg.Seats - occupied[eg.ID]
-		gamesOut = append(gamesOut, toEventGameSummary(eg.ID, game, eg.CopyIndex, eg.Seats, remaining))
+		gamesOut = append(gamesOut, toEventGameSummary(eg.ID, game, eg.CopyIndex, eg.Seats, remaining, eg.Bookable))
 	}
 
 	detail := toEventSummary(e)

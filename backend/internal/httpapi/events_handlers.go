@@ -96,6 +96,10 @@ type eventGameRequest struct {
 	// Copies è quante copie del gioco l'evento mette in tavola. I posti
 	// prenotabili di ciascuna arrivano dal catalogo, non da qui.
 	Copies int `json:"copies"`
+	// Bookable assente significa prenotabile: è così che si comportava
+	// l'app prima che questo campo esistesse, e un client vecchio non
+	// deve cambiare comportamento.
+	Bookable *bool `json:"bookable"`
 }
 
 type eventRequest struct {
@@ -142,7 +146,9 @@ func toVenue(in *venueRequest) (*events.Venue, bool) {
 func toEventGameInputs(in []eventGameRequest) []events.EventGameInput {
 	out := make([]events.EventGameInput, 0, len(in))
 	for _, g := range in {
-		out = append(out, events.EventGameInput{GameID: g.GameID, Copies: g.Copies})
+		out = append(out, events.EventGameInput{
+			GameID: g.GameID, Copies: g.Copies, Bookable: g.Bookable,
+		})
 	}
 	return out
 }
@@ -224,6 +230,10 @@ func (s *Server) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "one of the selected games does not exist")
 	case errors.Is(err, events.ErrQuantityBelowActiveBookings):
 		writeError(w, http.StatusConflict, "fewer copies than the ones with active bookings")
+	case errors.Is(err, events.ErrUnbookableWithActiveBookings):
+		writeError(w, http.StatusConflict, "questo gioco ha già prenotazioni: non si può togliere dalla prenotazione")
+	case errors.Is(err, events.ErrCopyOnLoan):
+		writeError(w, http.StatusConflict, "una copia è in prestito: farsela restituire prima di togliere le copie")
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "could not update event")
 	default:
