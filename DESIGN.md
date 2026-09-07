@@ -161,17 +161,29 @@ data) è in IBM Plex Mono con cifre tabulari — mai nella sans corrente.
 
 ## Layout
 
-Contenitore centrale max 56rem (`.public-page`, `.layout > main`), padding
+Contenitore centrale max 56rem (`.app-page`, dentro `.app-main`), padding
 laterale 1.5rem che scende a 1rem sotto i 640px. Le griglie di card
 (catalogo, eventi, tavolo di un evento) usano
 `repeat(auto-fill, minmax(Xpx, 1fr))` — 180-220px a seconda della densità
 — così il numero di colonne si adatta senza breakpoint espliciti fino al
 passaggio a colonna singola su mobile.
 
-**Responsive nav:** sopra i 640px la barra è una riga fissa (3.5rem); sotto
-i 640px va in `flex-wrap`, altezza automatica, e il wordmark testuale si
-nasconde lasciando solo il marchio (pedina) — la barra non deve mai
-costringere un elemento (es. "Esci") fuori dal viewport.
+**Shell:** una sola shell (`AppShell.vue`) per tutta l'app — topbar in
+feltro alta 3.25rem, sticky, con hamburger + marchio a sinistra e menù
+utente a destra; sidebar in feltro profondo larga 15rem, chiusa per
+default. Da 900px è una colonna `sticky` nel flusso e il contenuto le fa
+spazio da sé — chiusa esce dal flusso e il passaggio è istantaneo: nessuna
+larghezza o padding animato, che sarebbe un reflow a ogni frame. Sotto i
+900px è un drawer `fixed` che entra in `transform` sopra la pagina, con
+overlay in dissolvenza, scroll del body bloccato
+(`body.has-open-drawer`) e contenuto reso `inert`, così il Tab non esce dal
+menù per finire in una pagina che non si vede. Lo stato aperto/chiuso è una
+preferenza da desktop salvata in `localStorage` (`bgm.sidebar`): il drawer
+su telefono parte sempre chiuso e non la sporca. Sotto i 520px il wordmark
+si nasconde lasciando la sola carta-marchio (pedina), perché hamburger,
+marchio e pallina utente devono stare su una riga sola. Setup, login e
+accettazione invito (`meta.bare`) restano pagine a schermo pieno senza
+shell.
 
 **Tabelle larghe** (classifica) scorrono nel proprio contenitore
 (`.table-scroll`, `overflow-x:auto`) invece di spingere l'intera pagina in
@@ -204,8 +216,9 @@ Mai azzerare tutte le transizioni in blocco. Applicata su `.game-grid`;
 ## Shapes
 
 Due raggi: `10px` (card, form, tabelle, pillole del tavolo in feltro) e
-`6px` (input, bottoni, tab). Le pillole di navigazione (link attivi in
-nav) usano `border-radius: 999px`. Nessun bordo colorato laterale sulle
+`6px` (input, bottoni, tab, voci di sidebar). Restano tondi a `999px` solo
+gli elementi che sono davvero pastiglie: linguette e trigger del menù
+utente. Nessun bordo colorato laterale sulle
 card — il confine è sempre un `1px solid var(--card-line)` uniforme.
 
 ## Components
@@ -590,10 +603,24 @@ sotto ognuno diventava rumore.
   checkbox+testo, non la colonna verticale di default di `label`.
 
 ### Navigation
-- Feltro verde, testo cartoncino attenuato di default, cartoncino pieno +
-  testo feltro per il link attivo (pillola). Logout/Esci resta un
-  bottone-ghost sul feltro, mai un bottone pieno rosso. Sotto 640px: vedi
-  Layout.
+- **Sidebar** (`.app-sidebar`): feltro profondo, una voce per riga con
+  icona a filo 1.15rem + etichetta, testo cartoncino attenuato di default,
+  tessera di cartoncino pieno + testo feltro per la voce corrente. La voce
+  resta accesa su tutte le pagine che le discendono (la scheda di un evento
+  sta sotto "Eventi"), non solo sul suo indirizzo esatto. Le voci pubbliche
+  vengono prima; il gruppo **Gestione** appare solo a sessione aperta,
+  separato da un filetto e da un'etichetta mono maiuscoletta. Struttura e
+  breakpoint: vedi Layout.
+- **Menù utente** (`.user-menu`): pallina 1.95rem in rosso seme con le
+  iniziali dell'email, caret, dropdown su cartoncino ancorato a destra con
+  l'email in mono e la voce "Esci". È l'unico posto da cui si esce: niente
+  bottone "Esci" sciolto nella chrome, e nessun link espone `/login` — chi
+  amministra conosce l'indirizzo.
+- Nessuna barra di navigazione orizzontale: la vecchia `nav` a pillole
+  (fino a cinque voci in riga) è stata sostituita dalla sidebar.
+- Ogni bersaglio della chrome (hamburger, voce di sidebar, trigger utente,
+  voce del dropdown) sta a **44px** di lato minimo: la sidebar la aprono
+  anche i partecipanti col pollice, in piedi al tavolo.
 - **Linguette** (`.tab-bar`): pastiglie mono maiuscoletto su una barra in
   feltro, angoli tondi su tutti i lati (mai linguette tagliate in basso).
   La barra è una sola grammatica per casi diversi — le lingue di un gioco
@@ -677,6 +704,10 @@ prima di questa voce.
   cartoncino/fondo neutro.
 - **Do** avvolgere ogni tabella larga in `.table-scroll` prima di
   aggiungere colonne: la pagina non scorre mai in orizzontale.
+- **Do** cambiare il colore dell'anello di focus sul feltro
+  (`.app-topbar`/`.app-sidebar` → `outline-color: var(--felt-text)`): il
+  rosso seme della regola globale sta a 1.3:1 contro il verde, l'anello
+  esiste ma non si vede. Su cartoncino resta il rosso.
 - **Do** portare l'anello di focus **dentro** la card
   (`outline-offset: -2px`) su ogni contenitore con `overflow: hidden`: la
   regola globale lo disegna 2px fuori dal link, dove viene ritagliato e la

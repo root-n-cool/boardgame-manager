@@ -35,5 +35,8 @@ async function submit() {
       <button type="submit">Accedi</button>
       <p v-if="error" class="error">{{ error }}</p>
     </form>
+    <!-- Nessun link porta più qui: chi ci arriva per sbaglio (o per una
+         sessione scaduta) deve avere una via d'uscita verso il sito. -->
+    <p><router-link :to="{ name: 'events' }">&larr; Torna agli eventi</router-link></p>
   </div>
 </template>

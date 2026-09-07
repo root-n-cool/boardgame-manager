@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, nextTick } from 'vue'
 import { api } from '../api/client'
-import PublicHeader from '../components/PublicHeader.vue'
 
 /**
  * `code` arriva dai link mandati per mail: quando c'è, la pagina si
@@ -161,70 +160,67 @@ onMounted(async () => {
 
 <template>
   <div>
-    <PublicHeader />
-    <div class="public-page">
-      <h1>Gestisci prenotazione</h1>
+    <h1>Gestisci prenotazione</h1>
 
-      <form v-if="!deepLinked" @submit.prevent="lookup">
-        <label>
-          Codice prenotazione
-          <input v-model="bookingCode" required />
-        </label>
-        <button type="submit">Cerca</button>
-      </form>
-      <p v-if="error" class="error">{{ error }}</p>
-      <p v-if="error && deepLinked">
-        <router-link :to="{ name: 'manage-booking' }" @click="error = ''"
-          >Cerca un'altra prenotazione</router-link
+    <form v-if="!deepLinked" @submit.prevent="lookup">
+      <label>
+        Codice prenotazione
+        <input v-model="bookingCode" required />
+      </label>
+      <button type="submit">Cerca</button>
+    </form>
+    <p v-if="error" class="error">{{ error }}</p>
+    <p v-if="error && deepLinked">
+      <router-link :to="{ name: 'manage-booking' }" @click="error = ''"
+        >Cerca un'altra prenotazione</router-link
+      >
+    </p>
+
+    <div v-if="booking">
+      <div class="booking-summary">
+        <h2>{{ gameLabel }}</h2>
+        <p class="booking-summary-meta">
+          {{ booking.eventTitle }} · {{ booking.eventDate }} · {{ booking.startTime }}
+        </p>
+        <p class="booking-summary-participant">Prenotato da <strong>{{ booking.participantName }}</strong></p>
+        <p v-if="booking.seats > 1" class="row-meta">
+          Tavolo da {{ booking.seats }} posti prenotabili · {{ booking.tableBookings }} prenotati
+        </p>
+        <span
+          class="status-badge"
+          :class="booking.status === 'active' ? 'status-active' : 'status-cancelled'"
         >
-      </p>
-
-      <div v-if="booking">
-        <div class="booking-summary">
-          <h2>{{ gameLabel }}</h2>
-          <p class="booking-summary-meta">
-            {{ booking.eventTitle }} · {{ booking.eventDate }} · {{ booking.startTime }}
-          </p>
-          <p class="booking-summary-participant">Prenotato da <strong>{{ booking.participantName }}</strong></p>
-          <p v-if="booking.seats > 1" class="row-meta">
-            Tavolo da {{ booking.seats }} posti prenotabili · {{ booking.tableBookings }} prenotati
-          </p>
-          <span
-            class="status-badge"
-            :class="booking.status === 'active' ? 'status-active' : 'status-cancelled'"
-          >
-            {{ booking.status === 'active' ? 'Attiva' : 'Annullata' }}
-          </span>
-        </div>
-        <button v-if="booking.status === 'active'" type="button" class="btn-danger" @click="cancel">
-          Annulla prenotazione
-        </button>
-        <p v-if="cancelMessage" class="success">{{ cancelMessage }}</p>
-
-        <form
-          v-if="booking.status === 'active'"
-          ref="scoreSection"
-          @submit.prevent="submitScore"
-        >
-          <h2>Punteggio finale</h2>
-          <p v-if="isSharedTable" class="row-meta">
-            Il punteggio è del tavolo: lo vedono e lo possono correggere tutti
-            quelli che hanno prenotato qui. Se qualcuno l'ha già inserito, qui
-            sotto c'è il suo, e salvando lo sostituisci.
-          </p>
-          <div v-for="(p, index) in players" :key="index" class="player-score-row">
-            <input v-model="p.name" placeholder="Nome giocatore" required />
-            <input v-model.number="p.score" type="number" placeholder="Punteggio" required />
-            <button type="button" class="btn-danger" @click="removePlayerRow(index)">Rimuovi</button>
-          </div>
-          <button type="button" class="btn-secondary" @click="addPlayerRow">Aggiungi giocatore</button>
-          <button type="submit">
-            {{ booking.matchResult ? 'Aggiorna punteggio' : 'Invia punteggio' }}
-          </button>
-          <p v-if="scoreMessage" class="success">{{ scoreMessage }}</p>
-          <p v-if="scoreError" class="error">{{ scoreError }}</p>
-        </form>
+          {{ booking.status === 'active' ? 'Attiva' : 'Annullata' }}
+        </span>
       </div>
+      <button v-if="booking.status === 'active'" type="button" class="btn-danger" @click="cancel">
+        Annulla prenotazione
+      </button>
+      <p v-if="cancelMessage" class="success">{{ cancelMessage }}</p>
+
+      <form
+        v-if="booking.status === 'active'"
+        ref="scoreSection"
+        @submit.prevent="submitScore"
+      >
+        <h2>Punteggio finale</h2>
+        <p v-if="isSharedTable" class="row-meta">
+          Il punteggio è del tavolo: lo vedono e lo possono correggere tutti
+          quelli che hanno prenotato qui. Se qualcuno l'ha già inserito, qui
+          sotto c'è il suo, e salvando lo sostituisci.
+        </p>
+        <div v-for="(p, index) in players" :key="index" class="player-score-row">
+          <input v-model="p.name" placeholder="Nome giocatore" required />
+          <input v-model.number="p.score" type="number" placeholder="Punteggio" required />
+          <button type="button" class="btn-danger" @click="removePlayerRow(index)">Rimuovi</button>
+        </div>
+        <button type="button" class="btn-secondary" @click="addPlayerRow">Aggiungi giocatore</button>
+        <button type="submit">
+          {{ booking.matchResult ? 'Aggiorna punteggio' : 'Invia punteggio' }}
+        </button>
+        <p v-if="scoreMessage" class="success">{{ scoreMessage }}</p>
+        <p v-if="scoreError" class="error">{{ scoreError }}</p>
+      </form>
     </div>
   </div>
 </template>

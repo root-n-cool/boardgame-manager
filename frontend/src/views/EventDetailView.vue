@@ -5,7 +5,6 @@ import { api } from '../api/client'
 import BookingConfirmation from '../components/BookingConfirmation.vue'
 import GameDifficulty from '../components/GameDifficulty.vue'
 import ModalDialog from '../components/ModalDialog.vue'
-import PublicHeader from '../components/PublicHeader.vue'
 import { formatEventDateTime } from '../utils/dates'
 
 interface EventGameInfo {
@@ -197,168 +196,165 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
-    <PublicHeader />
-    <div class="public-page" v-if="event">
-      <router-link :to="{ name: 'events' }" class="back-link">&larr; Eventi</router-link>
-      <img
-        v-if="event.imagePath"
-        :src="`/api/uploads/${event.imagePath}`"
-        alt=""
-        class="event-banner"
-        width="880"
-        height="495"
-        decoding="async"
-      />
-      <h1>{{ event.title }}</h1>
-      <p v-if="event.description">{{ event.description }}</p>
-      <p class="event-card-date">
+  <div v-if="event">
+    <router-link :to="{ name: 'events' }" class="back-link">&larr; Eventi</router-link>
+    <img
+      v-if="event.imagePath"
+      :src="`/api/uploads/${event.imagePath}`"
+      alt=""
+      class="event-banner"
+      width="880"
+      height="495"
+      decoding="async"
+    />
+    <h1>{{ event.title }}</h1>
+    <p v-if="event.description">{{ event.description }}</p>
+    <p class="event-card-date">
+      <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6" />
+        <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
+        <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+      </svg>
+      {{ formatEventDateTime(event.eventDate, event.startTime) }}
+    </p>
+
+    <div v-if="event.venue && venueLines" class="event-venue">
+      <p class="event-venue-line">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6" />
-          <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
-          <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
-        </svg>
-        {{ formatEventDateTime(event.eventDate, event.startTime) }}
-      </p>
-
-      <div v-if="event.venue && venueLines" class="event-venue">
-        <p class="event-venue-line">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path
-              d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11Z"
-              stroke="currentColor"
-              stroke-width="1.6"
-              stroke-linejoin="round"
-            />
-            <circle cx="12" cy="10" r="2.4" stroke="currentColor" stroke-width="1.6" />
-          </svg>
-          <span>
-            {{ venueLines.title }}
-            <span v-if="venueLines.detail" class="event-venue-address">{{ venueLines.detail }}</span>
-          </span>
-        </p>
-        <EventMap
-          v-if="event.venue.lat !== null && event.venue.lon !== null"
-          :lat="event.venue.lat"
-          :lon="event.venue.lon"
-          :label="venueLines.title"
-        />
-      </div>
-
-      <!-- Il codice si vede una volta sola: chiusa la modale resta qui, in
-           cima al tavolo, finché la pagina non viene lasciata. -->
-      <section v-if="confirmed.length > 0" class="booking-recap">
-        <h2>{{ confirmed.length > 1 ? 'Le tue prenotazioni' : 'La tua prenotazione' }}</h2>
-        <BookingConfirmation
-          v-for="b in confirmed"
-          :key="b.code"
-          :game-label="b.label"
-          :code="b.code"
-          :multi-seat="b.multiSeat"
-          :hint="false"
-          :mailed="b.mailed"
-        />
-        <p class="recap-hint">
-          {{ confirmed.length > 1 ? 'Conservali' : 'Conservalo' }} per gestire la prenotazione o
-          inserire il punteggio finale da "Gestisci prenotazione".
-        </p>
-      </section>
-
-      <h2 class="table-heading">Al tavolo</h2>
-      <p v-if="hasStarted" class="table-note">
-        Questo evento è già iniziato: non è più possibile prenotare.
-      </p>
-
-      <ul class="event-games">
-        <li v-for="g in event.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
-          <img
-            v-if="g.coverPath"
-            :src="`/api/uploads/${g.coverPath}`"
-            :alt="g.name"
-            width="300"
-            height="400"
-            loading="lazy"
-            decoding="async"
+          <path
+            d="M12 21s7-5.3 7-11a7 7 0 1 0-14 0c0 5.7 7 11 7 11Z"
+            stroke="currentColor"
+            stroke-width="1.6"
+            stroke-linejoin="round"
           />
-          <div v-else class="cover-placeholder" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none">
-              <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />
-              <circle cx="8.3" cy="8.3" r="1.3" fill="currentColor" />
-              <circle cx="15.7" cy="8.3" r="1.3" fill="currentColor" />
-              <circle cx="12" cy="12" r="1.3" fill="currentColor" />
-              <circle cx="8.3" cy="15.7" r="1.3" fill="currentColor" />
-              <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
-            </svg>
-          </div>
-          <div class="event-game-body">
-            <h3>{{ copyLabel(g) }}</h3>
-            <GameDifficulty :weight="g.weight" />
-            <p v-if="isFull(g)" class="seat-state">Al completo</p>
-            <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
-          </div>
-          <div class="event-game-actions">
-            <button
-              v-if="!hasStarted && !isFull(g)"
-              type="button"
-              @click="startBooking(g.eventGameId)"
-            >
-              Prenota
-            </button>
-            <router-link class="detail-link" :to="`/games/${g.gameId}`">
-              Dettagli
-              <span aria-hidden="true">&rarr;</span>
-              <span class="visually-hidden">di {{ copyLabel(g) }}</span>
-            </router-link>
-          </div>
-        </li>
-      </ul>
-      <p v-if="event.games.length === 0" class="empty-note">
-        Per questa serata non è ancora stato messo in tavola nessun gioco.
+          <circle cx="12" cy="10" r="2.4" stroke="currentColor" stroke-width="1.6" />
+        </svg>
+        <span>
+          {{ venueLines.title }}
+          <span v-if="venueLines.detail" class="event-venue-address">{{ venueLines.detail }}</span>
+        </span>
       </p>
+      <EventMap
+        v-if="event.venue.lat !== null && event.venue.lon !== null"
+        :lat="event.venue.lat"
+        :lon="event.venue.lon"
+        :label="venueLines.title"
+      />
     </div>
 
-    <div class="public-page" v-else-if="error">
-      <router-link :to="{ name: 'events' }" class="back-link">&larr; Eventi</router-link>
-      <p class="error">{{ error }}</p>
-    </div>
+    <!-- Il codice si vede una volta sola: chiusa la modale resta qui, in
+         cima al tavolo, finché la pagina non viene lasciata. -->
+    <section v-if="confirmed.length > 0" class="booking-recap">
+      <h2>{{ confirmed.length > 1 ? 'Le tue prenotazioni' : 'La tua prenotazione' }}</h2>
+      <BookingConfirmation
+        v-for="b in confirmed"
+        :key="b.code"
+        :game-label="b.label"
+        :code="b.code"
+        :multi-seat="b.multiSeat"
+        :hint="false"
+        :mailed="b.mailed"
+      />
+      <p class="recap-hint">
+        {{ confirmed.length > 1 ? 'Conservali' : 'Conservalo' }} per gestire la prenotazione o
+        inserire il punteggio finale da "Gestisci prenotazione".
+      </p>
+    </section>
 
-    <ModalDialog
-      :open="bookingOpen"
-      :title="bookingResult ? 'Prenotazione confermata' : `Prenota: ${selectedLabel}`"
-      @close="bookingOpen = false"
-    >
-      <template v-if="bookingResult">
-        <BookingConfirmation
-          :game-label="selectedLabel"
-          :code="bookingResult.bookingCode"
-          :multi-seat="!!selectedGame && selectedGame.seats > 1"
-          :mailed="bookingResult.mailQueued"
+    <h2 class="table-heading">Al tavolo</h2>
+    <p v-if="hasStarted" class="table-note">
+      Questo evento è già iniziato: non è più possibile prenotare.
+    </p>
+
+    <ul class="event-games">
+      <li v-for="g in event.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
+        <img
+          v-if="g.coverPath"
+          :src="`/api/uploads/${g.coverPath}`"
+          :alt="g.name"
+          width="300"
+          height="400"
+          loading="lazy"
+          decoding="async"
         />
-        <div class="form-actions">
-          <button type="button" @click="bookingOpen = false">Ho segnato il codice</button>
+        <div v-else class="cover-placeholder" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />
+            <circle cx="8.3" cy="8.3" r="1.3" fill="currentColor" />
+            <circle cx="15.7" cy="8.3" r="1.3" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+            <circle cx="8.3" cy="15.7" r="1.3" fill="currentColor" />
+            <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
+          </svg>
         </div>
-      </template>
-      <form v-else @submit.prevent="submitBooking">
-        <label>
-          Nome
-          <!-- Il <dialog> nativo rispetta autofocus: al tavolo, da telefono,
-               si prenota con la tastiera già aperta sul primo campo. -->
-          <input v-model="participantName" autofocus required />
-        </label>
-        <label>
-          Email
-          <input v-model="participantEmail" type="email" required />
-        </label>
-        <label>
-          Telefono
-          <input v-model="participantPhone" required />
-        </label>
-        <p v-if="bookingError" class="error">{{ bookingError }}</p>
-        <div class="form-actions">
-          <button type="button" class="btn-secondary" @click="bookingOpen = false">Annulla</button>
-          <button type="submit">Conferma prenotazione</button>
+        <div class="event-game-body">
+          <h3>{{ copyLabel(g) }}</h3>
+          <GameDifficulty :weight="g.weight" />
+          <p v-if="isFull(g)" class="seat-state">Al completo</p>
+          <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
         </div>
-      </form>
-    </ModalDialog>
+        <div class="event-game-actions">
+          <button
+            v-if="!hasStarted && !isFull(g)"
+            type="button"
+            @click="startBooking(g.eventGameId)"
+          >
+            Prenota
+          </button>
+          <router-link class="detail-link" :to="`/games/${g.gameId}`">
+            Dettagli
+            <span aria-hidden="true">&rarr;</span>
+            <span class="visually-hidden">di {{ copyLabel(g) }}</span>
+          </router-link>
+        </div>
+      </li>
+    </ul>
+    <p v-if="event.games.length === 0" class="empty-note">
+      Per questa serata non è ancora stato messo in tavola nessun gioco.
+    </p>
   </div>
+
+  <div v-else-if="error">
+    <router-link :to="{ name: 'events' }" class="back-link">&larr; Eventi</router-link>
+    <p class="error">{{ error }}</p>
+  </div>
+
+  <ModalDialog
+    :open="bookingOpen"
+    :title="bookingResult ? 'Prenotazione confermata' : `Prenota: ${selectedLabel}`"
+    @close="bookingOpen = false"
+  >
+    <template v-if="bookingResult">
+      <BookingConfirmation
+        :game-label="selectedLabel"
+        :code="bookingResult.bookingCode"
+        :multi-seat="!!selectedGame && selectedGame.seats > 1"
+        :mailed="bookingResult.mailQueued"
+      />
+      <div class="form-actions">
+        <button type="button" @click="bookingOpen = false">Ho segnato il codice</button>
+      </div>
+    </template>
+    <form v-else @submit.prevent="submitBooking">
+      <label>
+        Nome
+        <!-- Il <dialog> nativo rispetta autofocus: al tavolo, da telefono,
+             si prenota con la tastiera già aperta sul primo campo. -->
+        <input v-model="participantName" autofocus required />
+      </label>
+      <label>
+        Email
+        <input v-model="participantEmail" type="email" required />
+      </label>
+      <label>
+        Telefono
+        <input v-model="participantPhone" required />
+      </label>
+      <p v-if="bookingError" class="error">{{ bookingError }}</p>
+      <div class="form-actions">
+        <button type="button" class="btn-secondary" @click="bookingOpen = false">Annulla</button>
+        <button type="submit">Conferma prenotazione</button>
+      </div>
+    </form>
+  </ModalDialog>
 </template>

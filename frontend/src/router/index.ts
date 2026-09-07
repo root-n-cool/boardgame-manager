@@ -2,7 +2,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import SetupView from '../views/SetupView.vue'
 import LoginView from '../views/LoginView.vue'
-import DashboardLayout from '../views/DashboardLayout.vue'
 import UsersView from '../views/UsersView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import GamesView from '../views/GamesView.vue'
@@ -21,14 +20,16 @@ import EventAdminDetailView from '../views/EventAdminDetailView.vue'
 declare module 'vue-router' {
   interface RouteMeta {
     public?: boolean
+    /** Pagina senza shell: nessuna topbar, nessuna sidebar. */
+    bare?: boolean
   }
 }
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: '/setup', name: 'setup', component: SetupView },
-    { path: '/login', name: 'login', component: LoginView },
+    { path: '/setup', name: 'setup', component: SetupView, meta: { bare: true } },
+    { path: '/login', name: 'login', component: LoginView, meta: { bare: true } },
     { path: '/', name: 'events', component: EventsView, meta: { public: true } },
     { path: '/events/:id', name: 'event-detail', component: EventDetailView, meta: { public: true } },
     { path: '/manage-booking', name: 'manage-booking', component: ManageBookingView, meta: { public: true } },
@@ -55,25 +56,21 @@ const router = createRouter({
       path: '/invito/:token',
       name: 'invite-accept',
       component: InviteAcceptView,
-      meta: { public: true },
+      meta: { public: true, bare: true },
     },
     { path: '/games/:id', name: 'game-detail', component: GameDetailView, meta: { public: true } },
     { path: '/games/:id/leaderboard', name: 'game-leaderboard', component: GameLeaderboardView, meta: { public: true } },
-    {
-      path: '/admin',
-      component: DashboardLayout,
-      children: [
-        { path: '', redirect: { name: 'admin-events' } },
-        { path: 'events', name: 'admin-events', component: EventsAdminView },
-        { path: 'events/new', name: 'admin-event-new', component: EventNewView },
-        { path: 'events/:id', name: 'admin-event-detail', component: EventAdminDetailView },
-        { path: 'games', name: 'admin-games', component: GamesView },
-        { path: 'games/new', name: 'admin-game-new', component: GameNewView },
-        { path: 'games/:id', name: 'admin-game-detail', component: GameAdminDetailView },
-        { path: 'users', name: 'admin-users', component: UsersView },
-        { path: 'settings', name: 'admin-settings', component: SettingsView },
-      ],
-    },
+    // L'area di gestione non ha più un layout proprio (la shell è unica per
+    // tutta l'app), quindi le rotte stanno piatte invece che annidate.
+    { path: '/admin', redirect: { name: 'admin-events' } },
+    { path: '/admin/events', name: 'admin-events', component: EventsAdminView },
+    { path: '/admin/events/new', name: 'admin-event-new', component: EventNewView },
+    { path: '/admin/events/:id', name: 'admin-event-detail', component: EventAdminDetailView },
+    { path: '/admin/games', name: 'admin-games', component: GamesView },
+    { path: '/admin/games/new', name: 'admin-game-new', component: GameNewView },
+    { path: '/admin/games/:id', name: 'admin-game-detail', component: GameAdminDetailView },
+    { path: '/admin/users', name: 'admin-users', component: UsersView },
+    { path: '/admin/settings', name: 'admin-settings', component: SettingsView },
     // Le pagine di gestione stavano sulla root prima di finire sotto /admin:
     // i vecchi indirizzi restano validi per i segnalibri di chi organizza.
     // Attenzione all'ordine: /games/new e /games/:id sono path distinti, il
