@@ -2134,6 +2134,33 @@ ul.game-grid {
   color: var(--ink-muted);
 }
 
+/* La spunta "prenotabile" sta sulla stessa riga del campo copie: sono le
+   due cose che si decidono insieme mentre si scelgono i giochi. */
+.game-select-bookable {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  white-space: nowrap;
+}
+
+.game-select-bookable input[type='checkbox'] {
+  margin: 0;
+}
+
+.game-select-bookable:has(input:disabled) {
+  opacity: 0.55;
+}
+
+.game-select-locked {
+  flex-basis: 100%;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
+
 .game-select-row input[type='number'] {
   width: 5rem;
   font-family: 'Data', monospace;

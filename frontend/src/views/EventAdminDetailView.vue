@@ -14,6 +14,7 @@ interface EventGameInfo {
   copyIndex: number
   seats: number
   remaining: number
+  bookable: boolean
 }
 
 interface EventDetail {
@@ -137,17 +138,22 @@ async function load() {
   availableGames.value = games
   const copies: Record<number, number> = {}
   const occupied: Record<number, number> = {}
+  const bookable: Record<number, boolean> = {}
   for (const g of event.games) {
     copies[g.gameId] = (copies[g.gameId] ?? 0) + 1
     if (g.seats - g.remaining > 0) {
       occupied[g.gameId] = (occupied[g.gameId] ?? 0) + 1
     }
+    // Tutte le copie di un gioco condividono il flag: l'ultima che si
+    // legge dice la stessa cosa della prima.
+    bookable[g.gameId] = g.bookable
   }
   copiesByGame.value = copies
   occupiedCopiesByGame.value = occupied
   selectedGames.value = Object.entries(copies).map(([gameId, count]) => ({
     gameId: Number(gameId),
     copies: count,
+    bookable: bookable[Number(gameId)] ?? true,
   }))
   bookings.value = await api.get<BookingAdminInfo[]>(`/events/${eventId}/bookings`)
   matchResults.value = await api.get<MatchResultAdminInfo[]>(`/events/${eventId}/match-results`)

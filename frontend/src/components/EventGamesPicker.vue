@@ -19,6 +19,12 @@ export interface PickerGame {
 export interface SelectedGame {
   gameId: number
   copies: number
+  /**
+   * Se il gioco si può prenotare in anticipo. Falso è il filler lasciato
+   * sul tavolo per chi arriva senza prenotazione: sta nella serata, non
+   * nel form pubblico.
+   */
+  bookable: boolean
 }
 
 const props = defineProps<{
@@ -49,8 +55,11 @@ const query = ref('')
 
 const selectedRows = computed(() =>
   props.modelValue
-    .map((s) => ({ game: props.games.find((g) => g.id === s.gameId), copies: s.copies }))
-    .filter((row): row is { game: PickerGame; copies: number } => row.game !== undefined),
+    .map((s) => ({ game: props.games.find((g) => g.id === s.gameId), copies: s.copies, bookable: s.bookable }))
+    .filter(
+      (row): row is { game: PickerGame; copies: number; bookable: boolean } =>
+        row.game !== undefined,
+    ),
 )
 
 const available = computed(() =>
@@ -74,7 +83,7 @@ function occupiedFor(gameId: number) {
 }
 
 function add(gameId: number) {
-  emit('update:modelValue', [...props.modelValue, { gameId, copies: 1 }])
+  emit('update:modelValue', [...props.modelValue, { gameId, copies: 1, bookable: true }])
 }
 
 function remove(gameId: number) {
@@ -88,6 +97,13 @@ function setCopies(gameId: number, copies: number) {
     props.modelValue.map((s) =>
       s.gameId === gameId ? { ...s, copies: Number.isFinite(copies) ? Math.max(min, copies) : min } : s,
     ),
+  )
+}
+
+function setBookable(gameId: number, bookable: boolean) {
+  emit(
+    'update:modelValue',
+    props.modelValue.map((s) => (s.gameId === gameId ? { ...s, bookable } : s)),
   )
 }
 
@@ -136,8 +152,21 @@ function capacityLabel(game: PickerGame, copies: number) {
               @input="setCopies(row.game.id, Number(($event.target as HTMLInputElement).value))"
             />
           </label>
+          <label class="game-select-bookable">
+            <input
+              type="checkbox"
+              :checked="row.bookable"
+              :disabled="occupiedFor(row.game.id) > 0"
+              @change="setBookable(row.game.id, ($event.target as HTMLInputElement).checked)"
+            />
+            prenotabile
+          </label>
           <span v-if="capacityLabel(row.game, row.copies)" class="game-select-seats">
             {{ capacityLabel(row.game, row.copies) }}
+          </span>
+          <span v-if="occupiedFor(row.game.id) > 0" class="game-select-locked">
+            già prenotato: per togliere la prenotazione, annulla prima le
+            prenotazioni attive
           </span>
         </span>
       </li>
