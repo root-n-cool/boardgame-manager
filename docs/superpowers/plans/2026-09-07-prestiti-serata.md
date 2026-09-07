@@ -1100,7 +1100,18 @@ git commit -m "feat: record who takes a copy of a game and who brings it back"
 - Produces: `events.ErrCopyOnLoan error`; `dropCopies` con la firma
   `dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map[int64]int, onLoan map[int64]bool, count int) error`.
 
-- [ ] **Step 1: Scrivi il test che falliste**
+- [ ] **Step 1: Scrivi i test che falliscono**
+
+`dropCopies` cerca **un numero** di copie libere partendo dalla coda,
+saltando quelle bloccate: con due copie di cui la seconda in prestito e
+una richiesta di scendere a una, cancella la prima e tiene la seconda.
+È la semantica che la funzione ha già per le prenotazioni, ed è quella
+giusta — la copia che è fisicamente fuori sopravvive e il registro resta
+vero. `ErrCopyOnLoan` scatta quindi **solo quando le copie libere non
+bastano**: in pratica quando la copia in prestito è l'unica e il gioco
+viene tolto dall'evento. I tre test qui sotto coprono il rifiuto, il
+prestito chiuso che non blocca niente, e la semantica del
+restringimento.
 
 In fondo a `backend/internal/events/loans_test.go`:
 
@@ -1108,24 +1119,15 @@ In fondo a `backend/internal/events/loans_test.go`:
 func TestUpdateEventRefusesToDropACopyOnLoan(t *testing.T) {
 	store, gameStore := newTestStore(t)
 	gameID := mustCreateGame(t, gameStore, "Carcassonne")
-	event, err := store.CreateEvent(context.Background(), events.EventInput{
-		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
-		Games: []events.EventGameInput{{GameID: gameID, Copies: 2}},
-	})
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	copies, err := store.ListEventGames(context.Background(), event.ID)
-	if err != nil {
-		t.Fatalf("list event games: %v", err)
-	}
-	// dropCopies sacrifica dalla coda: il prestito va sull'ultima copia,
-	// che è quella che l'aggiornamento proverebbe a togliere.
-	mustLend(t, store, event.ID, copies[1].ID, "Anna")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	// Una copia sola, e fuori in prestito: togliere il gioco dall'evento
+	// vuol dire cancellare proprio quella, e non c'è nessuna copia libera
+	// con cui soddisfare la richiesta.
+	mustLend(t, store, event.ID, firstCopy(t, store, event.ID).ID, "Anna")
 
-	_, err = store.UpdateEvent(context.Background(), event.ID, events.EventInput{
+	_, err := store.UpdateEvent(context.Background(), event.ID, events.EventInput{
 		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
-		Games: []events.EventGameInput{{GameID: gameID, Copies: 1}},
+		Games: []events.EventGameInput{},
 	})
 	if !errors.Is(err, events.ErrCopyOnLoan) {
 		t.Fatalf("err = %v, want ErrCopyOnLoan", err)
@@ -1135,12 +1137,38 @@ func TestUpdateEventRefusesToDropACopyOnLoan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list event games: %v", err)
 	}
-	if len(after) != 2 {
-		t.Fatalf("copie = %d, want 2: la transazione doveva annullarsi", len(after))
+	if len(after) != 1 {
+		t.Fatalf("copie = %d, want 1: la transazione doveva annullarsi", len(after))
 	}
 }
 
 func TestUpdateEventDropsACopyOnceReturned(t *testing.T) {
+	store, gameStore := newTestStore(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	loan := mustLend(t, store, event.ID, firstCopy(t, store, event.ID).ID, "Anna")
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); err != nil {
+		t.Fatalf("return loan: %v", err)
+	}
+
+	// Il guard riguarda i prestiti aperti: uno chiuso non blocca niente.
+	if _, err := store.UpdateEvent(context.Background(), event.ID, events.EventInput{
+		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{},
+	}); err != nil {
+		t.Fatalf("update event: %v", err)
+	}
+
+	after, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	if len(after) != 0 {
+		t.Fatalf("copie = %d, want 0", len(after))
+	}
+}
+
+func TestUpdateEventShrinkingSpareTheCopyOnLoan(t *testing.T) {
 	store, gameStore := newTestStore(t)
 	gameID := mustCreateGame(t, gameStore, "Carcassonne")
 	event, err := store.CreateEvent(context.Background(), events.EventInput{
@@ -1154,11 +1182,10 @@ func TestUpdateEventDropsACopyOnceReturned(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list event games: %v", err)
 	}
-	loan := mustLend(t, store, event.ID, copies[1].ID, "Anna")
-	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); err != nil {
-		t.Fatalf("return loan: %v", err)
-	}
+	mustLend(t, store, event.ID, copies[1].ID, "Anna")
 
+	// Scendere a una copia si può: si sacrifica quella libera, non quella
+	// che qualcuno ha in mano, così il registro dei prestiti resta vero.
 	if _, err := store.UpdateEvent(context.Background(), event.ID, events.EventInput{
 		Title: "Serata", EventDate: "2030-01-01", StartTime: "21:00",
 		Games: []events.EventGameInput{{GameID: gameID, Copies: 1}},
@@ -1173,15 +1200,18 @@ func TestUpdateEventDropsACopyOnceReturned(t *testing.T) {
 	if len(after) != 1 {
 		t.Fatalf("copie = %d, want 1", len(after))
 	}
+	if after[0].ID != copies[1].ID {
+		t.Fatalf("copia sopravvissuta = %d, want %d: doveva restare quella in prestito", after[0].ID, copies[1].ID)
+	}
 }
 ```
 
-- [ ] **Step 2: Lancia il test e verifica che falliste**
+- [ ] **Step 2: Lancia i test e verifica che falliscano**
 
 ```bash
 docker run --rm -v "$(pwd)/backend:/app" \
   -v bgm-gomodcache:/root/go/pkg/mod -v bgm-gocache:/root/.cache/go-build \
-  -w /app golang:1.25 go test ./internal/events/ -run 'CopyOnLoan|OnceReturned' -v
+  -w /app golang:1.25 go test ./internal/events/ -run 'CopyOnLoan|OnceReturned|ShrinkingSpare' -v
 ```
 
 Atteso: FAIL in compilazione — `ErrCopyOnLoan` non esiste.
