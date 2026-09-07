@@ -271,7 +271,7 @@ onMounted(async () => {
             <button type="button" class="loan-row" @click="startReturning(copy, copy.openLoan)">
               <span class="loan-row-text">
                 <span class="loan-row-title">{{ copyLabel(copy) }}</span>
-                <span v-if="!copy.bookable" class="loan-tag">senza prenotazione</span>
+                <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span class="row-meta">
                   {{ copy.openLoan.borrowerName }} · {{ copy.openLoan.borrowerPhone }}
                 </span>
@@ -305,7 +305,7 @@ onMounted(async () => {
             <button type="button" class="loan-row" @click="startLending(copy)">
               <span class="loan-row-text">
                 <span class="loan-row-title">{{ copyLabel(copy) }}</span>
-                <span v-if="!copy.bookable" class="loan-tag">senza prenotazione</span>
+                <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span v-if="copy.activeBookings.length > 0" class="row-meta">
                   prenotata da
                   {{ copy.activeBookings.map((b) => b.name).join(', ') }}
@@ -324,10 +324,12 @@ onMounted(async () => {
           <button
             v-if="desk.returned.length > 0"
             type="button"
+            class="btn-secondary"
             :aria-expanded="logOpen"
             @click="logOpen = !logOpen"
           >
             {{ logOpen ? 'Nascondi' : 'Mostra' }}
+            <span class="visually-hidden">il registro delle restituzioni</span>
           </button>
         </div>
         <p v-if="desk.returned.length === 0" class="empty-note">
@@ -341,7 +343,12 @@ onMounted(async () => {
                 <span class="row-meta">
                   {{ row.borrowerName }} · {{ clockTime(row.lentAt) }}–{{ clockTime(row.returnedAt) }}
                 </span>
-                <span v-if="row.notes" class="row-meta">{{ row.notes }}</span>
+                <!--
+                  La nota è testo libero, non un dato: prende la stessa
+                  resa che ha nella riga di "Fuori" (`.loan-row-notes`) e
+                  non il mono di `.row-meta`, riservato a telefono e orari.
+                -->
+                <span v-if="row.notes" class="loan-row-notes">{{ row.notes }}</span>
               </span>
             </div>
           </li>
@@ -380,6 +387,18 @@ onMounted(async () => {
           <textarea v-model="lendNotes"></textarea>
         </label>
 
+        <!--
+          Avviso ed errore si annunciano da due regioni live montate a
+          permanenza — nate col testo dentro (`v-if`) sono il caso che gli
+          screen reader in pratica non annunciano, vedi le impostazioni
+          SMTP — e restano fuori dal flusso, così il `gap` del form non
+          lascia uno spazio morto. L'avviso è `polite`: arriva mentre si
+          scrive il nome e non deve interrompere la digitazione, né rubare
+          il focus. I riquadri visibili sotto sono sola presentazione.
+        -->
+        <p class="visually-hidden" role="status" aria-live="polite">{{ lendWarning }}</p>
+        <p class="visually-hidden" role="alert" aria-live="assertive">{{ lendError }}</p>
+
         <p v-if="lendWarning" class="loan-warning">{{ lendWarning }}</p>
         <p v-if="lendError" class="error">{{ lendError }}</p>
 
@@ -406,6 +425,7 @@ onMounted(async () => {
           <textarea v-model="returnNotes"></textarea>
         </label>
 
+        <p class="visually-hidden" role="alert" aria-live="assertive">{{ returnError }}</p>
         <p v-if="returnError" class="error">{{ returnError }}</p>
 
         <div class="form-actions">

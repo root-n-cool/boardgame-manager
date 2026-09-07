@@ -324,7 +324,7 @@ onMounted(async () => {
         </li>
       </ul>
       <p v-if="event.games.some(tableOnly)" class="table-note">
-        I giochi segnati "senza prenotazione" sono a disposizione al tavolo:
+        I giochi segnati "Senza prenotazione" sono a disposizione al tavolo:
         chiedili all'organizzatore quando arrivi.
       </p>
       <p v-if="event.games.length === 0" class="empty-note">

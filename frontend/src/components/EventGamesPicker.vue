@@ -126,11 +126,18 @@ function capacityLabel(game: PickerGame, copies: number) {
   <div class="games-picker">
     <ul v-if="selectedRows.length > 0" role="list" class="games-picker-chosen">
       <li v-for="row in selectedRows" :key="row.game.id" class="game-select-row">
+        <!--
+          Le prenotazioni attive bloccano tre controlli di questa riga con
+          la stessa causa, e `.game-select-locked` è la sola frase che la
+          spiega: `aria-describedby` la lega a tutti tre, altrimenti chi
+          usa uno screen reader sente "disabilitato" senza sapere perché.
+        -->
         <label class="checkbox-label">
           <input
             type="checkbox"
             checked
             :disabled="occupiedFor(row.game.id) > 0"
+            :aria-describedby="occupiedFor(row.game.id) > 0 ? `game-lock-${row.game.id}` : undefined"
             @change="remove(row.game.id)"
           />
           {{ row.game.name }}
@@ -144,11 +151,12 @@ function capacityLabel(game: PickerGame, copies: number) {
             }}
           </span>
           <label class="game-select-copies">
-            copie
+            copie<span class="visually-hidden"> di {{ row.game.name }}</span>
             <input
               type="number"
               :min="Math.max(1, occupiedFor(row.game.id))"
               :value="row.copies"
+              :aria-describedby="occupiedFor(row.game.id) > 0 ? `game-lock-${row.game.id}` : undefined"
               @input="setCopies(row.game.id, Number(($event.target as HTMLInputElement).value))"
             />
           </label>
@@ -157,16 +165,21 @@ function capacityLabel(game: PickerGame, copies: number) {
               type="checkbox"
               :checked="row.bookable"
               :disabled="occupiedFor(row.game.id) > 0"
+              :aria-describedby="occupiedFor(row.game.id) > 0 ? `game-lock-${row.game.id}` : undefined"
               @change="setBookable(row.game.id, ($event.target as HTMLInputElement).checked)"
             />
-            prenotabile
+            prenotabile<span class="visually-hidden"> di {{ row.game.name }}</span>
           </label>
           <span v-if="capacityLabel(row.game, row.copies)" class="game-select-seats">
             {{ capacityLabel(row.game, row.copies) }}
           </span>
-          <span v-if="occupiedFor(row.game.id) > 0" class="game-select-locked">
-            già prenotato: per togliere la prenotazione, annulla prima le
-            prenotazioni attive
+          <span
+            v-if="occupiedFor(row.game.id) > 0"
+            :id="`game-lock-${row.game.id}`"
+            class="game-select-locked"
+          >
+            Ha prenotazioni attive: annullale nella sezione Prenotazioni per
+            togliere il gioco, ridurre le copie o renderlo non prenotabile.
           </span>
         </span>
       </li>
