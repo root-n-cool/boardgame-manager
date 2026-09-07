@@ -3207,3 +3207,112 @@ tbody tr:nth-child(3) .rank-medal {
   background: var(--card);
   border-color: var(--card-line);
 }
+
+/* Banco prestiti: si usa in piedi, con una mano, quindi ogni riga è un
+   bersaglio grande e l'azione sta a destra dove arriva il pollice. */
+.loan-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loan-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  min-height: 3.5rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  background: var(--card);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.loan-row:hover,
+.loan-row:focus-visible {
+  border-color: var(--accent);
+}
+
+.loan-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.loan-row-title {
+  font-weight: 600;
+}
+
+.loan-row-notes {
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--ink-muted);
+}
+
+.loan-row-action {
+  flex-shrink: 0;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+/* La pastiglia dei giochi che stanno nella serata ma non a prenotazione:
+   stesso disegno di .seat-state sulla pagina pubblica, così la stessa
+   informazione ha la stessa forma nei due posti in cui compare. */
+.loan-tag {
+  align-self: flex-start;
+  padding: 0.14rem 0.45rem;
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink-muted);
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.loan-booking-picks {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loan-booking-picks button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  width: 100%;
+  text-align: left;
+}
+
+.loan-warning {
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  background: var(--bg);
+  border: 1px solid var(--card-line);
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.loan-modal-meta {
+  margin: 0 0 0.5rem;
+  font-family: 'Body', system-ui, sans-serif;
+  color: var(--ink-muted);
+}

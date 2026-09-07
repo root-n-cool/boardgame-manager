@@ -264,6 +264,21 @@ onMounted(async () => {
         <p v-if="eventWhen" class="page-meta">{{ eventWhen }}</p>
       </div>
       <div class="page-head-actions">
+        <router-link
+          class="action-link is-compact"
+          :to="{ name: 'admin-event-loans', params: { id: eventId } }"
+        >
+          Banco prestiti
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M4 7.5h9.5M4 12h9.5M4 16.5h6M17 9l3 3-3 3"
+              stroke="currentColor"
+              stroke-width="1.8"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </router-link>
         <a
           class="action-link is-compact"
           :href="`/events/${eventId}`"
