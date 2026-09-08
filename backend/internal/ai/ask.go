@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -104,8 +105,8 @@ func (c *HTTPClient) Transcribe(ctx context.Context, jpeg []byte, pageNumber int
 
 // postRaw manda una richiesta già serializzata a /chat/completions e
 // restituisce il body grezzo della risposta. Separato da postChat perché
-// Ask (task successivo) deve ispezionare finish_reason e tool_calls, non
-// solo il testo di una scelta.
+// Ask deve ispezionare finish_reason e tool_calls, non solo il testo di
+// una scelta.
 //
 // Il timeout è governato dal contesto passato qui, non da
 // http.Client.Timeout: quel campo è fissato una volta per tutte in
@@ -152,11 +153,10 @@ func (c *HTTPClient) postRaw(ctx context.Context, payload []byte, timeout time.D
 }
 
 // postChat manda una richiesta già serializzata a /chat/completions e
-// restituisce il contenuto della prima scelta. Usata da Transcribe;
-// Ask (task successivo) userà postRaw direttamente perché deve ispezionare
-// finish_reason e tool_calls, non solo il testo. Translate resta a parte:
-// il suo codice HTTP inline è precedente a questo file e non tocca né
-// l'uno né l'altro helper.
+// restituisce il contenuto della prima scelta. Usata da Transcribe; Ask usa
+// postRaw direttamente perché deve ispezionare finish_reason e tool_calls,
+// non solo il testo. Translate resta a parte: il suo codice HTTP inline è
+// precedente a questo file e non tocca né l'uno né l'altro helper.
 func (c *HTTPClient) postChat(ctx context.Context, payload []byte, timeout time.Duration) (string, error) {
 	body, err := c.postRaw(ctx, payload, timeout)
 	if err != nil {
@@ -171,4 +171,306 @@ func (c *HTTPClient) postChat(ctx context.Context, payload []byte, timeout time.
 		return "", errors.New("ai provider returned no choices")
 	}
 	return parsed.Choices[0].Message.Content, nil
+}
+
+// InlineCorpusMaxChars è la soglia sotto la quale il manuale entra intero
+// nel contesto e il tool non viene nemmeno dichiarato. ~6.000 token,
+// stimati a 3 caratteri per token (conservativo per l'italiano).
+//
+// È la leva più efficace per ridurre le chiamate al tool: non offrirlo. Un
+// manuale di 4 pagine (il regolamento vero di questo progetto) sta
+// largamente sotto.
+const InlineCorpusMaxChars = 18000
+
+// MaxToolIterations ferma un modello che si incarta a richiamare lo stesso
+// tool in ciclo. Non è un limite sull'utente: è protezione da un bug del
+// modello, e quando scatta si forza una risposta togliendo il tool invece
+// di restituire un errore.
+const MaxToolIterations = 5
+
+// askTimeout è il tetto complessivo di una domanda, giri del tool
+// compresi. Un handler HTTP senza timeout tiene una goroutine occupata per
+// sempre.
+const askTimeout = 60 * time.Second
+
+// Turn è un messaggio della conversazione così come arriva dal browser. Lo
+// storico non è persistito da nessuna parte: vive nel componente di chat
+// del frontend e torna indietro a ogni domanda.
+type Turn struct {
+	Role string
+	Text string
+}
+
+// SearchFunc cerca nel manuale e restituisce il payload già formattato per
+// il modello, come stringa. È una funzione e non un'interfaccia sui tipi di
+// manuals: così questo pacchetto non conosce SQLite né manuals.Hit, e il
+// loop si testa con una closure di due righe.
+type SearchFunc func(ctx context.Context, keywords []string) (string, error)
+
+type AskRequest struct {
+	GameName string
+	Turns    []Turn
+	// CorpusChars decide inline vs tool; CorpusText è il manuale intero
+	// (serve solo sotto soglia); CorpusIndex è l'indice dei titoli (serve
+	// sempre quando c'è, ed è quel che evita la chiamata esplorativa).
+	CorpusChars int
+	CorpusText  string
+	CorpusIndex string
+	Search      SearchFunc
+}
+
+const searchToolName = "cerca_nel_manuale"
+
+// searchToolSchema è dove sta il lavoro di "far fare al modello una sola
+// chiamata": la descrizione del parametro chiede le varianti tutte insieme,
+// con un esempio. Non c'è nessuna regola nel prompt che vieti la seconda
+// chiamata — si rende inutile, non si proibisce: vietarla negherebbe il
+// riprovare proprio quando la prima ricerca non ha trovato niente.
+const searchToolSchema = `{
+  "type": "object",
+  "properties": {
+    "parole_chiave": {
+      "type": "array",
+      "items": {"type": "string"},
+      "description": "Da 3 a 8 varianti della stessa cosa: sinonimi, il termine tecnico e quello colloquiale, singolare e plurale. Esempio: [\"pareggio\", \"stesso punteggio\", \"parità\", \"spareggio\"]. Supporta \"frase esatta\", OR, AND e i prefissi con *."
+    }
+  },
+  "required": ["parole_chiave"]
+}`
+
+type toolFunctionDef struct {
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Parameters  json.RawMessage `json:"parameters"`
+}
+
+type toolDef struct {
+	Type     string          `json:"type"`
+	Function toolFunctionDef `json:"function"`
+}
+
+type askRequestBody struct {
+	Model       string            `json:"model"`
+	Temperature float64           `json:"temperature"`
+	Messages    []json.RawMessage `json:"messages"`
+	Tools       []toolDef         `json:"tools,omitempty"`
+}
+
+type toolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+
+type askChoice struct {
+	FinishReason string          `json:"finish_reason"`
+	Message      json.RawMessage `json:"message"`
+}
+
+type askResponseBody struct {
+	Choices []askChoice `json:"choices"`
+}
+
+// assistantMessage legge quel che serve dal messaggio assistant di una
+// risposta: Content può arrivare null quando c'è un tool_calls, e un
+// errore di unmarshal sul Content non deve far perdere i ToolCalls già
+// letti — per questo il chiamante ignora l'errore di json.Unmarshal e
+// guarda solo cosa è arrivato a buon fine nei campi.
+type assistantMessage struct {
+	Role      string     `json:"role"`
+	Content   string     `json:"content"`
+	ToolCalls []toolCall `json:"tool_calls"`
+}
+
+type toolResultMessage struct {
+	Role       string `json:"role"`
+	ToolCallID string `json:"tool_call_id"`
+	Content    string `json:"content"`
+}
+
+// Ask risponde a una domanda sulle regole di un gioco. Se il manuale sta
+// sotto InlineCorpusMaxChars entra intero nel prompt e il giro è uno solo;
+// altrimenti il modello riceve il tool di ricerca e l'indice del manuale,
+// e il loop prosegue finché non risponde o non scatta MaxToolIterations.
+func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
+	if !c.configured() {
+		return "", ErrNotConfigured
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, askTimeout)
+	defer cancel()
+
+	inline := req.CorpusChars > 0 && req.CorpusChars <= InlineCorpusMaxChars
+
+	system, err := json.Marshal(chatMessage{Role: "system", Content: askSystemPrompt(req, inline)})
+	if err != nil {
+		return "", err
+	}
+	messages := []json.RawMessage{system}
+	for _, t := range req.Turns {
+		role := "user"
+		if t.Role == "assistant" || t.Role == "ai" {
+			role = "assistant"
+		}
+		raw, err := json.Marshal(chatMessage{Role: role, Content: t.Text})
+		if err != nil {
+			return "", err
+		}
+		messages = append(messages, raw)
+	}
+
+	var tools []toolDef
+	if !inline && req.Search != nil {
+		tools = append(tools, toolDef{
+			Type: "function",
+			Function: toolFunctionDef{
+				Name: searchToolName,
+				Description: "Cerca nel regolamento del gioco. Passa in un'unica chiamata " +
+					"tutte le varianti lessicali plausibili: la ricerca è lessicale, " +
+					"quindi più varianti trovano più cose.",
+				Parameters: json.RawMessage(searchToolSchema),
+			},
+		})
+	}
+
+	for iteration := 0; ; iteration++ {
+		// Alla scadenza della guardia si rifà la richiesta senza tool: il
+		// modello è costretto a rispondere con quello che ha, invece di
+		// restare a girare.
+		active := tools
+		if iteration >= MaxToolIterations {
+			active = nil
+		}
+
+		payload, err := json.Marshal(askRequestBody{
+			Model:       c.Model,
+			Temperature: 0.2,
+			Messages:    messages,
+			Tools:       active,
+		})
+		if err != nil {
+			return "", err
+		}
+
+		raw, err := c.postRaw(ctx, payload, askTimeout)
+		if err != nil {
+			return "", err
+		}
+		var parsed askResponseBody
+		if err := json.Unmarshal(raw, &parsed); err != nil {
+			return "", fmt.Errorf("parse ai response: %w", err)
+		}
+		if len(parsed.Choices) == 0 {
+			return "", errors.New("ai provider returned no choices")
+		}
+		choice := parsed.Choices[0]
+
+		var msg assistantMessage
+		// Content può arrivare null quando ci sono tool_calls: un errore di
+		// unmarshal qui non deve far perdere i tool_calls, quindi si ignora
+		// e si guarda cosa si è riusciti a leggere.
+		_ = json.Unmarshal(choice.Message, &msg)
+
+		if len(msg.ToolCalls) == 0 {
+			answer := strings.TrimSpace(msg.Content)
+			if answer == "" {
+				return "", errors.New("ai provider returned an empty answer")
+			}
+			return answer, nil
+		}
+		if active == nil {
+			// Il modello insiste col tool in una richiesta che non ne
+			// dichiara nessuno: non c'è altro da fare che dirlo.
+			return "", errors.New("ai provider kept calling a tool that was not offered")
+		}
+
+		// Il messaggio assistant va rimandato verbatim (il json.RawMessage
+		// grezzo della risposta, non una sua ri-serializzazione da
+		// assistantMessage): altrimenti il provider non riconosce a cosa
+		// risponde il tool_call_id che segue, o si perde un campo che non
+		// abbiamo modellato ma che il provider si aspetta di rivedere.
+		messages = append(messages, choice.Message)
+
+		for _, call := range msg.ToolCalls {
+			result := "Tool sconosciuto."
+			if call.Function.Name == searchToolName && req.Search != nil {
+				keywords := parseKeywords(call.Function.Arguments)
+				out, err := req.Search(ctx, keywords)
+				if err != nil {
+					log.Printf("ask: manual search failed: %v", err)
+					result = "La ricerca nel manuale non è disponibile in questo momento."
+				} else {
+					result = out
+				}
+			}
+			resultRaw, err := json.Marshal(toolResultMessage{
+				Role: "tool", ToolCallID: call.ID, Content: result,
+			})
+			if err != nil {
+				return "", err
+			}
+			messages = append(messages, resultRaw)
+		}
+
+		if iteration+1 >= MaxToolIterations {
+			log.Printf("ask: il modello ha chiamato %s %d volte: forzo la risposta senza tool", searchToolName, iteration+1)
+		}
+	}
+}
+
+// parseKeywords legge l'argomento del tool. Accetta sia l'array previsto
+// dallo schema sia una stringa separata da virgole, perché i modelli
+// economici a volte mandano la seconda: rifiutarla significherebbe perdere
+// la domanda per un dettaglio di serializzazione.
+func parseKeywords(arguments string) []string {
+	var asArray struct {
+		Keywords []string `json:"parole_chiave"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &asArray); err == nil && len(asArray.Keywords) > 0 {
+		return trimAll(asArray.Keywords)
+	}
+	var asString struct {
+		Keywords string `json:"parole_chiave"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &asString); err == nil && strings.TrimSpace(asString.Keywords) != "" {
+		return trimAll(strings.Split(asString.Keywords, ","))
+	}
+	return nil
+}
+
+func trimAll(in []string) []string {
+	out := make([]string, 0, len(in))
+	for _, s := range in {
+		if s = strings.TrimSpace(s); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// askSystemPrompt costruisce le istruzioni. La regola che conta è la terza:
+// al tavolo una regola inventata fa più danno di un "non lo dice".
+func askSystemPrompt(req AskRequest, inline bool) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Sei l'assistente regole di %q per un'associazione di giochi da tavolo. ", req.GameName)
+	b.WriteString("Chi ti scrive è in piedi a un tavolo, con le carte in mano: rispondi in italiano, breve, come si parla. ")
+	b.WriteString("Rispondi SOLO con quello che c'è nel regolamento. ")
+	b.WriteString("Se il regolamento non lo dice, dillo chiaramente invece di dedurre: al tavolo una regola inventata fa danno. ")
+	b.WriteString("Cita sempre la pagina da cui viene la risposta, nella forma \"Regolamento base, pag. 7\". ")
+	b.WriteString("Non inventare nomi di carte, valori o numeri che non hai letto.\n\n")
+
+	if req.CorpusIndex != "" {
+		fmt.Fprintf(&b, "Indice del regolamento: %s\n\n", req.CorpusIndex)
+	}
+	if inline {
+		b.WriteString("Il regolamento completo:\n\n")
+		b.WriteString(req.CorpusText)
+	} else {
+		b.WriteString("Per leggere il regolamento usa lo strumento di ricerca. ")
+		b.WriteString("Se una ricerca non trova nulla, riprova con altre parole prima di dire che il manuale non lo dice.")
+	}
+	return b.String()
 }

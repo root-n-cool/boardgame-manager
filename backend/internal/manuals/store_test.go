@@ -578,3 +578,32 @@ func containsString(xs []string, v string) bool {
 	}
 	return false
 }
+
+func TestFormatIndexAndCorpus(t *testing.T) {
+	corpus := manuals.Corpus{
+		Chars: 120,
+		Manuals: []manuals.ManualText{{
+			Title: "Regolamento base", LanguageCode: "it",
+			Pages: []manuals.StoredPage{
+				{PageNumber: 4, Heading: "Fase di Upkeep", Text: "Ogni giocatore paga una moneta."},
+				{PageNumber: 7, Heading: "", Text: "La partita termina quando la pila si esaurisce."},
+			},
+		}},
+	}
+
+	idx := manuals.FormatIndex(corpus)
+	if !strings.Contains(idx, "Fase di Upkeep p.4") {
+		t.Fatalf("l'indice non riporta il titolo con la pagina: %q", idx)
+	}
+	// Una pagina senza heading non inquina l'indice con una riga vuota.
+	if strings.Contains(idx, "p.7") {
+		t.Fatalf("una pagina senza titolo non va nell'indice: %q", idx)
+	}
+
+	full := manuals.FormatCorpus(corpus)
+	for _, want := range []string{"Regolamento base", "pag. 4", "pag. 7", "paga una moneta", "pila si esaurisce"} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("il corpus non contiene %q:\n%s", want, full)
+		}
+	}
+}

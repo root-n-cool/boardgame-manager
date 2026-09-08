@@ -445,3 +445,34 @@ func FormatSearchResult(r SearchResult) string {
 func nullIfEmpty(v string) sql.NullString {
 	return sql.NullString{String: v, Valid: v != ""}
 }
+
+// FormatIndex rende l'indice del manuale per il prompt: solo i titoli di
+// sezione con la loro pagina, ~200 token. È quel che evita al modello la
+// chiamata esplorativa al tool — uno che vede l'indice scrive le parole
+// chiave giuste al primo colpo, uno cieco tira a indovinare e richiama.
+func FormatIndex(c Corpus) string {
+	var parts []string
+	for _, m := range c.Manuals {
+		for _, p := range m.Pages {
+			if strings.TrimSpace(p.Heading) == "" {
+				continue
+			}
+			parts = append(parts, fmt.Sprintf("%s p.%d", p.Heading, p.PageNumber))
+		}
+	}
+	return strings.Join(parts, " · ")
+}
+
+// FormatCorpus rende tutto il testo dei manuali, con i marcatori di pagina
+// che permettono al modello di citare. Serve al caso sotto soglia, dove il
+// manuale entra intero nel contesto e non c'è nessun tool da chiamare.
+func FormatCorpus(c Corpus) string {
+	var b strings.Builder
+	for _, m := range c.Manuals {
+		fmt.Fprintf(&b, "=== %s (%s) ===\n\n", m.Title, m.LanguageCode)
+		for _, p := range m.Pages {
+			fmt.Fprintf(&b, "--- pag. %d ---\n%s\n\n", p.PageNumber, p.Text)
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
