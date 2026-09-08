@@ -18,6 +18,14 @@ const props = defineProps<{
   headings: string[]
 }>()
 
+// Dichiarato ma non ancora emesso da nessuna parte: senza deep-chat non
+// c'è un gesto interno che debba chiudere il pannello. Lo dichiariamo già
+// perché ManualChat.vue lo ascolta (@close) e perché il Task 11, quando
+// monta la chat vera, avrà un modo suo di offrire "esci" da dentro. Non
+// assegnato a una costante: non c'è ancora nulla da emettere con essa, e
+// `noUnusedLocals` boccerebbe una `emit` mai chiamata.
+defineEmits<{ close: [] }>()
+
 const started = ref(false)
 const pendingQuestion = ref('')
 

@@ -3656,6 +3656,10 @@ tbody tr:nth-child(3) .rank-medal {
     max-height: none;
   }
 
+  /* :has() non è supportato ovunque: sui motori senza, questa regola non
+     si applica e la colonna resta 22rem anche da collassata. Va bene
+     così — è un fallback grazioso, non un bug: il contenuto si nasconde
+     comunque via v-show, cambia solo quanto spazio vuoto resta a destra. */
   .game-detail-layout.has-chat:has(.manual-chat-aside.is-collapsed) {
     grid-template-columns: minmax(0, 1fr) 2.75rem;
   }
@@ -3766,10 +3770,13 @@ tbody tr:nth-child(3) .rank-medal {
   height: 1.15rem;
 }
 
-/* Il bottone non deve coprire l'ultimo contenuto della pagina. */
+/* Il bottone non deve coprire l'ultimo contenuto della pagina. La riserva
+   include env(safe-area-inset-bottom) come lo fa il bottone stesso: senza,
+   su un iPhone con home indicator il margine cresce sotto al bottone ma
+   non sotto al contenuto, e il bottone torna a coprirlo. */
 @media (max-width: 1099px) {
   .game-detail-layout.has-chat {
-    padding-bottom: 4rem;
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
   }
 }
 
