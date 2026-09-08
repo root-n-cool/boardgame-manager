@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import ModalDialog from '../components/ModalDialog.vue'
 import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
+import ManualPrepPanel from '../components/ManualPrepPanel.vue'
 import type { GameDetail, GameLanguageInfo } from '../utils/game'
 
 const route = useRoute()
@@ -513,6 +514,22 @@ onMounted(async () => {
           @remove="removeMedia"
         />
         <p v-if="mediaError && !mediaModalOpen" class="error">{{ mediaError }}</p>
+
+        <!--
+          La preparazione di un manuale è un'azione da admin: GameMediaList è
+          condiviso con la scheda pubblica, quindi il pannello vive qui e non
+          lì. Un manuale per pannello, uno per ogni PDF della lingua attiva.
+        -->
+        <ManualPrepPanel
+          v-for="media in (activeLanguage()?.media || []).filter(
+            (m) => m.type === 'file' && m.url.toLowerCase().endsWith('.pdf'),
+          )"
+          :key="media.id"
+          :game-id="game.id"
+          :lang="activeLangCode"
+          :media-id="media.id"
+          :media-title="media.title || 'Manuale'"
+        />
       </section>
     </template>
 

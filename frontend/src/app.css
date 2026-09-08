@@ -3831,3 +3831,67 @@ tbody tr:nth-child(3) .rank-medal {
   border: 0;
   background-color: transparent;
 }
+
+/* ---------- Preparazione manuale (admin) ---------- */
+
+.manual-prep {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--card-line);
+}
+
+.manual-prep-title {
+  margin: 0 0 0.3rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.manual-prep-state {
+  margin: 0 0 0.5rem;
+  font-family: 'Data', ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.manual-prep-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+/* Un manuale di quaranta pagine è quaranta caselle: un tetto in altezza con
+   scroll proprio tiene i bottoni di salvataggio raggiungibili senza dover
+   scorrere oltre l'intera trascrizione ogni volta. */
+.manual-prep-pages {
+  max-height: 32rem;
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  margin: 0.75rem 0;
+}
+
+.manual-prep-page {
+  margin-bottom: 0.75rem;
+}
+
+.manual-prep-page label {
+  display: block;
+  margin-bottom: 0.2rem;
+  font-family: 'Data', ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.manual-prep-page-empty {
+  color: var(--danger);
+}
+
+.manual-prep-page textarea {
+  width: 100%;
+  font-family: 'Data', ui-monospace, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
