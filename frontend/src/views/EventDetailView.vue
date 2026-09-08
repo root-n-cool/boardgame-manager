@@ -310,6 +310,18 @@ onMounted(async () => {
           <p v-if="tableOnly(g)" class="seat-state">Senza prenotazione</p>
           <p v-else-if="isFull(g)" class="seat-state">Al completo</p>
           <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
+          <!-- Il link al manuale sta QUI e non fra le azioni in fondo alla
+               card: le azioni sono ancorate al fondo (`margin-top: auto`) per
+               tenere allineata la fila dei "Prenota", e una voce che c'è solo
+               su alcune schede spingerebbe quel bottone più in alto proprio
+               sulle schede col manuale. Qui è anche il posto giusto per
+               senso: è un'informazione sul gioco, non un passo della
+               prenotazione. -->
+          <p v-if="g.canAsk" class="event-game-ask">
+            <router-link :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }">
+              Dubbi sulle regole? Chiedi al manuale
+            </router-link>
+          </p>
         </div>
         <div class="event-game-actions">
           <button
@@ -323,13 +335,6 @@ onMounted(async () => {
             Dettagli
             <span aria-hidden="true">&rarr;</span>
             <span class="visually-hidden">di {{ copyLabel(g) }}</span>
-          </router-link>
-          <router-link
-            v-if="g.canAsk"
-            class="detail-link"
-            :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }"
-          >
-            Dubbi sulle regole? Chiedi al manuale
           </router-link>
         </div>
       </li>

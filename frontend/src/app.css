@@ -2072,6 +2072,24 @@ ul.game-grid {
   color: var(--ink-muted);
 }
 
+/* "Dubbi sulle regole?" compare solo sulle schede con un manuale preparato,
+   quindi vive nel corpo della card e non fra le azioni: nella pila in fondo
+   sposterebbe il bottone "Prenota" solo su alcune schede, rompendo proprio
+   l'allineamento che `margin-top: auto` esiste per garantire. */
+.event-game-ask {
+  margin-top: 0.45rem;
+}
+
+.event-game-ask a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.event-game-ask a:hover {
+  text-decoration: underline;
+}
+
 /* Le azioni stanno in fondo alla card: `margin-top: auto` le spinge giù
    qualunque sia l'altezza del nome, così la fila resta allineata. */
 .event-game-actions {
