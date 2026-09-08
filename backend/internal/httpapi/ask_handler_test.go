@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -438,6 +439,173 @@ func TestGameDetail_ExposesCanAsk(t *testing.T) {
 	// Con provider ma senza manuale: falso.
 	if canAsk(t, router, bareID) {
 		t.Fatal("senza manuale preparato canAsk deve essere falso anche con l'AI attiva")
+	}
+}
+
+func TestGameDetail_ExposesTheManualHeadings(t *testing.T) {
+	// I titoli di sezione alimentano le domande suggerite della chat
+	// ("Cosa dice il manuale su «Fase di Upkeep»?"). Senza questo campo il
+	// pannello ripiegava per sempre sulle tre domande fisse, mentre
+	// DESIGN.md descriveva un comportamento che non poteva accadere.
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/games/"+strconv.FormatInt(gameID, 10), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET game: %d %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		ManualHeadings []string `json:"manualHeadings"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("risposta non JSON: %v", err)
+	}
+	if len(body.ManualHeadings) != 2 {
+		t.Fatalf("attesi i 2 titoli del manuale, ottenuti %v", body.ManualHeadings)
+	}
+	if body.ManualHeadings[0] != "Fase di Upkeep" || body.ManualHeadings[1] != "Fine partita" {
+		t.Fatalf("titoli sbagliati o fuori ordine di pagina: %v", body.ManualHeadings)
+	}
+}
+
+func TestGameDetail_CapsTheManualHeadings(t *testing.T) {
+	// Un manuale di quaranta pagine non deve mandare quaranta titoli al
+	// telefono di chi sta al tavolo per costruirne tre domande.
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	// Si riscrive il manuale con quaranta pagine, ognuna col suo titolo.
+	var mediaID int64
+	if err := conn.QueryRow(`SELECT id FROM game_media LIMIT 1`).Scan(&mediaID); err != nil {
+		t.Fatalf("media: %v", err)
+	}
+	pages := make([]manuals.StoredPage, 0, 40)
+	for i := 1; i <= 40; i++ {
+		pages = append(pages, manuals.StoredPage{
+			PageNumber: i, Source: "vision",
+			Heading: fmt.Sprintf("Sezione %d", i),
+			Text:    fmt.Sprintf("Sezione %d\nTesto della sezione numero %d.", i, i),
+		})
+	}
+	if err := manuals.NewStore(conn).ReplacePages(
+		context.Background(), gameID, mediaID, "it", pages); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/games/"+strconv.FormatInt(gameID, 10), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var body struct {
+		ManualHeadings []string `json:"manualHeadings"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &body)
+	if len(body.ManualHeadings) == 0 {
+		t.Fatal("nessun titolo: la scheda non ha di che costruire le domande")
+	}
+	if len(body.ManualHeadings) > 8 {
+		t.Fatalf("%d titoli mandati alla scheda pubblica: nessun tetto", len(body.ManualHeadings))
+	}
+}
+
+func TestEventDetail_ExposesCanAskPerGame(t *testing.T) {
+	// Il link "Dubbi sulle regole? Chiedi al manuale" compariva su ogni
+	// gioco della serata. Su uno senza manuale preparato portava a una
+	// scheda dove non succedeva niente: nessuna chat, nessun messaggio. Al
+	// tavolo si legge come un'app rotta, non come una funzione assente.
+	server, conn := newTestServerWithDB(t)
+	server.Asker = &fakeAsker{answer: "ok"}
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	conManuale := seedGameWithPreparedManual(t, conn)
+	senzaManuale := createTestGameForEvent(t, server.Games, "Senza manuale")
+
+	body := fmt.Sprintf(
+		`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00",`+
+			`"games":[{"gameId":%d,"copies":1},{"gameId":%d,"copies":1}]}`,
+		conManuale, senzaManuale)
+	rec := doLoanRequest(router, http.MethodPost, "/api/events", cookie, body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("creazione evento: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	json.NewDecoder(rec.Body).Decode(&created)
+
+	detail := getEventDetailGames(t, router, created.ID)
+	if len(detail.Games) != 2 {
+		t.Fatalf("attesi 2 giochi, ottenuti %d", len(detail.Games))
+	}
+	byGame := map[int64]bool{}
+	for _, g := range detail.Games {
+		byGame[g.GameID] = g.CanAsk
+	}
+	if !byGame[conManuale] {
+		t.Fatal("il gioco col manuale preparato deve avere canAsk vero")
+	}
+	if byGame[senzaManuale] {
+		t.Fatal("il gioco senza manuale deve avere canAsk falso: il link non ha nulla dietro")
+	}
+}
+
+func TestBookingDetail_ExposesCanAsk(t *testing.T) {
+	// Stessa cosa sulla pagina della prenotazione, dove il gioco è uno solo.
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	body := fmt.Sprintf(
+		`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","games":[{"gameId":%d,"copies":1}]}`,
+		gameID)
+	rec := doLoanRequest(router, http.MethodPost, "/api/events", cookie, body)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("creazione evento: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	json.NewDecoder(rec.Body).Decode(&created)
+	detail := getEventDetailGames(t, router, created.ID)
+
+	booking := fmt.Sprintf(
+		`{"eventGameId":%d,"participantName":"Ada","participantEmail":"ada@example.com","participantPhone":"3330000000"}`,
+		detail.Games[0].EventGameID)
+	rec = doLoanRequest(router, http.MethodPost,
+		fmt.Sprintf("/api/events/%d/bookings", created.ID), nil, booking)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("prenotazione: %d %s", rec.Code, rec.Body.String())
+	}
+	var b struct {
+		BookingCode string `json:"bookingCode"`
+	}
+	json.NewDecoder(rec.Body).Decode(&b)
+
+	lookup := `{"bookingCode":"` + b.BookingCode + `"}`
+	rec = doLoanRequest(router, http.MethodPost, "/api/bookings/lookup", nil, lookup)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("lettura prenotazione: %d %s", rec.Code, rec.Body.String())
+	}
+	var got struct {
+		CanAsk bool `json:"canAsk"`
+	}
+	json.NewDecoder(rec.Body).Decode(&got)
+	// Senza provider AI configurato canAsk resta falso anche col manuale:
+	// sono due condizioni, come sulla scheda gioco.
+	if got.CanAsk {
+		t.Fatal("senza provider AI la prenotazione non deve promettere la chat")
+	}
+
+	server.Asker = &fakeAsker{answer: "ok"}
+	rec = doLoanRequest(router, http.MethodPost, "/api/bookings/lookup", nil, lookup)
+	json.NewDecoder(rec.Body).Decode(&got)
+	if !got.CanAsk {
+		t.Fatal("col manuale preparato e il provider configurato canAsk deve essere vero")
 	}
 }
 

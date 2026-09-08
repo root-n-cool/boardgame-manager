@@ -177,20 +177,92 @@ func (s *Store) DeletePages(ctx context.Context, mediaID int64) error {
 	return tx.Commit()
 }
 
+// maxSuggestionHeadings è quanti titoli di sezione escono verso la scheda
+// pubblica. La chat ne usa tre per costruire le domande suggerite: un
+// manuale di quaranta pagine non ha nessun motivo di mandarne quaranta al
+// telefono di chi sta al tavolo. Se ne mandano qualcuno in più di tre
+// perché il pannello scarta i doppioni (due pagine con lo stesso titolo, o
+// due titoli che la sua tabella mappa sulla stessa domanda) e con
+// esattamente tre ripiegherebbe sulle domande fisse al primo doppione.
+const maxSuggestionHeadings = 8
+
+// ManualSummary è quel che la scheda gioco deve sapere del manuale: se
+// esiste (governa, col provider configurato, la comparsa della chat) e i
+// primi titoli di sezione (alimentano le domande suggerite).
+type ManualSummary struct {
+	HasPages bool
+	Headings []string
+}
+
 // HasPages è la condizione, insieme al provider configurato, che governa la
-// comparsa della chat in UI. Una COUNT invece di Corpus: qui interessa solo
-// il sì o no, non il testo.
+// comparsa della chat in UI.
 func (s *Store) HasPages(ctx context.Context, gameID int64) (bool, error) {
-	var n int
-	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM manual_page p
+	sum, err := s.Summary(ctx, gameID)
+	return sum.HasPages, err
+}
+
+// Summary legge in UNA query sia l'esistenza delle pagine sia i titoli: la
+// scheda pubblica del gioco è la pagina che ogni partecipante apre, e i
+// titoli non devono costarle un secondo giro.
+func (s *Store) Summary(ctx context.Context, gameID int64) (ManualSummary, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT COALESCE(p.heading, '') FROM manual_page p
 		 JOIN game_media m ON m.id = p.game_media_id
 		 JOIN game_languages l ON l.id = m.game_language_id
-		 WHERE l.game_id = ? AND TRIM(p.text) <> ''`, gameID).Scan(&n)
+		 WHERE l.game_id = ? AND TRIM(p.text) <> ''
+		 ORDER BY m.id, p.page_number`, gameID)
 	if err != nil {
-		return false, fmt.Errorf("has pages: %w", err)
+		return ManualSummary{}, fmt.Errorf("manual summary: %w", err)
 	}
-	return n > 0, nil
+	defer rows.Close()
+
+	var out ManualSummary
+	seen := map[string]bool{}
+	for rows.Next() {
+		var heading string
+		if err := rows.Scan(&heading); err != nil {
+			return ManualSummary{}, err
+		}
+		out.HasPages = true
+		heading = strings.TrimSpace(heading)
+		if heading == "" || seen[strings.ToLower(heading)] || len(out.Headings) >= maxSuggestionHeadings {
+			continue
+		}
+		seen[strings.ToLower(heading)] = true
+		out.Headings = append(out.Headings, heading)
+	}
+	return out, rows.Err()
+}
+
+// GamesWithPages dice, per un gruppo di giochi, quali hanno un manuale
+// preparato. Una query sola con una IN invece di una HasPages per gioco:
+// la scheda evento la chiama con tutti i giochi della serata.
+func (s *Store) GamesWithPages(ctx context.Context, gameIDs []int64) (map[int64]bool, error) {
+	out := map[int64]bool{}
+	if len(gameIDs) == 0 {
+		return out, nil
+	}
+	args := make([]any, 0, len(gameIDs))
+	for _, id := range gameIDs {
+		args = append(args, id)
+	}
+	query := `SELECT DISTINCT l.game_id FROM manual_page p
+		 JOIN game_media m ON m.id = p.game_media_id
+		 JOIN game_languages l ON l.id = m.game_language_id
+		 WHERE l.game_id IN (?` + strings.Repeat(",?", len(gameIDs)-1) + `) AND TRIM(p.text) <> ''`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("games with pages: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out[id] = true
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) Corpus(ctx context.Context, gameID int64) (Corpus, error) {
