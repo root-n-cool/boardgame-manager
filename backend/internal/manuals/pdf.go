@@ -141,32 +141,76 @@ var (
 // aggirare qui — un manuale che esce male si manda per il percorso vision,
 // che su impaginazioni dense dà comunque risultati migliori di qualunque
 // estrattore di testo.
+//
+// Invariante: len(pages) == numero di pagine del PDF, sempre — anche
+// quando una pagina non produce testo (perché non esiste nell'albero
+// Pages, perché GetPlainText segnala un errore, o perché il parser va in
+// panic su quella pagina). Una pagina mancante deve essere visibile come
+// buco nell'anteprima pagina-per-pagina che l'admin userà per riempirlo a
+// mano (Task 8), non sparire silenziosamente facendo scivolare la
+// numerazione delle pagine successive.
 func ExtractText(raw []byte) ([]Page, error) {
-	reader, err := pdf.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	reader, total, err := openPDF(raw)
 	if err != nil {
-		return nil, fmt.Errorf("apertura pdf: %w", err)
+		return nil, err
 	}
 
-	total := reader.NumPage()
 	pages := make([]Page, 0, total)
 	for n := 1; n <= total; n++ {
-		page := reader.Page(n)
-		if page.V.IsNull() {
-			continue
-		}
-		// GetPlainText vuole una mappa di font condivisa fra le pagine:
-		// passarne una nuova per pagina rifarebbe lo stesso lavoro N volte.
-		text, err := page.GetPlainText(nil)
-		if err != nil {
-			// Una pagina illeggibile non deve far perdere le altre: il
-			// manuale resta utilizzabile e l'admin vede il buco
-			// nell'anteprima, dove può riempirlo a mano.
-			pages = append(pages, Page{Number: n, Text: ""})
-			continue
-		}
-		pages = append(pages, Page{Number: n, Text: normalizeWhitespace(text)})
+		pages = append(pages, Page{Number: n, Text: normalizeWhitespace(extractPageText(reader, n))})
 	}
 	return pages, nil
+}
+
+// openPDF apre il reader e legge il numero di pagine, contenendo i panic:
+// ledongthuc/pdf è un parser a basso livello che non fa controlli
+// difensivi sui bound e va in panic — non in errore — quando la
+// cross-reference table o l'albero Pages sono corrotti in un modo che il
+// resolver non si aspetta. Qui succede prima che il ciclo per pagina
+// esista, quindi va convertito in un errore normale invece di far
+// crashare l'intera richiesta (il router monta middleware.Recoverer, ma
+// perdere l'intero manuale per una xref corrotta resta un esito peggiore
+// di un errore gestito).
+func openPDF(raw []byte) (reader *pdf.Reader, total int, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			reader, total, err = nil, 0, fmt.Errorf("apertura pdf: panic nel parser: %v", r)
+		}
+	}()
+	reader, err = pdf.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		return nil, 0, fmt.Errorf("apertura pdf: %w", err)
+	}
+	return reader, reader.NumPage(), nil
+}
+
+// extractPageText estrae il testo della pagina n, contenendo i panic allo
+// stesso modo di openPDF: una singola pagina con un content stream o un
+// riferimento xref corrotto non deve costare le altre pagine del manuale,
+// esattamente come ExtractPageImages salta una singola immagine
+// indecodificabile senza abortire l'intero file. Il recover è per-pagina
+// (un defer dentro questa funzione, richiamata una volta per iterazione)
+// apposta: un recover messo direttamente nel corpo del ciclo di
+// ExtractText scatterebbe solo all'uscita dell'intera funzione, non
+// all'uscita di ogni iterazione, e un secondo panic su una pagina
+// successiva non verrebbe più contenuto.
+func extractPageText(reader *pdf.Reader, n int) (text string) {
+	defer func() {
+		if recover() != nil {
+			text = ""
+		}
+	}()
+	page := reader.Page(n)
+	if page.V.IsNull() {
+		return ""
+	}
+	// GetPlainText vuole una mappa di font condivisa fra le pagine:
+	// passarne una nuova per pagina rifarebbe lo stesso lavoro N volte.
+	t, err := page.GetPlainText(nil)
+	if err != nil {
+		return ""
+	}
+	return t
 }
 
 // normalizeWhitespace compatta gli spazi ripetuti e uniforma gli a capo,

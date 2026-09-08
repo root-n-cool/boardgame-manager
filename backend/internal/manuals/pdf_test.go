@@ -178,6 +178,107 @@ func TestExtractText_OnAScanReturnsNoText(t *testing.T) {
 	}
 }
 
+// corruptThirdPageXref costruisce un PDF di 3 pagine di testo valide e poi
+// corrompe, byte a byte, l'unica entry della cross-reference table che
+// punta alla terza pagina: invece del suo vero offset, ce ne scrive uno
+// che punta al vero inizio dell'oggetto 4 (la seconda pagina). L'offset
+// non è zero (la libreria tratta zero come "voce libera" e restituisce un
+// valore nullo senza leggere nulla), quindi il resolver tenta comunque la
+// lettura, trova "4 0 obj" dove si aspettava "5 0 obj" e va in panic — è
+// esattamente la classe di corruzione xref di cui parla la review: bassa
+// verosimiglianza di orchestrarla a mano, ma un PDF scaricato a metà o
+// generato da uno strumento bacato produce xref sbagliate di questo tipo
+// tutti i giorni.
+func corruptThirdPageXref(t *testing.T) []byte {
+	t.Helper()
+	content := func(s string) string {
+		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
+	}
+	page := func(contentsRef string) string {
+		return "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " +
+			"/Resources << /Font << /F1 9 0 R >> >> /Contents " + contentsRef + " >>"
+	}
+	objs := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",                     // 1
+		"<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R] /Count 3 >>", // 2
+		page("6 0 R"),                       // 3: buona
+		page("7 0 R"),                       // 4: buona
+		page("8 0 R"),                       // 5: la sua xref entry verrà corrotta
+		content("BT /F1 12 Tf (uno) Tj ET"), // 6
+		content("BT /F1 12 Tf (due) Tj ET"), // 7
+		content("BT /F1 12 Tf (tre) Tj ET"), // 8
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 9
+	}
+	pdf := buildPDF(t, objs)
+
+	// Ricalcola l'offset reale dell'oggetto 4 con la stessa formula usata
+	// da buildPDF, per scriverlo al posto di quello dell'oggetto 5.
+	pos := len("%PDF-1.4\n")
+	var obj4Offset int
+	for i, body := range objs {
+		if i+1 == 4 {
+			obj4Offset = pos
+		}
+		pos += len(fmt.Sprintf("%d 0 obj\n%s\nendobj\n", i+1, body))
+	}
+
+	entriesHeader := fmt.Sprintf("xref\n0 %d\n", len(objs)+1)
+	idx := bytes.Index(pdf, []byte(entriesHeader))
+	if idx < 0 {
+		t.Fatalf("intestazione xref non trovata")
+	}
+	// Ogni entry xref occupa 20 byte fissi ("%010d 00000 n \n"); l'entry 0
+	// è quella libera, l'entry N è l'oggetto N.
+	const entryWidth = 20
+	entryStart := idx + len(entriesHeader) + 5*entryWidth
+	copy(pdf[entryStart:entryStart+10], fmt.Sprintf("%010d", obj4Offset))
+
+	return pdf
+}
+
+// TestExtractText_ContainedPanicOnCorruptXref è il caso da contenere
+// segnalato in review: ledongthuc/pdf è un parser a basso livello che va
+// in panic (non in errore) quando la cross-reference table è corrotta in
+// un modo che il resolver non si aspetta. Qui la corruzione colpisce solo
+// la terza pagina: le prime due devono restare leggibili, la terza deve
+// arrivare come Page vuota, e soprattutto ExtractText non deve mai far
+// andare in panic il chiamante.
+func TestExtractText_ContainedPanicOnCorruptXref(t *testing.T) {
+	pages, err := manuals.ExtractText(corruptThirdPageXref(t))
+	if err != nil {
+		// Anche un errore, invece di pagine parziali, sarebbe un esito
+		// accettabile: quello che non è accettabile è il panic.
+		return
+	}
+	if len(pages) != 3 {
+		t.Fatalf("attese 3 pagine (l'invariante len(pages)==pagine del PDF), ottenute %d", len(pages))
+	}
+	if !strings.Contains(pages[0].Text, "uno") {
+		t.Fatalf("pagina 1 doveva restare leggibile: %q", pages[0].Text)
+	}
+	if !strings.Contains(pages[1].Text, "due") {
+		t.Fatalf("pagina 2 doveva restare leggibile: %q", pages[1].Text)
+	}
+	if pages[2].Number != 3 {
+		t.Fatalf("la pagina corrotta deve restare numerata 3, ottenuto %d", pages[2].Number)
+	}
+	if strings.TrimSpace(pages[2].Text) != "" {
+		t.Fatalf("la pagina corrotta doveva arrivare vuota, non con testo inventato: %q", pages[2].Text)
+	}
+}
+
+// TestExtractText_OnEmptyInput copre il caso limite più ovvio: byte non
+// validi come PDF (incluso nil) non devono far andare in panic, solo
+// restituire un errore e nessuna pagina.
+func TestExtractText_OnEmptyInput(t *testing.T) {
+	if pages, err := manuals.ExtractText(nil); err == nil {
+		t.Fatalf("input nil doveva restituire un errore, ottenute %d pagine", len(pages))
+	}
+	if pages, err := manuals.ExtractText([]byte{}); err == nil {
+		t.Fatalf("input vuoto doveva restituire un errore, ottenute %d pagine", len(pages))
+	}
+}
+
 func TestExtractPageImages_ReturnsOneJPEGPerScannedPage(t *testing.T) {
 	imgs, err := manuals.ExtractPageImages(scannedPDF(t))
 	if err != nil {
