@@ -41,5 +41,16 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 	}
 	detail := toGameSummary(g)
 	detail["languages"] = langOut
+	// canAsk governa la comparsa della chat sulla scheda pubblica. Vero solo
+	// se entrambe le condizioni valgono: provider AI configurato e manuale
+	// preparato. In UI non esiste il pulsante disabilitato con la
+	// spiegazione: se è falso, la chat non c'è.
+	hasManual := false
+	if s.Manuals != nil {
+		if has, err := s.Manuals.HasPages(ctx, g.ID); err == nil {
+			hasManual = has
+		}
+	}
+	detail["canAsk"] = hasManual && s.aiConfigured(ctx)
 	return detail, nil
 }

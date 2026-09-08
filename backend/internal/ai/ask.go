@@ -207,6 +207,12 @@ type Turn struct {
 // loop si testa con una closure di due righe.
 type SearchFunc func(ctx context.Context, keywords []string) (string, error)
 
+// Asker è l'astrazione che serve all'handler pubblico. HTTPClient la
+// implementa; i test iniettano un finto.
+type Asker interface {
+	Ask(ctx context.Context, req AskRequest) (string, error)
+}
+
 type AskRequest struct {
 	GameName string
 	Turns    []Turn

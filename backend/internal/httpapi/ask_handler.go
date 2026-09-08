@@ -1,0 +1,196 @@
+package httpapi
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"regexp"
+	"strings"
+
+	"boardgames-manager/internal/ai"
+	"boardgames-manager/internal/games"
+	"boardgames-manager/internal/manuals"
+)
+
+// asker restituisce l'agente per questa richiesta: quello iniettato se c'è,
+// altrimenti uno costruito dalle impostazioni. Stesso schema di
+// translator() e transcriber().
+func (s *Server) asker(ctx context.Context) ai.Asker {
+	if s.Asker != nil {
+		return s.Asker
+	}
+	cfg, err := s.Settings.Get(ctx)
+	if err != nil {
+		log.Printf("ask: could not load settings: %v", err)
+		return ai.NewHTTPClient("", "", "")
+	}
+	return ai.NewHTTPClient(cfg.AIBaseURL, cfg.AIAPIKey, cfg.AIModel)
+}
+
+// aiConfigured dice se un provider è impostato, senza fare richieste. Serve
+// a canAsk: la scheda gioco deve sapere se mostrare la chat prima che
+// qualcuno faccia una domanda.
+func (s *Server) aiConfigured(ctx context.Context) bool {
+	if s.Asker != nil {
+		return true
+	}
+	cfg, err := s.Settings.Get(ctx)
+	if err != nil {
+		return false
+	}
+	return cfg.AIBaseURL != "" && cfg.AIAPIKey != "" && cfg.AIModel != ""
+}
+
+// askHTTPRequest è la forma che manda deep-chat: la conversazione intera,
+// tagliata dal componente a requestBodyLimits.maxMessages.
+type askHTTPRequest struct {
+	Messages []struct {
+		Role string `json:"role"`
+		Text string `json:"text"`
+	} `json:"messages"`
+}
+
+func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
+	gameID, err := parseIDParam(r, "id")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid game id")
+		return
+	}
+
+	var body askHTTPRequest
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+
+	turns := make([]ai.Turn, 0, len(body.Messages))
+	for _, m := range body.Messages {
+		text := strings.TrimSpace(m.Text)
+		if text == "" {
+			continue
+		}
+		// deep-chat chiama "ai" quel che il formato OpenAI chiama
+		// "assistant": la traduzione va fatta qui, una volta.
+		role := "user"
+		if m.Role == "ai" || m.Role == "assistant" {
+			role = "assistant"
+		}
+		turns = append(turns, ai.Turn{Role: role, Text: text})
+	}
+	if len(turns) == 0 {
+		writeError(w, http.StatusBadRequest, "serve una domanda")
+		return
+	}
+
+	game, err := s.Games.GetGame(r.Context(), gameID)
+	if errors.Is(err, games.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "game not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load game")
+		return
+	}
+
+	corpus, err := s.Manuals.Corpus(r.Context(), gameID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not load the manual")
+		return
+	}
+	// Nessun manuale preparato: la rotta si comporta come inesistente,
+	// esattamente come senza provider AI. Non c'è nulla da spiegare a un
+	// partecipante — la chat, in quel caso, non è nemmeno comparsa.
+	if len(corpus.Manuals) == 0 {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	// La lingua preferita è quella base del gioco: è quella in cui la
+	// scheda pubblica mostra tutto il resto.
+	preferLang := "it"
+	if langs, err := s.Games.ListLanguages(r.Context(), gameID); err == nil {
+		for _, l := range langs {
+			if l.IsBaseLanguage {
+				preferLang = l.LanguageCode
+				break
+			}
+		}
+	}
+
+	// La closure di ricerca è legata al gioco: il game_id NON è un
+	// parametro del tool, così il modello non può leggere il manuale di un
+	// altro gioco.
+	search := func(ctx context.Context, keywords []string) (string, error) {
+		res, err := s.Manuals.Search(ctx, gameID, preferLang, keywords)
+		if err != nil {
+			return "", err
+		}
+		return manuals.FormatSearchResult(res), nil
+	}
+
+	answer, err := s.asker(r.Context()).Ask(r.Context(), ai.AskRequest{
+		GameName:    game.Name,
+		Turns:       turns,
+		CorpusChars: corpus.Chars,
+		CorpusText:  manuals.FormatCorpus(corpus),
+		CorpusIndex: manuals.FormatIndex(corpus),
+		Search:      search,
+	})
+	if errors.Is(err, ai.ErrNotConfigured) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+	if err != nil {
+		log.Printf("ask about game %d: %v", gameID, err)
+		writeError(w, http.StatusBadGateway,
+			"Non riesco a rispondere in questo momento. Riprova, o guarda il manuale nella scheda del gioco.")
+		return
+	}
+
+	// deep-chat legge {"text": ...}.
+	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, corpus, preferLang)})
+}
+
+// citationRe trova le citazioni di pagina nella risposta del modello.
+var citationRe = regexp.MustCompile(`pag\.\s*(\d+)`)
+
+// linkifyCitations trasforma "pag. 7" in un link markdown al PDF aperto a
+// quella pagina. È il pezzo che chiude il cerchio: una risposta generata
+// non va creduta sulla fiducia, si apre il manuale e si verifica — e in una
+// discussione sulle regole è la differenza fra un aiuto e un oracolo.
+//
+// La riscrittura è nostra e non del modello: chiedere a un modello
+// economico di costruire URL corretti è un modo affidabile di ottenere URL
+// sbagliati. Il fragment #page=N è onorato dalla quasi totalità dei viewer.
+func linkifyCitations(answer string, corpus manuals.Corpus, preferLang string) string {
+	// Se il modello ha già prodotto un link, non si raddoppia.
+	if strings.Contains(answer, "](/api/uploads/") {
+		return answer
+	}
+
+	// Con più manuali si linka quello nella lingua preferita, che è la
+	// stessa in cui la ricerca ha dato la precedenza ai risultati.
+	path := ""
+	for _, m := range corpus.Manuals {
+		if !strings.HasSuffix(strings.ToLower(m.Path), ".pdf") {
+			continue
+		}
+		if path == "" || m.LanguageCode == preferLang {
+			path = m.Path
+		}
+		if m.LanguageCode == preferLang {
+			break
+		}
+	}
+	if path == "" {
+		return answer
+	}
+
+	return citationRe.ReplaceAllStringFunc(answer, func(match string) string {
+		page := citationRe.FindStringSubmatch(match)[1]
+		return fmt.Sprintf("[%s](/api/uploads/%s#page=%s)", match, path, page)
+	})
+}

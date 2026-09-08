@@ -49,6 +49,9 @@ type Server struct {
 	// dal punto di vista di chi usa l'app: nessuna mail, tutto il resto
 	// invariato.
 	Mail mailer.Sender
+	// Asker, quando è valorizzato, è l'agente da usare per le domande sui
+	// manuali. Nil = costruito per richiesta dalle impostazioni.
+	Asker ai.Asker
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -76,6 +79,12 @@ func NewRouter(s *Server) http.Handler {
 	// un gruppo che prenota insieme a inizio serata — e comunque limitano
 	// l'abuso.
 	bookingLimiter := newRateLimiter(30, time.Minute)
+	// Una domanda costa una o più chiamate a pagamento al provider. Il
+	// limiter chiave su r.RemoteAddr, che dietro NAT è l'IP del wifi del
+	// circolo: tutti a un tavolo condividono lo stesso bucket. Venti al
+	// minuto stanno molto sopra l'uso reale — nessuno fa venti domande di
+	// regole in un minuto — e limitano l'abuso.
+	askLimiter := newRateLimiter(20, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
@@ -87,6 +96,7 @@ func NewRouter(s *Server) http.Handler {
 	r.With(inviteLimiter.middleware).Post("/api/invites/{token}", s.acceptInviteHandler)
 	r.Get("/api/games", s.listGamesHandler)
 	r.Get("/api/games/{id}", s.getGameHandler)
+	r.With(askLimiter.middleware).Post("/api/games/{id}/ask", s.askHandler)
 	r.Get("/api/uploads/{filename}", s.getUploadHandler)
 	r.Get("/api/events", s.listEventsHandler)
 	r.Get("/api/events/{id}", s.getEventHandler)
