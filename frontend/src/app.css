@@ -3782,7 +3782,13 @@ tbody tr:nth-child(3) .rank-medal {
 
 /* Il dialog occupa il viewport: dvh e non vh, perché su iOS Safari vh
    include la barra degli indirizzi e taglia l'input fuori schermo. */
-.manual-chat-dialog {
+/* [open] e non solo .manual-chat-dialog: senza il selettore d'attributo
+   questa regola vince sempre sulla regola nativa `dialog:not([open]) {
+   display: none }` (gli stili dell'autore battono quelli dello user
+   agent a parità di tutto), e chiudere il dialog (che rimane montato fra
+   un'apertura e l'altra, vedi ManualChat.vue) smette di nasconderlo:
+   resta a piena pagina sotto il bottone tondo. Verificato in browser. */
+.manual-chat-dialog[open] {
   display: flex;
   flex-direction: column;
   width: 100%;
@@ -3814,4 +3820,14 @@ tbody tr:nth-child(3) .rank-medal {
 
 .manual-chat-dialog-head .modal-close {
   color: var(--felt-text);
+}
+
+/* deep-chat dimensiona sé stesso da attributi: qui gli si dice solo di
+   riempire il contenitore, che è la sidebar o il dialog. */
+.manual-chat-widget {
+  flex: 1;
+  width: 100%;
+  min-height: 18rem;
+  border: 0;
+  background-color: transparent;
 }
