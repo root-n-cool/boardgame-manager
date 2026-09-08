@@ -1,6 +1,7 @@
 package manuals_test
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -186,10 +187,110 @@ func TestDetectHeading(t *testing.T) {
 		// che dipendesse solo da lui.
 		{"regole speciali\nOgni giocatore pesca due carte.", ""},
 		{"", ""},
+		// Il caso che conta davvero: il prompt di trascrizione chiede il
+		// markdown, quindi da una pagina scansionata i titoli arrivano
+		// così. Prima della ripulitura dei marcatori il primo rune era '#'
+		// e OGNI pagina di un manuale scansionato restava senza titolo.
+		{"## Fase di Upkeep\n\nOgni giocatore paga una moneta.", "Fase di Upkeep"},
+		{"**Conteggio dei punti**\nOgni edificio vale i punti stampati.", "Conteggio dei punti"},
+		{"## Titolo chiuso ##\naltro testo", "Titolo chiuso"},
+		// Numerazione di sezione: comunissima nei regolamenti.
+		{"1. Preparazione\nMescola il mazzo.", "Preparazione"},
+		{"2) Il turno del giocatore\nPesca una carta.", "Il turno del giocatore"},
+		// La ripulitura viene PRIMA dei tre controlli, non al loro posto:
+		// una frase compiuta resta una frase compiuta anche sotto i
+		// cancelletti, e va ancora rifiutata.
+		{"## Il gioco finisce qui.", ""},
+		{"1. La partita termina quando la pila di pesca si esaurisce.", ""},
+		{"**regole speciali**\nOgni giocatore pesca due carte.", ""},
+		{"## Regole speciali per la partita con più di quattro giocatori esperti\naltro", ""},
+		// Una riga di soli marcatori (un separatore markdown) non è un
+		// titolo: dopo la ripulitura non resta niente. Senza il controllo
+		// sulla stringa vuota *dopo* la ripulitura questo caso non
+		// fallirebbe, andrebbe in panic su []rune("")[0].
+		{"***\nOgni giocatore paga una moneta.", ""},
 	}
 	for _, c := range cases {
 		if got := manuals.DetectHeading(c.in); got != c.want {
 			t.Fatalf("DetectHeading(%.30q) = %q, atteso %q", c.in, got, c.want)
+		}
+	}
+}
+
+func TestChunk_KeepsAPageOfExactlyTheMaximumWhole(t *testing.T) {
+	// Il confine esatto: splitToSize taglia con `len(text) <= MaxChunkChars`
+	// e una pagina lunga esattamente il massimo deve restare intera. Un
+	// off-by-one qui (`<` invece di `<=`) la manderebbe sul percorso di
+	// split, che con la sovrapposizione produrrebbe testo duplicato.
+	//
+	// DUE paragrafi e non uno solo: con un paragrafo solo il percorso di
+	// split restituirebbe comunque un unico chunk identico all'originale
+	// (un'unità intera non si spezza mai), e il test passerebbe anche con
+	// l'off-by-one — verificando niente. Con due paragrafi da 499
+	// caratteri, ognuno diventa un'unità da 501 (`\n\n` incluso) e il
+	// percorso di split ne fa due chunk: la differenza si vede.
+	para := func(prefix string, n int) string {
+		return prefix + strings.Repeat("x", n-len(prefix))
+	}
+	text := para("Fase di Upkeep. ", 499) + "\n\n" + para("Fine partita. ", 499)
+	if len(text) != manuals.MaxChunkChars {
+		t.Fatalf("fixture sbagliata: %d caratteri invece di %d", len(text), manuals.MaxChunkChars)
+	}
+
+	chunks := manuals.Chunk([]manuals.Page{{Number: 2, Text: text}})
+	if len(chunks) != 1 {
+		t.Fatalf("una pagina lunga esattamente il massimo è un chunk solo, ottenuti %d", len(chunks))
+	}
+	if chunks[0].Text != text {
+		t.Fatalf("il testo è stato alterato: %d caratteri su %d", len(chunks[0].Text), len(text))
+	}
+}
+
+func TestChunk_ASingleSentenceLongerThanTheMaximumIsOneChunk(t *testing.T) {
+	// Una pagina fatta di UNA sola unità più lunga del massimo: non c'è
+	// nessun posto dove tagliarla senza spezzare una parola, quindi esce
+	// intera, in un chunk solo, e senza perdere niente.
+	giant := strings.TrimSpace(strings.Repeat("parola ", 400))
+	if len(giant) <= manuals.MaxChunkChars {
+		t.Fatalf("fixture sbagliata: %d caratteri, non supera il massimo", len(giant))
+	}
+	chunks := manuals.Chunk([]manuals.Page{{Number: 9, Text: giant}})
+	if len(chunks) != 1 {
+		t.Fatalf("attesa una sola unità atomica in un chunk solo, ottenuti %d", len(chunks))
+	}
+	if strings.TrimSpace(chunks[0].Text) != giant {
+		t.Fatal("il testo dell'unità atomica è stato alterato")
+	}
+}
+
+func TestChunk_ALongUnitAfterOthersDoesNotLoseTheTextBeforeIt(t *testing.T) {
+	// Il taglio davanti a un'unità più lunga del massimo: quel che veniva
+	// prima deve restare in un chunk suo, e l'unità lunga deve arrivare
+	// intera in quello dopo. Frasi tutte diverse, così un chunk mancante si
+	// vede: con frasi identiche qualunque perdita passerebbe inosservata.
+	var before strings.Builder
+	for i := 1; i <= 20; i++ {
+		fmt.Fprintf(&before, "Regola numero %d: ogni giocatore paga una moneta per edificio. ", i)
+	}
+	giant := strings.Repeat("parolalunghissimasenzapunteggiatura ", 60)
+	chunks := manuals.Chunk([]manuals.Page{{Number: 5, Text: before.String() + giant}})
+
+	if len(chunks) < 2 {
+		t.Fatalf("attesi almeno due chunk, ottenuti %d", len(chunks))
+	}
+	if !strings.Contains(chunks[len(chunks)-1].Text, "parolalunghissimasenzapunteggiatura") {
+		t.Fatal("l'unità più lunga del massimo è sparita dai chunk")
+	}
+	joined := ""
+	for i, c := range chunks {
+		if strings.TrimSpace(c.Text) == "" {
+			t.Fatalf("chunk %d vuoto", i)
+		}
+		joined += c.Text + " "
+	}
+	for i := 1; i <= 20; i++ {
+		if !strings.Contains(joined, fmt.Sprintf("Regola numero %d:", i)) {
+			t.Fatalf("la regola %d è andata persa nel taglio", i)
 		}
 	}
 }

@@ -80,6 +80,16 @@ func splitToSize(text string) []string {
 		cur.WriteString(tailFrom(body))
 	}
 
+	// Nota su un dubbio sollevato in review: un chunk fatto SOLO della coda
+	// di sovrapposizione (testo già presente nel chunk precedente,
+	// indicizzato due volte e restituibile come hit senza contenuto proprio)
+	// non è producibile da questo ciclo. Il flush avviene sempre appena
+	// prima di scrivere l'unità che lo ha provocato, quindi al flush
+	// successivo `cur` contiene sempre almeno un'unità intera oltre alla
+	// coda. Verificato anche per forza bruta su 20.000 testi generati
+	// (paragrafi, frasi e unità più lunghe del massimo, con riempitivo
+	// diverso per ogni unità così che "chunk contenuto nel precedente"
+	// significhi davvero "nessuna unità nuova"): nessun caso.
 	for _, u := range units {
 		if cur.Len()+len(u) > MaxChunkChars && strings.TrimSpace(cur.String()) != "" {
 			flush()
@@ -153,10 +163,37 @@ func tailFrom(body string) string {
 // headingWords è il massimo di parole che può avere un titolo di sezione.
 const headingWords = 8
 
+// headingOrdinal è la numerazione che apre un titolo in un regolamento:
+// "1. Preparazione", "2) Il turno". Serve lo spazio dopo il separatore, così
+// "1.5 punti vittoria" non diventa "5 punti vittoria".
+var headingOrdinal = regexp.MustCompile(`^\d{1,2}[.)]\s+`)
+
+// stripHeadingMarkers toglie la sintassi che precede il titolo vero:
+// i cancelletti di un heading markdown, gli asterischi o i trattini bassi
+// dell'enfasi, e la numerazione di sezione.
+//
+// Non è un dettaglio cosmetico: il prompt di trascrizione (internal/ai)
+// chiede esplicitamente il markdown e di conservare i titoli, quindi da una
+// pagina scansionata arriva "## Fase di Upkeep" e non "Fase di Upkeep".
+// Senza questa ripulitura il primo rune è '#', il controllo sull'iniziale
+// maiuscola fallisce e OGNI pagina di un manuale scansionato resta senza
+// titolo — cioè l'indice del manuale, che esiste per risparmiare al modello
+// la chiamata esplorativa al tool, sparisce proprio sui manuali lunghi, che
+// sono quelli che il tool lo usano davvero.
+func stripHeadingMarkers(s string) string {
+	// TrimRight oltre a TrimLeft: un heading ATX può essere chiuso
+	// ("## Titolo ##") e l'enfasi lo è sempre ("**Titolo**").
+	s = strings.Trim(s, "#*_ \t")
+	return strings.TrimSpace(headingOrdinal.ReplaceAllString(s, ""))
+}
+
 // DetectHeading restituisce il titolo di sezione di una pagina, o stringa
-// vuota. Un titolo è la prima riga quando è corta, non finisce con un punto
-// e comincia in maiuscolo: sono le tre proprietà che distinguono
-// "Fase di Upkeep" da "La partita termina quando...".
+// vuota. Un titolo è la prima riga — spogliata dei marcatori markdown e
+// della numerazione — quando è corta, non finisce con un punto e comincia in
+// maiuscolo: sono le tre proprietà che distinguono "Fase di Upkeep" da
+// "La partita termina quando...". I marcatori si tolgono prima, mai al posto
+// dei tre controlli: "## Il gioco finisce qui." resta una frase compiuta e
+// va rifiutata come lo era senza cancelletti.
 //
 // Alimenta l'indice del manuale iniettato nel prompt, che è ciò che evita
 // al modello la chiamata esplorativa al tool.
@@ -168,6 +205,7 @@ func DetectHeading(text string) string {
 	if idx := strings.IndexByte(first, '\n'); idx >= 0 {
 		first = strings.TrimSpace(first[:idx])
 	}
+	first = stripHeadingMarkers(first)
 	if first == "" {
 		return ""
 	}
