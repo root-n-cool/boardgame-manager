@@ -3,8 +3,6 @@ package manuals_test
 import (
 	"bytes"
 	"fmt"
-	"image"
-	"image/color"
 	"image/jpeg"
 	"os"
 	"path/filepath"
@@ -14,101 +12,11 @@ import (
 	"boardgames-manager/internal/manuals"
 )
 
-// buildPDF assembla un PDF valido, xref compresa, dagli oggetti dati.
-// objs[i] è il corpo dell'oggetto numero i+1, già serializzato.
-func buildPDF(t *testing.T, objs []string) []byte {
-	t.Helper()
-	var buf bytes.Buffer
-	buf.WriteString("%PDF-1.4\n")
-	offsets := make([]int, len(objs))
-	for i, body := range objs {
-		offsets[i] = buf.Len()
-		fmt.Fprintf(&buf, "%d 0 obj\n%s\nendobj\n", i+1, body)
-	}
-	xref := buf.Len()
-	fmt.Fprintf(&buf, "xref\n0 %d\n", len(objs)+1)
-	buf.WriteString("0000000000 65535 f \n")
-	for _, off := range offsets {
-		fmt.Fprintf(&buf, "%010d 00000 n \n", off)
-	}
-	fmt.Fprintf(&buf,
-		"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n",
-		len(objs)+1, xref)
-	return buf.Bytes()
-}
-
-// tinyJPEG restituisce un JPEG valido di w x h, decodificabile da image/jpeg.
-func tinyJPEG(t *testing.T, w, h int) []byte {
-	t.Helper()
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := 0; y < h; y++ {
-		for x := 0; x < w; x++ {
-			img.Set(x, y, color.RGBA{R: uint8(x * 8), G: uint8(y * 8), B: 90, A: 255})
-		}
-	}
-	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, nil); err != nil {
-		t.Fatalf("encode jpeg: %v", err)
-	}
-	return buf.Bytes()
-}
-
-// imgObj serializza un XObject immagine DCTDecode: dizionario più stream
-// JPEG grezzo, esattamente come appare in un PDF vero (il flusso non è
-// mai ricodificato).
-func imgObj(jpg []byte, w, h int) string {
-	return fmt.Sprintf(
-		"<< /Type /XObject /Subtype /Image /Width %d /Height %d "+
-			"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n%s\nendstream",
-		w, h, len(jpg), jpg)
-}
-
-// scannedPDF: due pagine, ognuna un solo XObject JPEG a piena pagina.
-// È la forma del manuale reale del club, verificata in fase di design.
-func scannedPDF(t *testing.T) []byte {
-	t.Helper()
-	jpg1 := tinyJPEG(t, 24, 32)
-	jpg2 := tinyJPEG(t, 20, 28)
-	content := "q 200 0 0 260 0 0 cm /Im0 Do Q"
-	page := func(imgRef, contentRef string) string {
-		return fmt.Sprintf(
-			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] "+
-				"/Resources << /XObject << /Im0 %s >> >> /Contents %s >>", imgRef, contentRef)
-	}
-	streamObj := func(s string) string {
-		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
-	}
-	return buildPDF(t, []string{
-		"<< /Type /Catalog /Pages 2 0 R >>",               // 1
-		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>", // 2
-		page("5 0 R", "7 0 R"),                            // 3
-		page("6 0 R", "8 0 R"),                            // 4
-		imgObj(jpg1, 24, 32),                              // 5
-		imgObj(jpg2, 20, 28),                              // 6
-		streamObj(content),                                // 7
-		streamObj(content),                                // 8
-	})
-}
-
-// textPDF: una pagina con un vero layer testo, font standard non embeddato.
-func textPDF(t *testing.T) []byte {
-	t.Helper()
-	content := "BT /F1 12 Tf 20 200 Td (Fase di Upkeep) Tj 0 -20 Td (Ogni giocatore paga una moneta.) Tj ET"
-	return buildPDF(t, []string{
-		"<< /Type /Catalog /Pages 2 0 R >>",
-		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " +
-			"/Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content),
-		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-	})
-}
-
 func TestHasTextLayer(t *testing.T) {
-	if manuals.HasTextLayer(scannedPDF(t)) {
+	if manuals.HasTextLayer(manuals.NewScannedPDF()) {
 		t.Fatal("una scansione non ha layer testo, ma HasTextLayer ha detto sì")
 	}
-	if !manuals.HasTextLayer(textPDF(t)) {
+	if !manuals.HasTextLayer(manuals.NewTextPDF()) {
 		t.Fatal("un PDF con operatori Tj ha layer testo, ma HasTextLayer ha detto no")
 	}
 }
@@ -145,7 +53,7 @@ func TestHasTextLayer_RequiresBothConditions(t *testing.T) {
 }
 
 func TestExtractText_ReadsOnePageOfRealText(t *testing.T) {
-	pages, err := manuals.ExtractText(textPDF(t))
+	pages, err := manuals.ExtractText(manuals.NewTextPDF())
 	if err != nil {
 		t.Fatalf("extract text: %v", err)
 	}
@@ -164,7 +72,7 @@ func TestExtractText_ReadsOnePageOfRealText(t *testing.T) {
 }
 
 func TestExtractText_OnAScanReturnsNoText(t *testing.T) {
-	pages, err := manuals.ExtractText(scannedPDF(t))
+	pages, err := manuals.ExtractText(manuals.NewScannedPDF())
 	// Una scansione può far restituire pagine vuote o un errore di parsing:
 	// entrambi sono esiti accettabili. Ciò che NON deve accadere è tornare
 	// testo inventato, o andare in panic.
@@ -209,10 +117,10 @@ func corruptThirdPageXref(t *testing.T) []byte {
 		content("BT /F1 12 Tf (tre) Tj ET"), // 8
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 9
 	}
-	pdf := buildPDF(t, objs)
+	pdf := manuals.BuildTestPDF(objs)
 
 	// Ricalcola l'offset reale dell'oggetto 4 con la stessa formula usata
-	// da buildPDF, per scriverlo al posto di quello dell'oggetto 5.
+	// da manuals.BuildTestPDF, per scriverlo al posto di quello dell'oggetto 5.
 	pos := len("%PDF-1.4\n")
 	var obj4Offset int
 	for i, body := range objs {
@@ -300,7 +208,7 @@ func corruptMiddlePageXref(t *testing.T) []byte {
 		content("BT /F1 12 Tf (cinque) Tj ET"),  // 12
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 13
 	}
-	pdf := buildPDF(t, objs)
+	pdf := manuals.BuildTestPDF(objs)
 
 	// Stessa formula di corruptThirdPageXref: ricalcola l'offset reale
 	// dell'oggetto 4 e lo scrive al posto di quello dell'oggetto 5.
@@ -401,7 +309,7 @@ func TestExtractText_OnEmptyInput(t *testing.T) {
 }
 
 func TestExtractPageImages_ReturnsOneJPEGPerScannedPage(t *testing.T) {
-	imgs, err := manuals.ExtractPageImages(scannedPDF(t))
+	imgs, err := manuals.ExtractPageImages(manuals.NewScannedPDF())
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
@@ -422,7 +330,7 @@ func TestExtractPageImages_ReturnsOneJPEGPerScannedPage(t *testing.T) {
 }
 
 func TestExtractPageImages_OnAPDFWithoutImages(t *testing.T) {
-	imgs, err := manuals.ExtractPageImages(textPDF(t))
+	imgs, err := manuals.ExtractPageImages(manuals.NewTextPDF())
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}
@@ -437,13 +345,13 @@ func TestExtractPageImages_OnAPDFWithoutImages(t *testing.T) {
 // la pagina 3 deve restare "3", non scivolare a "2". Quel numero finisce
 // nella citazione mostrata a chi sta dirimendo una regola al tavolo.
 func TestExtractPageImages_SkipsUndecodableImageButKeepsPageNumbers(t *testing.T) {
-	jpg1 := tinyJPEG(t, 24, 32)
-	jpg3 := tinyJPEG(t, 20, 28)
+	jpg1 := manuals.NewTestJPEG(24, 32)
+	jpg3 := manuals.NewTestJPEG(20, 28)
 	corrupt := []byte("questi byte dichiarano DCTDecode ma non sono un JPEG valido")
-	pdf := buildPDF(t, []string{
-		imgObj(jpg1, 24, 32),    // pagina 1: buona
-		imgObj(corrupt, 10, 10), // pagina 2: non decodifica, va scartata
-		imgObj(jpg3, 20, 28),    // pagina 3: buona
+	pdf := manuals.BuildTestPDF([]string{
+		manuals.ImageObject(jpg1, 24, 32),    // pagina 1: buona
+		manuals.ImageObject(corrupt, 10, 10), // pagina 2: non decodifica, va scartata
+		manuals.ImageObject(jpg3, 20, 28),    // pagina 3: buona
 	})
 
 	imgs, err := manuals.ExtractPageImages(pdf)
@@ -463,16 +371,16 @@ func TestExtractPageImages_SkipsUndecodableImageButKeepsPageNumbers(t *testing.T
 // principio della corruzione JPEG ma per un flusso tronco: una pagina
 // senza "endstream" non deve costare le altre pagine del manuale.
 func TestExtractPageImages_SkipsPageMissingEndstream(t *testing.T) {
-	jpg1 := tinyJPEG(t, 24, 32)
-	jpg2 := tinyJPEG(t, 20, 28)
+	jpg1 := manuals.NewTestJPEG(24, 32)
+	jpg2 := manuals.NewTestJPEG(20, 28)
 	// Nessun "endstream" da nessuna parte dopo questo: un file scaricato
 	// a metà avrebbe questa forma.
 	truncated := "<< /Type /XObject /Subtype /Image /Width 10 /Height 10 " +
 		"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length 3 >>\nstream\nabc"
-	pdf := buildPDF(t, []string{
-		imgObj(jpg1, 24, 32), // pagina 1: buona
-		imgObj(jpg2, 20, 28), // pagina 2: buona
-		truncated,            // pagina 3: tronca, va scartata
+	pdf := manuals.BuildTestPDF([]string{
+		manuals.ImageObject(jpg1, 24, 32), // pagina 1: buona
+		manuals.ImageObject(jpg2, 20, 28), // pagina 2: buona
+		truncated,                         // pagina 3: tronca, va scartata
 	})
 
 	imgs, err := manuals.ExtractPageImages(pdf)

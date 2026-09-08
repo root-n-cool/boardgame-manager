@@ -15,6 +15,7 @@ import (
 	"boardgames-manager/internal/geocode"
 	"boardgames-manager/internal/leaderboard"
 	"boardgames-manager/internal/mailer"
+	"boardgames-manager/internal/manuals"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
@@ -28,6 +29,7 @@ type Server struct {
 	Events      *events.Store
 	Leaderboard *leaderboard.Store
 	Storage     *storage.Store
+	Manuals     *manuals.Store
 	BGG         bgg.Client
 	Geocode     geocode.Client
 	// AI, quando è valorizzato, è il traduttore da usare. Lasciato a nil il
@@ -35,6 +37,11 @@ type Server struct {
 	// cambiare provider non richiede un riavvio, e i test possono iniettare
 	// un finto.
 	AI ai.Translator
+	// Vision, quando è valorizzato, è il trascrittore da usare. Lasciato a
+	// nil il server ne costruisce uno per richiesta dalle impostazioni,
+	// come per AI: cambiare modello non richiede un riavvio e i test
+	// possono iniettare un finto.
+	Vision ai.Transcriber
 	// Mail, quando è valorizzato, è il sender da usare. Lasciato a nil il
 	// server ne costruisce uno per richiesta dalle impostazioni: come per
 	// AI, cambiare provider non richiede un riavvio e i test possono
@@ -110,6 +117,10 @@ func NewRouter(s *Server) http.Handler {
 		protected.Post("/api/games/{id}/languages/{lang}/translate", s.translateLanguageHandler)
 		protected.Post("/api/games/{id}/languages/{lang}/media", s.createMediaHandler)
 		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}", s.deleteMediaHandler)
+		protected.Post("/api/games/{id}/languages/{lang}/media/{mediaId}/extract", s.extractManualHandler)
+		protected.Get("/api/games/{id}/languages/{lang}/media/{mediaId}/pages", s.listManualPagesHandler)
+		protected.Put("/api/games/{id}/languages/{lang}/media/{mediaId}/pages", s.putManualPagesHandler)
+		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}/pages", s.deleteManualPagesHandler)
 		protected.Post("/api/events", s.createEventHandler)
 		protected.Put("/api/events/{id}", s.updateEventHandler)
 		protected.Post("/api/events/{id}/image", s.uploadEventImageHandler)

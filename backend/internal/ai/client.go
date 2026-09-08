@@ -32,6 +32,12 @@ type Translator interface {
 	Translate(ctx context.Context, text, targetLang string) (string, error)
 }
 
+// Transcriber è l'astrazione che serve agli handler: leggere una pagina
+// scansionata. HTTPClient la implementa (Transcribe è in ask.go).
+type Transcriber interface {
+	Transcribe(ctx context.Context, jpeg []byte, pageNumber int) (string, error)
+}
+
 type HTTPClient struct {
 	// BaseURL è la radice OpenAI-compatible, senza /chat/completions.
 	BaseURL string
