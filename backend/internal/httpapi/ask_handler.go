@@ -151,7 +151,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// deep-chat legge {"text": ...}.
-	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, corpus, preferLang)})
+	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, corpus)})
 }
 
 // citationRe trova le citazioni di pagina nella risposta del modello.
@@ -165,27 +165,35 @@ var citationRe = regexp.MustCompile(`pag\.\s*(\d+)`)
 // La riscrittura è nostra e non del modello: chiedere a un modello
 // economico di costruire URL corretti è un modo affidabile di ottenere URL
 // sbagliati. Il fragment #page=N è onorato dalla quasi totalità dei viewer.
-func linkifyCitations(answer string, corpus manuals.Corpus, preferLang string) string {
+//
+// Con PIÙ di un manuale PDF non si linka niente, e la citazione resta testo
+// semplice. Il motivo, prima che qualcuno lo "aggiusti" al contrario: la
+// riscrittura è cieca al manuale a cui la citazione si riferisce — sostituisce
+// ogni "pag. N" della risposta con lo stesso file. La ricerca però restituisce
+// davvero risultati da entrambe le lingue, e il modello scrive frasi come
+// "il regolamento inglese, pag. 12". Un link così porterebbe a pagina 12 del
+// manuale ITALIANO: chi lo apre per verificare trova un'altra regola e
+// conclude che la risposta è inventata. Un link sbagliato è peggio di nessun
+// link, perché distrugge esattamente la fiducia per cui il link esiste.
+// Legare la citazione al manuale giusto vorrebbe dire far dichiarare al
+// modello quale manuale sta citando (o riconoscerne il titolo nel testo): è
+// la strada giusta, ma è una feature, non una correzione.
+func linkifyCitations(answer string, corpus manuals.Corpus) string {
 	// Se il modello ha già prodotto un link, non si raddoppia.
 	if strings.Contains(answer, "](/api/uploads/") {
 		return answer
 	}
 
-	// Con più manuali si linka quello nella lingua preferita, che è la
-	// stessa in cui la ricerca ha dato la precedenza ai risultati.
 	path := ""
+	pdfs := 0
 	for _, m := range corpus.Manuals {
 		if !strings.HasSuffix(strings.ToLower(m.Path), ".pdf") {
 			continue
 		}
-		if path == "" || m.LanguageCode == preferLang {
-			path = m.Path
-		}
-		if m.LanguageCode == preferLang {
-			break
-		}
+		pdfs++
+		path = m.Path
 	}
-	if path == "" {
+	if path == "" || pdfs > 1 {
 		return answer
 	}
 

@@ -158,6 +158,60 @@ func TestAskHandler_DoesNotDoubleLinkACitation(t *testing.T) {
 	}
 }
 
+// addSecondManual aggiunge al gioco una seconda lingua con un secondo PDF
+// già indicizzato: la situazione in cui la citazione del modello può
+// riferirsi all'uno o all'altro.
+func addSecondManual(t *testing.T, conn *sql.DB, gameID int64) {
+	t.Helper()
+	ctx := context.Background()
+	l, err := conn.ExecContext(ctx,
+		`INSERT INTO game_languages (game_id, language_code, is_base_language, name)
+		 VALUES (?, 'en', 0, 'Wingspan')`, gameID)
+	if err != nil {
+		t.Fatalf("insert language: %v", err)
+	}
+	langEN, _ := l.LastInsertId()
+	m, err := conn.ExecContext(ctx,
+		`INSERT INTO game_media (game_language_id, type, url_or_path, title)
+		 VALUES (?, 'file', 'rules-en.pdf', 'English rulebook')`, langEN)
+	if err != nil {
+		t.Fatalf("insert media: %v", err)
+	}
+	mediaEN, _ := m.LastInsertId()
+	if err := manuals.NewStore(conn).ReplacePages(ctx, gameID, mediaEN, "en", []manuals.StoredPage{
+		{PageNumber: 12, Heading: "Upkeep phase", Source: "vision",
+			Text: "Upkeep phase\nEach player pays one coin per building."},
+	}); err != nil {
+		t.Fatalf("replace pages: %v", err)
+	}
+}
+
+func TestAskHandler_DoesNotLinkCitationsWhenThereIsMoreThanOneManual(t *testing.T) {
+	// Con due manuali la riscrittura non sa a quale dei due si riferisce
+	// "pag. 12": applicherebbe a entrambe le citazioni lo stesso file, e
+	// "il regolamento inglese, pag. 12" diventerebbe un link a pagina 12 di
+	// quello ITALIANO. Chi lo apre per verificare trova un'altra regola e
+	// conclude che la risposta è inventata — peggio che non avere il link.
+	server, conn := newTestServerWithDB(t)
+	server.Asker = &fakeAsker{answer: "Sì: il regolamento inglese, pag. 12, lo dice."}
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	addSecondManual(t, conn, gameID)
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	var body struct {
+		Text string `json:"text"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &body)
+
+	if strings.Contains(body.Text, "/api/uploads/") {
+		t.Fatalf("con più manuali la citazione deve restare testo semplice: %q", body.Text)
+	}
+	if !strings.Contains(body.Text, "pag. 12") {
+		t.Fatalf("la citazione deve restare leggibile: %q", body.Text)
+	}
+}
+
 func TestAskHandler_MapsDeepChatRolesToTheModel(t *testing.T) {
 	server, conn := newTestServerWithDB(t)
 	asker := &fakeAsker{answer: "ok"}
