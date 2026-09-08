@@ -238,6 +238,7 @@ const searchToolSchema = `{
     "parole_chiave": {
       "type": "array",
       "items": {"type": "string"},
+      "maxItems": 8,
       "description": "Da 3 a 8 varianti della stessa cosa: sinonimi, il termine tecnico e quello colloquiale, singolare e plurale. Esempio: [\"pareggio\", \"stesso punteggio\", \"parità\", \"spareggio\"]. Supporta \"frase esatta\", OR, AND e i prefissi con *."
     }
   },

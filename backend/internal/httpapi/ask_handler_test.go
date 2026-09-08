@@ -212,6 +212,72 @@ func TestAskHandler_DoesNotLinkCitationsWhenThereIsMoreThanOneManual(t *testing.
 	}
 }
 
+func TestAskHandler_CapsWhatAnAnonymousRequestCanSendToTheProvider(t *testing.T) {
+	// Rotta pubblica, non autenticata, il cui contenuto finisce nel prompt
+	// di un provider che si paga a token: il rate limit governa la
+	// frequenza, non la dimensione. Cento turni da 100 KB sarebbero una
+	// richiesta sola, perfettamente legittima.
+	server, conn := newTestServerWithDB(t)
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	// Sotto il tetto sul body (128 KB) ma ben sopra gli altri due: 41 turni
+	// per un tetto di 30, e uno da 5000 caratteri per un tetto di 4000. Il
+	// turno lungo sta in fondo, così sopravvive al taglio ed è davvero la
+	// troncatura per turno a doverlo accorciare.
+	var msgs []string
+	for i := 0; i < 39; i++ {
+		msgs = append(msgs, `{"role":"user","text":"`+strings.Repeat("a", 2000)+`"}`)
+	}
+	msgs = append(msgs, `{"role":"user","text":"`+strings.Repeat("b", 5000)+`"}`)
+	msgs = append(msgs, `{"role":"user","text":"la domanda vera"}`)
+	rec := postAsk(t, router, gameID, `{"messages":[`+strings.Join(msgs, ",")+`]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+
+	if len(asker.got.Turns) > 30 {
+		t.Fatalf("%d turni passati al provider: nessun tetto sul numero", len(asker.got.Turns))
+	}
+	total := 0
+	for _, turn := range asker.got.Turns {
+		if len(turn.Text) > 4000 {
+			t.Fatalf("un turno da %d caratteri è arrivato intero al provider", len(turn.Text))
+		}
+		total += len(turn.Text)
+	}
+	if total > 24000 {
+		t.Fatalf("%d caratteri di conversazione passati al provider: nessun tetto complessivo", total)
+	}
+	// Il taglio deve cadere sul contesto vecchio, non sulla domanda: è
+	// l'ultimo messaggio, ed è l'unica cosa a cui rispondere.
+	if len(asker.got.Turns) == 0 || asker.got.Turns[len(asker.got.Turns)-1].Text != "la domanda vera" {
+		t.Fatal("il taglio ha buttato via la domanda invece del contesto più vecchio")
+	}
+}
+
+func TestAskHandler_RejectsAnOversizedBody(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	// Mezzo megabyte di JSON: senza MaxBytesReader il body viene letto,
+	// deserializzato e tenuto in memoria per intero prima di qualunque
+	// controllo.
+	rec := postAsk(t, router, gameID,
+		`{"messages":[{"role":"user","text":"`+strings.Repeat("a", 512*1024)+`"}]}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("atteso 400 su un body fuori misura, ottenuto %d", rec.Code)
+	}
+	if asker.got.GameName != "" {
+		t.Fatal("il provider è stato chiamato lo stesso: il tetto sul body non ha fermato niente")
+	}
+}
+
 func TestAskHandler_MapsDeepChatRolesToTheModel(t *testing.T) {
 	server, conn := newTestServerWithDB(t)
 	asker := &fakeAsker{answer: "ok"}

@@ -53,6 +53,42 @@ type askHTTPRequest struct {
 	} `json:"messages"`
 }
 
+// I tre tetti sotto esistono perché questa è l'unica rotta del progetto che
+// trasforma byte anonimi in denaro: è pubblica, non autenticata, e quel che
+// arriva finisce dentro il prompt di un provider che si paga a token. Il
+// rate limit (20/min per IP) limita la frequenza, non la dimensione: senza
+// questi tetti una singola richiesta da 50 MB, o cento turni da 100 KB,
+// sarebbero una richiesta legittima.
+//
+// I valori sono larghi rispetto all'uso vero — una domanda sulle regole
+// battuta al telefono sta in poche centinaia di caratteri, e deep-chat manda
+// al massimo gli ultimi maxMessages turni — e stretti rispetto all'abuso.
+const (
+	askMaxBodyBytes  = 128 << 10 // 128 KB di JSON
+	askMaxTurns      = 30
+	askMaxTurnChars  = 4000
+	askTotalMaxChars = 24000
+)
+
+// trimTurns riduce la conversazione ai tetti, tagliando dalla TESTA: la
+// domanda appena scritta è l'ultimo messaggio, quindi a cadere è il contesto
+// più vecchio, mai la domanda. Un turno singolo non può da solo sforare il
+// totale (askMaxTurnChars è molto minore di askTotalMaxChars), quindi
+// l'ultimo turno sopravvive sempre.
+func trimTurns(turns []ai.Turn) []ai.Turn {
+	if len(turns) > askMaxTurns {
+		turns = turns[len(turns)-askMaxTurns:]
+	}
+	total := 0
+	for i := len(turns) - 1; i >= 0; i-- {
+		total += len(turns[i].Text)
+		if total > askTotalMaxChars {
+			return turns[i+1:]
+		}
+	}
+	return turns
+}
+
 func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	gameID, err := parseIDParam(r, "id")
 	if err != nil {
@@ -60,8 +96,12 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, askMaxBodyBytes)
 	var body askHTTPRequest
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		// MaxBytesReader fa fallire il Decode con un errore suo: per chi
+		// scrive dal tavolo la differenza fra "JSON malformato" e "troppo
+		// lungo" non cambia nulla, la risposta è la stessa.
 		writeError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
@@ -72,6 +112,9 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		if text == "" {
 			continue
 		}
+		if len(text) > askMaxTurnChars {
+			text = text[:askMaxTurnChars]
+		}
 		// deep-chat chiama "ai" quel che il formato OpenAI chiama
 		// "assistant": la traduzione va fatta qui, una volta.
 		role := "user"
@@ -80,6 +123,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		turns = append(turns, ai.Turn{Role: role, Text: text})
 	}
+	turns = trimTurns(turns)
 	if len(turns) == 0 {
 		writeError(w, http.StatusBadRequest, "serve una domanda")
 		return
