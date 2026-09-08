@@ -142,13 +142,32 @@ var (
 // che su impaginazioni dense dà comunque risultati migliori di qualunque
 // estrattore di testo.
 //
+// Limite noto e accettato — una entry xref corrotta blocca il testo anche
+// delle pagine sane dopo di lei, non solo di quella corrotta: Page(n) di
+// ledongthuc/pdf deve attraversare in ordine tutte le entry di Kids da 0 a
+// n per distinguere foglie Page da sotto-alberi Pages con un proprio Count,
+// quindi una entry corrotta a posizione i fa fallire Page(n) per ogni
+// n >= i, sempre — anche riaprendo il PDF da zero, perché resolve() non
+// tiene nessuna cache a livello di reader: è la stessa lettura degli stessi
+// byte che ripete lo stesso esito. Non è un bug del recover per-pagina qui
+// sotto, è una proprietà strutturale di come la libreria cammina l'albero
+// delle pagine — verificato leggendone il sorgente, non solo osservato.
+// Correggerlo camminando l'array Kids da soli, bypassando Page(n),
+// funzionerebbe solo per il caso comune (Kids piatto di sole foglie Page) e
+// rischierebbe l'errore che qui conta di più: un numero di pagina sbagliato
+// in una citazione letta al tavolo. Il rimedio previsto non è qui: un
+// manuale che con questo estrattore produce poco o niente testo va
+// trascritto dal percorso vision (ExtractPageImages), che non tocca
+// l'albero delle pagine e non ha questo limite.
+//
 // Invariante: len(pages) == numero di pagine del PDF, sempre — anche
 // quando una pagina non produce testo (perché non esiste nell'albero
 // Pages, perché GetPlainText segnala un errore, o perché il parser va in
-// panic su quella pagina). Una pagina mancante deve essere visibile come
-// buco nell'anteprima pagina-per-pagina che l'admin userà per riempirlo a
-// mano (Task 8), non sparire silenziosamente facendo scivolare la
-// numerazione delle pagine successive.
+// panic su quella pagina, incluse tutte le pagine successive per il limite
+// descritto sopra). Una pagina mancante deve essere visibile come buco
+// nell'anteprima pagina-per-pagina che l'admin userà per riempirlo a mano
+// (Task 8), non sparire silenziosamente facendo scivolare la numerazione
+// delle pagine successive.
 func ExtractText(raw []byte) ([]Page, error) {
 	reader, total, err := openPDF(raw)
 	if err != nil {
