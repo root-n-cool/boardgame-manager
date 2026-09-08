@@ -17,6 +17,13 @@ interface EventGameInfo {
   remaining: number
   weight: number | null
   bookable: boolean
+  /**
+   * Vero quando dietro il link "Chiedi al manuale" c'è davvero una chat
+   * (manuale preparato + provider AI configurato). Senza, il link portava
+   * alla scheda del gioco e non succedeva niente: nessuna chat, nessun
+   * messaggio — al tavolo si legge come un'app rotta.
+   */
+  canAsk: boolean
 }
 
 interface EventDetail {
@@ -318,6 +325,7 @@ onMounted(async () => {
             <span class="visually-hidden">di {{ copyLabel(g) }}</span>
           </router-link>
           <router-link
+            v-if="g.canAsk"
             class="detail-link"
             :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }"
           >

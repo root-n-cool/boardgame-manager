@@ -720,11 +720,13 @@ func TestGetEvent_ExposesGameWeight(t *testing.T) {
 }
 
 // eventDetailGames è la lista giochi della risposta pubblica, quanto basta
-// per guardare il flag.
+// per guardare i flag.
 type eventDetailGames struct {
 	Games []struct {
 		EventGameID int64 `json:"eventGameId"`
+		GameID      int64 `json:"gameId"`
 		Bookable    bool  `json:"bookable"`
+		CanAsk      bool  `json:"canAsk"`
 	} `json:"games"`
 }
 

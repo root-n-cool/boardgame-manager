@@ -32,11 +32,18 @@ func toEventListItem(e events.Event) map[string]any {
 	return item
 }
 
-func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int, bookable bool) map[string]any {
+func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int, bookable, canAsk bool) map[string]any {
 	return map[string]any{
 		"eventGameId": eventGameID, "gameId": g.ID, "name": g.Name, "coverPath": g.CoverPath,
 		"copyIndex": copyIndex, "seats": seats, "remaining": remaining, "weight": g.Weight,
 		"bookable": bookable,
+		// canAsk dice se il link "Chiedi al manuale" ha una chat dietro. Senza
+		// questo il link compariva su ogni gioco e, su uno senza manuale
+		// preparato, portava a una scheda dove non succedeva niente: nessun
+		// messaggio, nessuna spiegazione. Al tavolo, con le carte in mano, un
+		// link che non fa niente si legge come un'app rotta, non come una
+		// funzione assente.
+		"canAsk": canAsk,
 	}
 }
 
@@ -54,6 +61,21 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 		return nil, err
 	}
 
+	// Quali giochi della serata hanno un manuale preparato, in UNA query per
+	// tutta la risposta, e il provider AI letto una volta sola: sono le due
+	// condizioni di canAsk, e nessuna delle due deve costare una richiesta
+	// per gioco.
+	gameIDs := make([]int64, 0, len(eventGames))
+	for _, eg := range eventGames {
+		gameIDs = append(gameIDs, eg.GameID)
+	}
+	withManual := map[int64]bool{}
+	if s.Manuals != nil && s.aiConfigured(ctx) {
+		if got, err := s.Manuals.GamesWithPages(ctx, gameIDs); err == nil {
+			withManual = got
+		}
+	}
+
 	// gameCache fetches each distinct game once however many copies it has —
 	// two copies of the same game used to mean two GetGame calls for nothing.
 	gameCache := map[int64]games.Game{}
@@ -68,7 +90,8 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 			gameCache[eg.GameID] = game
 		}
 		remaining := eg.Seats - occupied[eg.ID]
-		gamesOut = append(gamesOut, toEventGameSummary(eg.ID, game, eg.CopyIndex, eg.Seats, remaining, eg.Bookable))
+		gamesOut = append(gamesOut, toEventGameSummary(
+			eg.ID, game, eg.CopyIndex, eg.Seats, remaining, eg.Bookable, withManual[eg.GameID]))
 	}
 
 	detail := toEventSummary(e)
@@ -102,6 +125,16 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 	resp["startTime"] = event.StartTime
 	resp["gameId"] = game.ID
 	resp["gameName"] = game.Name
+	// Stessa regola della scheda evento: il link "Chiedi al manuale" compare
+	// solo se dietro c'è davvero una chat. Qui il gioco è uno solo, quindi
+	// basta la condizione presa direttamente.
+	canAsk := false
+	if s.Manuals != nil && s.aiConfigured(ctx) {
+		if has, err := s.Manuals.HasPages(ctx, game.ID); err == nil {
+			canAsk = has
+		}
+	}
+	resp["canAsk"] = canAsk
 	resp["copyIndex"] = eventGame.CopyIndex
 	resp["seats"] = eventGame.Seats
 	// Whether the copy number is worth showing at all: with one copy of the
