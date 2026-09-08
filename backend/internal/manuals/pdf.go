@@ -5,7 +5,6 @@ package manuals
 
 import (
 	"bytes"
-	"fmt"
 	"image"
 	_ "image/jpeg" // registra il decoder JPEG per image.DecodeConfig
 	"regexp"
@@ -28,24 +27,50 @@ type PageImage struct {
 	Height int
 }
 
-// textOperators trova gli operatori PDF che disegnano testo: `(...) Tj`,
-// `[...] TJ`, `' ` e `"`. La loro presenza è ciò che distingue un PDF con
-// layer testo da una scansione, dove le pagine sono solo immagini.
-var textOperators = regexp.MustCompile(`\)\s*Tj|\]\s*TJ|\)\s*'|\)\s*"`)
+// textShowingOperator trova gli operatori PDF che disegnano testo:
+// `(...) Tj` e `[...] TJ`. Sono volutamente esclusi `'` e `"`: sono rari nei
+// content stream reali e, dentro un flusso binario JPEG, la sequenza
+// `)'` o `)"` compare per puro caso — è così che un manuale scansionato
+// reale di questo progetto veniva letto come "ha layer testo".
+var textShowingOperator = regexp.MustCompile(`\)\s*Tj|\]\s*TJ`)
 
-// HasTextLayer dice se vale la pena provare l'estrazione testo. Guarda i
-// content stream non compressi; un PDF che comprime tutto in FlateDecode
-// risponde false e finisce sul percorso vision, che è la degradazione
-// giusta: peggio sarebbe estrarre stringa vuota e non accorgersene.
+// fontResource trova un riferimento a `/Font` nel documento. Un content
+// stream che disegna testo deve appoggiarsi a una risorsa Font dichiarata
+// nel dizionario delle risorse della pagina: uno scan puro non ne ha
+// nessuna, quindi la sua assenza è una seconda prova indipendente
+// dall'operatore di disegno, che da solo può capitare per caso nei byte di
+// un'immagine.
+var fontResource = regexp.MustCompile(`/Font\b`)
+
+// HasTextLayer dice se vale la pena provare l'estrazione testo. Richiede
+// **sia** un operatore di disegno testo **sia** un riferimento a /Font,
+// perché il solo operatore basta a produrre falsi positivi: dentro un
+// flusso JPEG (dati binari) le sequenze `)'` o `)"` compaiono per caso, e
+// così un manuale scansionato del club risultava "con layer testo".
+//
+// La sbilanciatura è deliberata e va nella direzione sicura: quando è
+// incerto, HasTextLayer risponde false e il PDF va sul percorso vision, che
+// funziona su qualsiasi PDF (scansione o no) e nel peggiore dei casi costa
+// solo una chiamata al modello in più. Rispondere true per errore è invece
+// il guasto grave: l'estrazione testo su una scansione restituisce stringa
+// vuota, il percorso vision non parte mai, e la funzione tace — nessun
+// errore, nessuna citazione, il manuale è muto. Un PDF con vero layer testo
+// che nasconde il suo /Font dentro un object stream compresso finirà anche
+// lui sul percorso vision: costa una chiamata in più, non rompe niente.
 func HasTextLayer(pdf []byte) bool {
-	return textOperators.Match(pdf)
+	return fontResource.Match(pdf) && textShowingOperator.Match(pdf)
 }
 
-// dctImage individua un XObject immagine con filtro DCTDecode e cattura
-// larghezza e altezza dal dizionario. I JPEG dentro un PDF non sono
-// ricodificati: il flusso è il file JPEG, quindi estrarlo è una copia.
+// dctImage individua un XObject immagine con filtro DCTDecode. I JPEG
+// dentro un PDF non sono ricodificati: il flusso è il file JPEG, quindi
+// estrarlo è una copia. I due gruppi fra /Subtype e /Filter e fra /Filter
+// e "stream" non catturano nulla: servono solo a delimitare la ricerca,
+// le dimensioni vengono da image.DecodeConfig più sotto. Il limite di 400
+// byte per gruppo è stato verificato sul manuale reale del club: il
+// dizionario XObject di ciascuna delle sue 4 pagine ci sta comodamente,
+// e le 4 immagini vengono estratte correttamente.
 var dctImage = regexp.MustCompile(
-	`(?s)/Subtype\s*/Image(.{0,400}?)/Filter\s*/DCTDecode(.{0,400}?)stream\r?\n`)
+	`(?s)/Subtype\s*/Image(?:.{0,400}?)/Filter\s*/DCTDecode(?:.{0,400}?)stream\r?\n`)
 
 // ExtractPageImages restituisce le immagini a piena pagina di un PDF
 // scansionato, nell'ordine in cui compaiono nel file — che per uno scan
@@ -57,14 +82,25 @@ var dctImage = regexp.MustCompile(
 // coerente: quello è un PDF impaginato, che ha un layer testo e va
 // sull'altro percorso.
 func ExtractPageImages(pdf []byte) ([]PageImage, error) {
-	matches := dctImage.FindAllSubmatchIndex(pdf, -1)
+	matches := dctImage.FindAllIndex(pdf, -1)
 	out := make([]PageImage, 0, len(matches))
-	for _, m := range matches {
+	for i, m := range matches {
+		// Number viene dalla posizione nel file (i+1), non dal numero di
+		// immagini estratte con successo finora: se una pagina in mezzo
+		// viene scartata, le pagine dopo di lei non devono scivolare
+		// indietro di uno. Il numero finisce nella citazione mostrata a
+		// chi sta dirimendo una regola al tavolo: sbagliarlo silenziosamente
+		// sarebbe peggio che saltare la pagina.
+		number := i + 1
+
 		// m[1] è la fine dell'intero match, cioè subito dopo "stream\n".
 		start := m[1]
 		end := bytes.Index(pdf[start:], []byte("endstream"))
 		if end < 0 {
-			return nil, fmt.Errorf("immagine a pagina %d: stream senza endstream", len(out)+1)
+			// Un flusso senza endstream è malformato quanto uno che non
+			// decodifica: si salta la singola pagina, non tutto il
+			// manuale — vale lo stesso principio del ramo sotto.
+			continue
 		}
 		jpg := bytes.TrimRight(pdf[start:start+end], "\r\n")
 
@@ -77,7 +113,7 @@ func ExtractPageImages(pdf []byte) ([]PageImage, error) {
 		}
 
 		out = append(out, PageImage{
-			Number: len(out) + 1,
+			Number: number,
 			JPEG:   jpg,
 			Width:  cfg.Width,
 			Height: cfg.Height,
