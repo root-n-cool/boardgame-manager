@@ -14,6 +14,19 @@ import (
 // abbastanza perché otto parole chiave non producano un muro di testo.
 const hitsPerKeyword = 2
 
+// maxKeywords è il tetto alle parole chiave di una singola ricerca. Lo
+// schema del tool ne chiede da 3 a 8, ma è una richiesta, non un vincolo:
+// nessun provider garantisce di rispettarla, e il payload del risultato
+// rientra nel contesto a OGNI iterazione del loop. Quaranta parole chiave
+// significherebbero quaranta query FTS, fino a ottanta chunk, due query in
+// più per chunk per i vicini, e decine di migliaia di caratteri al posto
+// dei 200-600 token previsti — su una rotta pubblica che si paga a token.
+// Dodici è largo rispetto alle otto chieste: taglia l'abuso, non l'uso.
+//
+// Il taglio sta qui e non nel chiamante perché è lo store a dover reggere
+// qualunque chiamante, oggi e domani.
+const maxKeywords = 12
+
 type Store struct {
 	db *sql.DB
 }
@@ -221,7 +234,8 @@ func (s *Store) Corpus(ctx context.Context, gameID int64) (Corpus, error) {
 	return out, rows.Err()
 }
 
-// Search esegue una query FTS5 per ogni parola chiave e unisce i risultati.
+// Search esegue una query FTS5 per ogni parola chiave (al più maxKeywords)
+// e unisce i risultati.
 // Una query per parola e non un unico OR: con l'OR una parola comune
 // sommerge una rara, mentre così ogni variante ha i suoi due posti
 // garantiti — ed è quello che rende utile passare i sinonimi tutti insieme.
@@ -230,6 +244,9 @@ func (s *Store) Search(ctx context.Context, gameID int64, preferLang string, key
 	order := []int64{}
 	byID := map[int64]*Hit{}
 
+	if len(keywords) > maxKeywords {
+		keywords = keywords[:maxKeywords]
+	}
 	for _, raw := range keywords {
 		kw := strings.TrimSpace(raw)
 		if kw == "" {
@@ -243,15 +260,15 @@ func (s *Store) Search(ctx context.Context, gameID int64, preferLang string, key
 			res.Missing = append(res.Missing, kw)
 			continue
 		}
-		for id, h := range hits {
-			if existing, ok := byID[id]; ok {
+		for _, row := range hits {
+			if existing, ok := byID[row.id]; ok {
 				existing.FoundWith = append(existing.FoundWith, kw)
 				continue
 			}
-			h.FoundWith = []string{kw}
-			copied := h
-			byID[id] = &copied
-			order = append(order, id)
+			copied := row.h
+			copied.FoundWith = []string{kw}
+			byID[row.id] = &copied
+			order = append(order, row.id)
 		}
 	}
 
@@ -264,8 +281,14 @@ func (s *Store) Search(ctx context.Context, gameID int64, preferLang string, key
 	return res, nil
 }
 
-// searchOne cerca una sola parola chiave. Restituisce una mappa id -> Hit
-// perché il chiamante deduplica sull'id del chunk.
+// searchOne cerca una sola parola chiave. Restituisce una SLICE ordinata e
+// non una mappa: l'ordine è il risultato del lavoro qui sotto (rilevanza
+// BM25, con la lingua preferita davanti) ed è quello che decide quale
+// risultato il modello legge per primo. Restituirlo in una mappa lo
+// buttava via — l'ordine di iterazione di una mappa in Go è deliberatamente
+// casuale, quindi con due risultati in due lingue la "lingua preferita"
+// vinceva a testa o croce. Il chiamante deduplica sull'id, che viaggia
+// nella slice insieme all'hit.
 //
 // L'ordinamento per lingua preferita avviene in Go, non in SQL, e senza
 // LIMIT nella query: si leggono tutte le righe ordinate per `rank`
@@ -276,7 +299,7 @@ func (s *Store) Search(ctx context.Context, gameID int64, preferLang string, key
 // SQLite accetta: non impedisce di mescolare `rank` con un'espressione
 // calcolata), ma non dipende da quel comportamento specifico del motore
 // FTS5, ed è più facile da leggere e da testare in isolamento.
-func (s *Store) searchOne(ctx context.Context, gameID int64, preferLang, keyword string) (map[int64]Hit, error) {
+func (s *Store) searchOne(ctx context.Context, gameID int64, preferLang, keyword string) ([]scannedHit, error) {
 	// Nessun LIMIT qui: il taglio a hitsPerKeyword avviene in Go, dopo il
 	// riordino per lingua preferita. Un LIMIT in SQL prima di quel riordino
 	// potrebbe scartare una riga nella lingua preferita che il motore FTS5
@@ -344,14 +367,10 @@ func (s *Store) searchOne(ctx context.Context, gameID int64, preferLang, keyword
 		return iPref && !jPref
 	})
 
-	out := map[int64]Hit{}
-	for i, row := range all {
-		if i >= hitsPerKeyword {
-			break
-		}
-		out[row.id] = row.h
+	if len(all) > hitsPerKeyword {
+		all = all[:hitsPerKeyword]
 	}
-	return out, nil
+	return all, nil
 }
 
 // scannedHit è una riga letta da searchOne prima della deduplicazione e

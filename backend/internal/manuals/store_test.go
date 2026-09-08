@@ -3,6 +3,7 @@ package manuals_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -284,6 +285,44 @@ func TestSearch_DoesNotLeakIntoAnotherGame(t *testing.T) {
 		if h.ManualTitle != "Regolamento A" {
 			t.Fatalf("la ricerca su gameA ha restituito %q: sconfina su un altro gioco", h.ManualTitle)
 		}
+	}
+}
+
+func TestSearch_CapsTheNumberOfKeywords(t *testing.T) {
+	// Lo schema del tool chiede da 3 a 8 varianti, ma è una richiesta, non
+	// un vincolo: un modello che ne manda quaranta produrrebbe quaranta
+	// query FTS, fino a ottanta chunk e due query in più per chunk per i
+	// vicini, e un payload di decine di migliaia di caratteri che rientra
+	// nel contesto a ogni iterazione — su una rotta pubblica che si paga a
+	// token, dove la spec prometteva 200-600 token.
+	conn := newTestDB(t)
+	store := manuals.NewStore(conn)
+	ctx := context.Background()
+	gameID, mediaID := seed(t, conn, "Wingspan", "it", "Regolamento base")
+	if err := store.ReplacePages(ctx, gameID, mediaID, "it", regolePagine); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	// Dodici parole che non trovano niente, e alla tredicesima una che
+	// troverebbe: oltre il tetto non deve essere nemmeno cercata.
+	keywords := make([]string, 0, 40)
+	for i := 0; i < 12; i++ {
+		keywords = append(keywords, fmt.Sprintf("parolachenonesiste%d", i))
+	}
+	keywords = append(keywords, "Upkeep")
+	for i := 0; i < 27; i++ {
+		keywords = append(keywords, fmt.Sprintf("altraparolainutile%d", i))
+	}
+
+	res, err := store.Search(ctx, gameID, "it", keywords)
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(res.Missing) > 12 {
+		t.Fatalf("cercate %d parole chiave: nessun tetto", len(res.Missing))
+	}
+	if len(res.Hits) != 0 {
+		t.Fatalf("la tredicesima parola chiave è stata cercata lo stesso: %d risultati", len(res.Hits))
 	}
 }
 
