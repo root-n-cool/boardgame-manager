@@ -141,9 +141,10 @@ function closeDialog() {
 
     <!--
       v-if su dialogMounted, non su "è aperto": una volta montato al primo
-      tap resta nel DOM. Chiuderlo (Esc, ×, o il backdrop) lo nasconde
-      nativamente senza smontare ManualChatPanel, così una conversazione
-      in corso sopravvive a "chiudo per guardare il tavolo, riapro dopo".
+      tap resta nel DOM. Chiuderlo (Esc, che il <dialog> nativo gestisce
+      da sé, o il × che chiama closeDialog()) lo nasconde nativamente senza
+      smontare ManualChatPanel, così una conversazione in corso sopravvive
+      a "chiudo per guardare il tavolo, riapro dopo".
     -->
     <dialog
       v-if="dialogMounted"
@@ -159,12 +160,7 @@ function closeDialog() {
           </svg>
         </button>
       </div>
-      <ManualChatPanel
-        :game-id="gameId"
-        :game-name="gameName"
-        :headings="headings"
-        @close="closeDialog"
-      />
+      <ManualChatPanel :game-id="gameId" :game-name="gameName" :headings="headings" />
     </dialog>
   </template>
 </template>
