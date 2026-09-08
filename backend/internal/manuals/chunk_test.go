@@ -51,11 +51,30 @@ func TestChunk_SplitsLongPagesWithoutBreakingSentences(t *testing.T) {
 }
 
 func TestChunk_OverlapsSoARuleOnTheBoundaryIsFindable(t *testing.T) {
-	// La regola sta a cavallo del taglio: deve comparire intera in almeno
-	// un chunk, altrimenti non la trova né il chunk prima né quello dopo.
-	filler := strings.Repeat("Testo di riempimento del regolamento. ", 25)
-	rule := "Se due giocatori sono in pareggio vince chi ha meno edifici demoliti."
-	chunks := manuals.Chunk([]manuals.Page{{Number: 8, Text: filler + rule + " " + filler}})
+	// splitToSize non spezza mai un'unità atomica (un paragrafo, o una
+	// frase quando il paragrafo è troppo lungo) fra due chunk: un'unità
+	// intera finisce sempre in un chunk solo. Una regola fatta da UNA sola
+	// frase non potrebbe quindi mai finire a cavallo di un taglio, con o
+	// senza sovrapposizione — e un test con quella forma passerebbe anche
+	// se tailFrom non facesse nulla, verificando l'atomicità (già coperta
+	// da TestChunk_SplitsLongPagesWithoutBreakingSentences) invece della
+	// sovrapposizione.
+	//
+	// Qui la regola è DUE frasi (due unità), e il riempimento è tarato
+	// perché il taglio cada esattamente fra le due: la prima frase resta
+	// l'ultima unità del chunk prima del taglio, la seconda apre quello
+	// dopo. Solo la coda ripetuta da tailFrom rimette la prima frase in
+	// testa al chunk successivo, riunendo la regola intera in un chunk
+	// solo — senza quella coda, ciascun chunk ne conterrebbe solo metà.
+	// Verificato disattivando temporaneamente la chiamata a tailFrom in
+	// flush(): con la sovrapposizione disattivata questo test fallisce
+	// (nessun chunk contiene la regola intera); con la sovrapposizione
+	// riattivata passa. Vedi il fix report del Task 4 per l'evidenza.
+	filler := strings.Repeat("Testo di riempimento del regolamento. ", 24)
+	rule1 := "Il giocatore attivo pesca due carte dal mazzo principale."
+	rule2 := "Se il mazzo è vuoto rimescola gli scarti e continua a pescare."
+	rule := rule1 + " " + rule2
+	chunks := manuals.Chunk([]manuals.Page{{Number: 8, Text: filler + rule1 + " " + rule2 + " " + filler}})
 
 	found := false
 	for _, c := range chunks {
@@ -64,7 +83,51 @@ func TestChunk_OverlapsSoARuleOnTheBoundaryIsFindable(t *testing.T) {
 		}
 	}
 	if !found {
-		t.Fatal("la regola a cavallo del taglio non compare intera in nessun chunk")
+		t.Fatal("la regola a due frasi, a cavallo del taglio, non compare intera in nessun chunk")
+	}
+}
+
+func TestChunk_SeqRestartsPerPageAcrossMultiChunkPages(t *testing.T) {
+	// Seq è l'ordinale dentro la pagina, non un contatore che avanza per
+	// tutto il manuale: due pagine che producono ciascuna più chunk devono
+	// avere entrambe una sequenza 0,1,2,... propria. I test esistenti
+	// coprivano solo una pagina multi-chunk da sola, o due pagine a un
+	// chunk solo ciascuna: nessuno dei due esercita un Seq che
+	// erroneamente continuasse a salire da una pagina all'altra invece di
+	// azzerarsi. PageNumber e Seq sono ciò che diventa la citazione "pag.
+	// N" che qualcuno legge al tavolo, quindi qui si controllano entrambi
+	// su ogni chunk di entrambe le pagine, non solo il conteggio totale.
+	sentence := "Ogni giocatore paga una moneta per ciascun edificio posseduto e ne verifica la produzione. "
+	long := strings.Repeat(sentence, 40)
+	chunks := manuals.Chunk([]manuals.Page{
+		{Number: 10, Text: long},
+		{Number: 11, Text: long},
+	})
+
+	var page10, page11 []manuals.TextChunk
+	for _, c := range chunks {
+		switch c.PageNumber {
+		case 10:
+			page10 = append(page10, c)
+		case 11:
+			page11 = append(page11, c)
+		default:
+			t.Fatalf("chunk con PageNumber inatteso, né 10 né 11: %d", c.PageNumber)
+		}
+	}
+	if len(page10) < 2 || len(page11) < 2 {
+		t.Fatalf("attese entrambe le pagine multi-chunk, ottenuti %d chunk (pag. 10) e %d chunk (pag. 11)",
+			len(page10), len(page11))
+	}
+	for i, c := range page10 {
+		if c.Seq != i {
+			t.Fatalf("pag. 10: seq non progressivo, chunk %d ha seq %d", i, c.Seq)
+		}
+	}
+	for i, c := range page11 {
+		if c.Seq != i {
+			t.Fatalf("pag. 11: seq non riparte da 0, chunk %d ha seq %d", i, c.Seq)
+		}
 	}
 }
 
@@ -93,13 +156,35 @@ func TestChunk_SkipsEmptyPages(t *testing.T) {
 }
 
 func TestDetectHeading(t *testing.T) {
+	// Ognuno dei tre casi di rifiuto qui sotto isola UNA delle tre
+	// proprietà del commento di DetectHeading, cioè continua a fallire (e
+	// quindi a proteggere davvero, non solo ad apparire verde) anche se le
+	// altre due proprietà venissero disattivate. Verificato disattivando a
+	// turno ciascun ramo di rifiuto in DetectHeading (chunk.go) e
+	// controllando che SOLO il caso mirato a quel ramo tornasse a
+	// restituire il titolo invece di "": i due casi negativi originali di
+	// questo test (prima frase compiuta, prima riga troppo lunga) non
+	// erano isolati — la frase compiuta aveva anche più di 8 parole, la
+	// riga lunga cominciava per minuscola — quindi passavano ancora con il
+	// ramo bersaglio disattivato, protetti per caso da un altro ramo.
 	cases := []struct{ in, want string }{
 		{"Fase di Upkeep\nOgni giocatore paga una moneta per ogni edificio.", "Fase di Upkeep"},
 		{"CONTEGGIO DEI PUNTI\nOgni edificio vale i punti stampati.", "CONTEGGIO DEI PUNTI"},
-		// Una prima riga che è già una frase compiuta non è un titolo.
-		{"La partita termina quando la pila di pesca si esaurisce e non è possibile pescare.", ""},
-		// Troppo lunga per essere un titolo.
-		{strings.Repeat("parola ", 20) + "\naltro testo", ""},
+		// Isola SOLO il rifiuto per troppe parole: comincia in maiuscolo e
+		// non finisce con un punto, quindi se il conteggio delle parole
+		// non venisse controllato non ci sarebbe nessun altro motivo per
+		// rifiutarla.
+		{"Regole speciali per la partita con più di quattro giocatori esperti\naltro testo", ""},
+		// Isola SOLO il rifiuto per punto finale: poche parole, comincia
+		// in maiuscolo, quindi se il punto finale non venisse controllato
+		// non ci sarebbe nessun altro motivo per rifiutarla.
+		{"Il gioco finisce qui.", ""},
+		// Isola SOLO il rifiuto per iniziale minuscola: poche parole, non
+		// finisce con un punto — l'unica proprietà delle tre che la
+		// squalifica è l'iniziale minuscola. Prima di questo test
+		// unicode.IsUpper era codice reale ma mai esercitato da un caso
+		// che dipendesse solo da lui.
+		{"regole speciali\nOgni giocatore pesca due carte.", ""},
 		{"", ""},
 	}
 	for _, c := range cases {
