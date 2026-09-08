@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { api } from '../api/client'
 
 /**
@@ -28,30 +28,69 @@ interface ManualPage {
 const saved = ref<ManualPage[]>([])
 const draft = ref<ManualPage[] | null>(null)
 const source = ref('')
-const busy = ref(false)
-const busyLabel = ref('')
+// Un discriminatore invece di tre booleani: senza, un unico `busy` condiviso
+// fa leggere a chi usa uno screen reader "Salvataggio…" sul bottone
+// "Prepara di nuovo" che non ha mai toccato — l'azione in corso non è
+// quella del controllo che la mostra. Ogni bottone legge solo il proprio
+// stato; `busy` sotto resta il segnale unico per il disabled di tutti.
+const busyAction = ref<'prepare' | 'save' | 'remove' | null>(null)
+const busy = computed(() => busyAction.value !== null)
 const error = ref('')
 const notice = ref('')
+const loadError = ref('')
 
 const base = `/games/${props.gameId}/languages/${props.lang}/media/${props.mediaId}`
 
 async function loadSaved() {
+  loadError.value = ''
   try {
     const res = await api.get<{ pages: ManualPage[] }>(`${base}/pages`)
     saved.value = res.pages || []
   } catch (e) {
-    console.error('caricamento pagine manuale', e)
+    // Un errore qui non deve leggersi come "non preparato": sono due stati
+    // diversi, e confondere il secondo col primo dice all'admin una cosa
+    // falsa sui propri dati.
+    loadError.value =
+      e instanceof Error
+        ? `Non riesco a leggere lo stato di questo manuale: ${e.message}`
+        : 'Non riesco a leggere lo stato di questo manuale.'
   }
 }
 
-onMounted(loadSaved)
+// Chiudere la scheda con una bozza aperta perde le correzioni tanto quanto
+// "Prepara di nuovo" le perde — stessa causa, un'altra via. Il listener si
+// registra solo mentre esiste, e la guardia (draft non nullo) sta dentro
+// alla funzione, non nell'attach/detach, così basta un solo listener per
+// tutta la vita del componente.
+function handleBeforeUnload(e: BeforeUnloadEvent) {
+  if (draft.value) {
+    e.preventDefault()
+    e.returnValue = ''
+  }
+}
+
+onMounted(() => {
+  loadSaved()
+  window.addEventListener('beforeunload', handleBeforeUnload)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload)
+})
 
 async function prepare() {
-  busy.value = true
-  // Una richiesta per pagina lato server: su uno scan di molte pagine
-  // l'attesa si sente, e senza una scritta l'unico segnale sarebbe il
-  // bottone disabilitato — facile scambiare per un blocco.
-  busyLabel.value = 'Lettura del manuale in corso, pagina per pagina…'
+  // La bozza è già una correzione umana, non solo la proposta del modello:
+  // ripartire senza chiedere la butterebbe via in silenzio. Stessa logica
+  // di conferma di remove(), che dice cosa si perde invece di "sei sicuro?".
+  if (
+    draft.value &&
+    !window.confirm(
+      `Rifare la preparazione di "${props.mediaTitle}"? Le correzioni scritte finora in questa bozza vengono perse e sostituite da un nuovo tentativo.`,
+    )
+  ) {
+    return
+  }
+  busyAction.value = 'prepare'
   error.value = ''
   notice.value = ''
   draft.value = null
@@ -69,8 +108,7 @@ async function prepare() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Preparazione non riuscita.'
   } finally {
-    busy.value = false
-    busyLabel.value = ''
+    busyAction.value = null
   }
 }
 
@@ -78,8 +116,7 @@ async function save() {
   if (!draft.value) {
     return
   }
-  busy.value = true
-  busyLabel.value = 'Salvataggio…'
+  busyAction.value = 'save'
   error.value = ''
   notice.value = ''
   try {
@@ -98,8 +135,7 @@ async function save() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Salvataggio non riuscito.'
   } finally {
-    busy.value = false
-    busyLabel.value = ''
+    busyAction.value = null
   }
 }
 
@@ -107,8 +143,7 @@ async function remove() {
   if (!window.confirm(`Rimuovere l'indice di "${props.mediaTitle}"? Le domande su questo gioco smettono di funzionare finché non lo prepari di nuovo.`)) {
     return
   }
-  busy.value = true
-  busyLabel.value = 'Rimozione…'
+  busyAction.value = 'remove'
   error.value = ''
   notice.value = ''
   try {
@@ -119,8 +154,7 @@ async function remove() {
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Rimozione non riuscita.'
   } finally {
-    busy.value = false
-    busyLabel.value = ''
+    busyAction.value = null
   }
 }
 
@@ -139,16 +173,23 @@ function discardDraft() {
     -->
     <h3 class="manual-prep-title">{{ mediaTitle }}</h3>
     <p class="manual-prep-state">
-      <template v-if="saved.length">{{ saved.length }} pagine indicizzate.</template>
+      <template v-if="loadError">{{ loadError }}</template>
+      <template v-else-if="saved.length">{{ saved.length }} pagine indicizzate.</template>
       <template v-else>Non preparato per le domande.</template>
     </p>
 
     <div class="manual-prep-actions">
       <button type="button" :disabled="busy" @click="prepare">
-        {{ busy && busyLabel ? busyLabel : saved.length ? 'Prepara di nuovo' : 'Prepara per le domande' }}
+        {{
+          busyAction === 'prepare'
+            ? 'Lettura del manuale in corso, pagina per pagina…'
+            : saved.length
+              ? 'Prepara di nuovo'
+              : 'Prepara per le domande'
+        }}
       </button>
       <button v-if="saved.length" type="button" class="btn-danger" :disabled="busy" @click="remove">
-        Rimuovi indice
+        {{ busyAction === 'remove' ? 'Rimozione…' : 'Rimuovi indice' }}
       </button>
     </div>
 
@@ -185,7 +226,7 @@ function discardDraft() {
       </div>
       <div class="manual-prep-actions">
         <button type="button" :disabled="busy" @click="save">
-          {{ busy && busyLabel ? busyLabel : 'Salva e indicizza' }}
+          {{ busyAction === 'save' ? 'Salvataggio…' : 'Salva e indicizza' }}
         </button>
         <button type="button" class="btn-secondary" :disabled="busy" @click="discardDraft">Annulla</button>
       </div>
