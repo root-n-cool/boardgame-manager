@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -20,14 +21,19 @@ import (
 
 // fakeTranscriber finge un modello multimodale: restituisce un testo che
 // contiene il numero di pagina, così i test verificano l'accoppiamento.
+// errOnPage, se diverso da zero, limita err a quella sola pagina: le altre
+// riescono normalmente. È così che si esercita l'isolamento dei guasti
+// (una pagina che fallisce non deve far sparire le altre) senza un secondo
+// tipo finto.
 type fakeTranscriber struct {
-	calls int
-	err   error
+	calls     int
+	err       error
+	errOnPage int
 }
 
 func (f *fakeTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
 	f.calls++
-	if f.err != nil {
+	if f.err != nil && (f.errOnPage == 0 || f.errOnPage == page) {
 		return "", f.err
 	}
 	return "Trascrizione della pagina " + fmt.Sprint(page), nil
@@ -110,6 +116,44 @@ func scannedPDFWithMisleadingTextMarkers() []byte {
 		streamObj(content),                                       // 8
 		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 9: mai referenziato da nessuna pagina
 		streamObj("(testo civetta) Tj"),                          // 10: mai referenziato da nessun /Contents
+	})
+}
+
+// scannedPDFWithThinHeaderText costruisce un manuale scansionato di due
+// pagine, ognuna con un'immagine a piena pagina *e* un vero operatore Tj
+// che disegna la stessa intestazione corta ("Manuale Esempio", 15
+// caratteri). A differenza di scannedPDFWithMisleadingTextMarkers, qui
+// /Font e Tj sono nel contenuto vero della pagina, non in oggetti civetta
+// mai referenziati: è la forma realistica del problema di scala descritto
+// nel commento su minAvgUsableCharsPerPage — uno scanner che stampa
+// un'intestazione o un numero di pagina in un vero (ma quasi vuoto) layer
+// testo sopra l'immagine scansionata. Sommando su più pagine il totale
+// cresce con il numero di pagine (qui ~30 caratteri su 2 pagine, già sopra
+// una vecchia soglia sul totale di 20) restando comunque inutile riga per
+// riga: solo una media per pagina lo riconosce.
+func scannedPDFWithThinHeaderText() []byte {
+	jpg1 := manuals.NewTestJPEG(24, 32)
+	jpg2 := manuals.NewTestJPEG(20, 28)
+	header := "Manuale Esempio"
+	content := fmt.Sprintf("q 200 0 0 260 0 0 cm /Im0 Do Q BT /F1 12 Tf 10 10 Td (%s) Tj ET", header)
+	page := func(imgRef, contentRef string) string {
+		return fmt.Sprintf(
+			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] "+
+				"/Resources << /XObject << /Im0 %s >> /Font << /F1 9 0 R >> >> /Contents %s >>", imgRef, contentRef)
+	}
+	streamObj := func(s string) string {
+		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
+	}
+	return manuals.BuildTestPDF([]string{
+		"<< /Type /Catalog /Pages 2 0 R >>",                      // 1
+		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",        // 2
+		page("5 0 R", "7 0 R"),                                   // 3
+		page("6 0 R", "8 0 R"),                                   // 4
+		manuals.ImageObject(jpg1, 24, 32),                        // 5
+		manuals.ImageObject(jpg2, 20, 28),                        // 6
+		streamObj(content),                                       // 7
+		streamObj(content),                                       // 8
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 9
 	})
 }
 
@@ -261,6 +305,145 @@ func TestExtractManual_TextLayerFalsePositiveFallsBackToVision(t *testing.T) {
 	}
 }
 
+// TestExtractManual_ThinPerPageTextFallsBackToVision è il caso di scala
+// segnalato in review: un totale sommato su tutte le pagine cresce con il
+// numero di pagine, quindi un'intestazione corta ma reale, ripetuta su più
+// pagine, può superare una soglia sul totale nonostante resti inutile
+// pagina per pagina. La media per pagina non ha questo buco: 15 caratteri
+// di media restano sotto qualunque soglia ragionevole indipendentemente da
+// quante pagine ripetono la stessa intestazione.
+func TestExtractManual_ThinPerPageTextFallsBackToVision(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	tr := &fakeTranscriber{}
+	server.Vision = tr
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	gameID, mediaID := seedGameWithManual(t, server, conn, scannedPDFWithThinHeaderText())
+
+	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Source string `json:"source"`
+		Pages  []struct {
+			Text string `json:"text"`
+		} `json:"pages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("risposta non JSON: %v", err)
+	}
+	if body.Source != "vision" {
+		t.Fatalf("un'intestazione corta ripetuta su più pagine deve ripiegare su vision (media troppo bassa), source = %q", body.Source)
+	}
+	if len(body.Pages) != 2 {
+		t.Fatalf("attese 2 pagine trascritte, ottenute %d", len(body.Pages))
+	}
+	if tr.calls != 2 {
+		t.Fatalf("attese 2 chiamate a vision (una per pagina), ottenute %d", tr.calls)
+	}
+}
+
+// TestExtractManual_ShortAllTextPDFReturnsItsTextInsteadOfAnError copre
+// l'effetto collaterale segnalato in review: alzare la soglia (o passare a
+// una media) per chiudere il buco di scala sopra non deve trasformare un
+// PDF di solo testo genuinamente corto — un cartoncino di riferimento di
+// una pagina, senza nessuna immagine — in un errore 422. Il percorso
+// vision, su un PDF così, non trova nessuna immagine da trascrivere: il
+// ripiego deve restituire comunque il testo vero (per quanto debole in
+// media) invece di rispondere con un errore.
+func TestExtractManual_ShortAllTextPDFReturnsItsTextInsteadOfAnError(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	gameID, mediaID := seedGameWithManual(t, server, conn, manuals.NewTextPDF())
+
+	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("un cartoncino di una pagina, per quanto corto, ha un testo vero: non deve tornare un errore. atteso 200, ottenuto %d: %s",
+			rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Source string `json:"source"`
+		Pages  []struct {
+			PageNumber int    `json:"pageNumber"`
+			Text       string `json:"text"`
+		} `json:"pages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("risposta non JSON: %v", err)
+	}
+	if body.Source != "pdf_text" {
+		t.Fatalf("un PDF di solo testo senza immagini deve tornare il suo testo, source = %q", body.Source)
+	}
+	if len(body.Pages) != 1 {
+		t.Fatalf("attesa 1 pagina, ottenute %d", len(body.Pages))
+	}
+	if !strings.Contains(body.Pages[0].Text, "Upkeep") {
+		t.Fatalf("il testo estratto doveva essere quello vero del PDF, ottenuto %q", body.Pages[0].Text)
+	}
+}
+
+// TestExtractManual_OnePageFailingTranscriptionDoesNotLoseTheOthers pinna
+// l'isolamento dei guasti nel percorso vision: la pagina 2 fallisce, ma le
+// pagine 1 e 3 devono comunque tornare col loro testo, la pagina 2 deve
+// comunque essere presente (vuota, source "manual") e la numerazione non
+// deve slittare — quei numeri sono la citazione che qualcuno usa per
+// aprire il manuale alla pagina giusta.
+func TestExtractManual_OnePageFailingTranscriptionDoesNotLoseTheOthers(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	tr := &fakeTranscriber{errOnPage: 2, err: errors.New("provider momentaneamente giù")}
+	server.Vision = tr
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	gameID, mediaID := seedGameWithScannedManual(t, server, conn)
+
+	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Pages []struct {
+			PageNumber int    `json:"pageNumber"`
+			Text       string `json:"text"`
+			Source     string `json:"source"`
+		} `json:"pages"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("risposta non JSON: %v", err)
+	}
+	if len(body.Pages) != 2 {
+		t.Fatalf("attese 2 pagine (una fallita non deve far sparire le altre), ottenute %d", len(body.Pages))
+	}
+	if body.Pages[0].PageNumber != 1 || body.Pages[1].PageNumber != 2 {
+		t.Fatalf("la numerazione non deve slittare: ottenuto %d, %d", body.Pages[0].PageNumber, body.Pages[1].PageNumber)
+	}
+	if body.Pages[0].Text == "" || body.Pages[0].Source != "vision" {
+		t.Fatalf("pagina 1 doveva riuscire: text=%q source=%q", body.Pages[0].Text, body.Pages[0].Source)
+	}
+	if body.Pages[1].Text != "" {
+		t.Fatalf("pagina 2 (fallita) doveva arrivare con testo vuoto, non %q", body.Pages[1].Text)
+	}
+	if body.Pages[1].Source != "manual" {
+		t.Fatalf("pagina 2 (fallita) doveva avere source \"manual\", non %q", body.Pages[1].Source)
+	}
+}
+
 func TestPutManualPages_SavesAndBuildsTheIndex(t *testing.T) {
 	server, conn := newTestServerWithDB(t)
 	router := httpapi.NewRouter(server)
@@ -348,7 +531,10 @@ func TestDeleteManualPages(t *testing.T) {
 // descritto nel brief: manualTarget deve verificare che il media
 // appartenga davvero a quel gioco (e a quella lingua), non solo che
 // esista. Senza questo controllo, l'id di un media di un altro gioco
-// passerebbe indisturbato.
+// passerebbe indisturbato. Lo status atteso è esattamente 404 (non un
+// generico "diverso da 200"): un media che non appartiene a quel gioco è
+// un caso "non trovato", come lo tratta translateLanguageHandler per lo
+// stesso genere di lookup — non un parametro di rotta malformato (400).
 func TestManualTarget_RejectsMediaFromAnotherGame(t *testing.T) {
 	server, conn := newTestServerWithDB(t)
 	router := httpapi.NewRouter(server)
@@ -361,7 +547,7 @@ func TestManualTarget_RejectsMediaFromAnotherGame(t *testing.T) {
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	if rec.Code == http.StatusOK {
-		t.Fatalf("un media di un altro gioco non deve essere accettato, ottenuto 200: %s", rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("un media di un altro gioco è un \"non trovato\": atteso 404, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
 }

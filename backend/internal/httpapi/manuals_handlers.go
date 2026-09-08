@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -16,16 +17,27 @@ import (
 	"boardgames-manager/internal/manuals"
 )
 
-// minUsableExtractedChars è la soglia sotto la quale il testo letto da
-// ExtractText si considera "quasi vuoto" e non un'estrazione riuscita.
-// Un paragrafo vero di manuale, anche breve, sta ben sopra: una singola
-// riga di titolo ("Fase di Upkeep") supera già questa soglia. Il valore è
-// deliberatamente basso, non alto: l'errore da evitare è quello grave —
-// dire "va bene" a un'estrazione che in realtà non ha preso niente, e
-// perdere così in silenzio il percorso vision — non quello lieve di
-// mandare in più a vision un manuale che aveva davvero pochissimo testo
-// leggibile.
-const minUsableExtractedChars = 20
+// minAvgUsableCharsPerPage separa un layer testo che è davvero la prosa
+// del manuale da uno che è solo rumore dello scanner (un'intestazione o un
+// numero di pagina impressi su una pagina altrimenti scansionata).
+//
+// È una media per pagina, non un totale: un totale non scala. Una
+// scansione di quattro pagine la cui unica "estrazione" è un'intestazione
+// ripetuta tipo "Wingspan — Regolamento" (~22 caratteri) somma a ~88
+// caratteri, che un tetto sul totale di 20 chiamerebbe "usabile" a
+// prescindere da quante pagine ha la scansione — è la scala che tradisce
+// la soglia, non la soglia in sé. Mediando invece il segnale per pagina
+// resta stabile: un'intestazione o un rumore restano sulle decine di
+// caratteri qualunque sia il numero di pagine, mentre una vera pagina di
+// manuale (un paragrafo o più di regole) media sulle centinaia. 100 sta
+// comodamente sopra il tetto del rumore e comodamente sotto la prosa vera.
+//
+// Una pagina vera ma davvero corta (un cartoncino di riferimento di una
+// pagina) può restare sotto questa media — è previsto, e gestito altrove:
+// extractManualHandler ripiega comunque su quel testo (per quanto debole)
+// invece di rispondere con un errore, quando il percorso vision non ha
+// nemmeno un'immagine da trascrivere (vedi il commento lì).
+const minAvgUsableCharsPerPage = 100
 
 // transcriber restituisce il trascrittore per questa richiesta: quello
 // iniettato se c'è (i test), altrimenti uno costruito dalle impostazioni.
@@ -46,6 +58,12 @@ func (s *Server) transcriber(ctx context.Context) ai.Transcriber {
 // manualTarget risolve i tre parametri di rotta in un manuale concreto, e
 // verifica che il media appartenga davvero a quel gioco e a quella lingua:
 // senza il controllo, l'id di un media di un altro gioco passerebbe.
+//
+// Un caso "non trovato" (lingua o media inesistenti per questo gioco)
+// avvolge games.ErrNotFound, cosicché writeManualTargetError possa
+// distinguerlo da un parametro di rotta malformato: stesso schema di
+// translateLanguageHandler (translate.go), che differenzia allo stesso
+// modo per lo stesso genere di lookup.
 func (s *Server) manualTarget(r *http.Request) (gameID int64, mediaID int64, lang string, media games.GameMedia, err error) {
 	gameID, err = parseIDParam(r, "id")
 	if err != nil {
@@ -61,8 +79,11 @@ func (s *Server) manualTarget(r *http.Request) (gameID int64, mediaID int64, lan
 	}
 
 	gl, err := s.Games.GetLanguage(r.Context(), gameID, lang)
+	if errors.Is(err, games.ErrNotFound) {
+		return 0, 0, "", games.GameMedia{}, fmt.Errorf("language not found: %w", games.ErrNotFound)
+	}
 	if err != nil {
-		return 0, 0, "", games.GameMedia{}, errors.New("language not found")
+		return 0, 0, "", games.GameMedia{}, errors.New("could not load language")
 	}
 	list, err := s.Games.ListMedia(r.Context(), gl.ID)
 	if err != nil {
@@ -73,7 +94,19 @@ func (s *Server) manualTarget(r *http.Request) (gameID int64, mediaID int64, lan
 			return gameID, mediaID, lang, m, nil
 		}
 	}
-	return 0, 0, "", games.GameMedia{}, errors.New("media not found for this game and language")
+	return 0, 0, "", games.GameMedia{}, fmt.Errorf("media not found for this game and language: %w", games.ErrNotFound)
+}
+
+// writeManualTargetError traduce l'errore di manualTarget nello status
+// giusto: 404 per un gioco/lingua/media che davvero non esiste (come fa
+// translateLanguageHandler per lo stesso genere di lookup), 400 per un
+// parametro di rotta malformato (id non numerico, lingua mancante).
+func writeManualTargetError(w http.ResponseWriter, err error) {
+	if errors.Is(err, games.ErrNotFound) {
+		writeError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	writeError(w, http.StatusBadRequest, err.Error())
 }
 
 type manualPageResponse struct {
@@ -83,37 +116,64 @@ type manualPageResponse struct {
 	Source     string `json:"source"`
 }
 
-// usableTextChars somma i caratteri di testo (dopo trim) su tutte le
-// pagine: è la misura con cui extractManualHandler decide se il layer
+// averageUsableTextChars è la media dei caratteri di testo (dopo trim) per
+// pagina: è la misura con cui extractManualHandler decide se il layer
 // testo letto da ExtractText vale davvero, o se è meglio ripiegare su
-// vision.
-func usableTextChars(pages []manuals.Page) int {
-	n := 0
-	for _, p := range pages {
-		n += len(strings.TrimSpace(p.Text))
+// vision. Vedi il commento su minAvgUsableCharsPerPage per il perché di
+// una media e non di un totale.
+func averageUsableTextChars(pages []manuals.Page) float64 {
+	if len(pages) == 0 {
+		return 0
 	}
-	return n
+	total := 0
+	for _, p := range pages {
+		total += len(strings.TrimSpace(p.Text))
+	}
+	return float64(total) / float64(len(pages))
+}
+
+// pdfTextPageResponses converte le Page di manuals.ExtractText nella forma
+// di risposta, rilevando l'heading di ciascuna. Usata sia dal percorso
+// primario (testo sopra soglia) sia dal ripiego (testo debole ma nessuna
+// immagine da trascrivere): lo stesso mapping, non due copie.
+func pdfTextPageResponses(pages []manuals.Page) []manualPageResponse {
+	out := make([]manualPageResponse, 0, len(pages))
+	for _, p := range pages {
+		out = append(out, manualPageResponse{
+			PageNumber: p.Number, Text: p.Text,
+			Heading: manuals.DetectHeading(p.Text), Source: "pdf_text",
+		})
+	}
+	return out
 }
 
 // extractManualHandler propone il testo di un manuale senza salvarlo. Non
 // salva di proposito: l'admin conferma sempre, come già per
 // l'arricchimento BGG.
 //
-// Il percorso si sceglie così: se HasTextLayer dice che c'è un layer
-// testo, si prova ExtractText; ma se quel tentativo fallisce o produce
-// solo qualche carattere (vedi minUsableExtractedChars), si ripiega sul
-// percorso vision invece di rispondere con pagine vuote. Due ragioni
-// concrete, non ipotetiche: ExtractText si ferma alla prima pagina
-// corrotta (limite noto della libreria, vedi il suo commento), e un PDF i
-// cui font vivono in un object stream compresso risponde false a
-// HasTextLayer pur avendo un vero layer testo — casi diversi, stesso
-// rimedio. Il vision funziona su qualunque PDF e nel peggiore dei casi
-// costa solo qualche chiamata in più al modello: un manuale che finisce
-// muto perché si è scelto il ramo testo per errore è il guasto peggiore.
+// Il percorso si sceglie in tre passi, non due:
+//  1. Se HasTextLayer dice che c'è un layer testo, si prova ExtractText.
+//     Se il risultato è buono in media (vedi minAvgUsableCharsPerPage) è
+//     la risposta: nessun bisogno di vision.
+//  2. Altrimenti (nessun layer testo, ExtractText fallito, o testo troppo
+//     debole in media) si prova il percorso vision. Due ragioni concrete
+//     per cui "debole" conta quanto "assente": ExtractText si ferma alla
+//     prima pagina corrotta (limite noto della libreria, vedi il suo
+//     commento), e un PDF i cui font vivono in un object stream compresso
+//     risponde false a HasTextLayer pur avendo un vero layer testo.
+//  3. Se il percorso vision non trova nemmeno un'immagine da trascrivere
+//     (ExtractPageImages torna vuoto) ma il passo 1 aveva comunque estratto
+//     del testo, per quanto debole in media, quel testo diventa la
+//     risposta invece di un errore: è il caso di un PDF di solo testo
+//     davvero corto (un cartoncino di riferimento di una pagina), che senza
+//     questo ripiego finirebbe rifiutato nonostante avesse un contenuto
+//     vero e leggibile. Un errore va restituito solo quando *nessuno* dei
+//     due percorsi ha prodotto niente: quello sì è un file davvero
+//     inutilizzabile.
 func (s *Server) extractManualHandler(w http.ResponseWriter, r *http.Request) {
 	_, _, _, media, err := s.manualTarget(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeManualTargetError(w, err)
 		return
 	}
 	if media.Type != games.MediaTypeFile || !strings.HasSuffix(strings.ToLower(media.URLOrPath), ".pdf") {
@@ -135,24 +195,27 @@ func (s *Server) extractManualHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// extractedPages tiene il risultato di ExtractText anche quando è
+	// troppo debole in media per essere la risposta primaria: serve come
+	// ripiego al passo 3, se il percorso vision non trova nessuna pagina
+	// da trascrivere.
+	var extractedPages []manuals.Page
 	if manuals.HasTextLayer(raw) {
 		pages, textErr := manuals.ExtractText(raw)
 		if textErr != nil {
 			log.Printf("manuals: extract text: %v", textErr)
-		} else if usableTextChars(pages) >= minUsableExtractedChars {
-			out := make([]manualPageResponse, 0, len(pages))
-			for _, p := range pages {
-				out = append(out, manualPageResponse{
-					PageNumber: p.Number, Text: p.Text,
-					Heading: manuals.DetectHeading(p.Text), Source: "pdf_text",
+		} else {
+			extractedPages = pages
+			if averageUsableTextChars(pages) >= minAvgUsableCharsPerPage {
+				writeJSON(w, http.StatusOK, map[string]any{
+					"source": "pdf_text", "pages": pdfTextPageResponses(pages),
 				})
+				return
 			}
-			writeJSON(w, http.StatusOK, map[string]any{"source": "pdf_text", "pages": out})
-			return
+			// Nessun return: la media è troppo bassa per fidarsene come
+			// risposta primaria, ma extractedPages resta come ripiego più
+			// sotto se vision non trova immagini.
 		}
-		// Nessun return sopra: un errore di ExtractText, o un'estrazione
-		// che ha prodotto troppo poco testo per essere vera, cadono
-		// entrambi qui e proseguono sul percorso vision sotto.
 	}
 
 	images, err := manuals.ExtractPageImages(raw)
@@ -163,6 +226,15 @@ func (s *Server) extractManualHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(images) == 0 {
+		if len(extractedPages) > 0 {
+			// Nessuna immagine da trascrivere, ma un po' di testo vero
+			// (per quanto debole in media) c'è: è meglio di un errore, e
+			// l'admin lo legge e lo corregge dove serve.
+			writeJSON(w, http.StatusOK, map[string]any{
+				"source": "pdf_text", "pages": pdfTextPageResponses(extractedPages),
+			})
+			return
+		}
 		writeError(w, http.StatusUnprocessableEntity,
 			"questo PDF non ha né testo né pagine leggibili: puoi scrivere il testo a mano")
 		return
@@ -194,7 +266,7 @@ func (s *Server) extractManualHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) listManualPagesHandler(w http.ResponseWriter, r *http.Request) {
 	_, mediaID, _, _, err := s.manualTarget(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeManualTargetError(w, err)
 		return
 	}
 	pages, err := s.Manuals.ListPages(r.Context(), mediaID)
@@ -226,7 +298,7 @@ type putManualPagesRequest struct {
 func (s *Server) putManualPagesHandler(w http.ResponseWriter, r *http.Request) {
 	gameID, mediaID, lang, _, err := s.manualTarget(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeManualTargetError(w, err)
 		return
 	}
 	var body putManualPagesRequest
@@ -265,7 +337,7 @@ func (s *Server) putManualPagesHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Server) deleteManualPagesHandler(w http.ResponseWriter, r *http.Request) {
 	_, mediaID, _, _, err := s.manualTarget(r)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
+		writeManualTargetError(w, err)
 		return
 	}
 	if err := s.Manuals.DeletePages(r.Context(), mediaID); err != nil {
