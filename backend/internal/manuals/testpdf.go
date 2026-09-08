@@ -6,6 +6,7 @@ import (
 	"image"
 	"image/color"
 	"image/jpeg"
+	"strings"
 )
 
 // Questo file esiste solo per i test: costruisce PDF minimi ma validi,
@@ -73,8 +74,18 @@ func ImageObject(jpg []byte, w, h int) string {
 // manuale reale del club, verificata in fase di design, e il fixture che
 // entrambi i package usano per esercitare il percorso vision.
 func NewScannedPDF() []byte {
-	jpg1 := NewTestJPEG(24, 32)
-	jpg2 := NewTestJPEG(20, 28)
+	return NewScannedPDFPages(2)
+}
+
+// NewScannedPDFPages è NewScannedPDF con un numero di pagine a scelta. Serve
+// ai test in cui l'esito di UNA pagina in mezzo alle altre deve poter essere
+// diverso: con due sole pagine la pagina "diversa" è per forza la prima o
+// l'ultima, e un test così non distingue una numerazione presa da img.Number
+// da una presa dall'indice di append.
+//
+// Ogni pagina ha un'immagine di dimensioni diverse dalle altre, così un test
+// può anche verificare l'accoppiamento pagina/immagine.
+func NewScannedPDFPages(n int) []byte {
 	content := "q 200 0 0 260 0 0 cm /Im0 Do Q"
 	page := func(imgRef, contentRef string) string {
 		return fmt.Sprintf(
@@ -84,16 +95,31 @@ func NewScannedPDF() []byte {
 	streamObj := func(s string) string {
 		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
 	}
-	return BuildTestPDF([]string{
-		"<< /Type /Catalog /Pages 2 0 R >>",               // 1
-		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>", // 2
-		page("5 0 R", "7 0 R"),                            // 3
-		page("6 0 R", "8 0 R"),                            // 4
-		ImageObject(jpg1, 24, 32),                         // 5
-		ImageObject(jpg2, 20, 28),                         // 6
-		streamObj(content),                                // 7
-		streamObj(content),                                // 8
-	})
+
+	// Numerazione degli oggetti: 1 catalogo, 2 albero pagine, poi le n
+	// pagine, poi le n immagini, poi gli n contenuti.
+	firstPage, firstImage, firstContent := 3, 3+n, 3+2*n
+	kids := make([]string, 0, n)
+	pages := make([]string, 0, n)
+	images := make([]string, 0, n)
+	contents := make([]string, 0, n)
+	for i := 0; i < n; i++ {
+		kids = append(kids, fmt.Sprintf("%d 0 R", firstPage+i))
+		pages = append(pages, page(
+			fmt.Sprintf("%d 0 R", firstImage+i), fmt.Sprintf("%d 0 R", firstContent+i)))
+		w, h := 24-4*i, 32-4*i
+		images = append(images, ImageObject(NewTestJPEG(w, h), w, h))
+		contents = append(contents, streamObj(content))
+	}
+
+	objs := []string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		fmt.Sprintf("<< /Type /Pages /Kids [%s] /Count %d >>", strings.Join(kids, " "), n),
+	}
+	objs = append(objs, pages...)
+	objs = append(objs, images...)
+	objs = append(objs, contents...)
+	return BuildTestPDF(objs)
 }
 
 // NewTextPDF restituisce un PDF di una pagina con un vero layer testo: un

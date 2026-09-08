@@ -274,6 +274,12 @@ func TestSearch_DoesNotLeakIntoAnotherGame(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
+	// Senza questo, il test si chiama "non sconfina" ma passa anche quando
+	// la ricerca non restituisce NIENTE: il ciclo sotto non gira e non
+	// asserisce nulla. Una ricerca rotta lo lascerebbe verde.
+	if len(res.Hits) == 0 {
+		t.Fatal("la ricerca su gameA non ha trovato niente: senza risultati questo test non verifica nessuno sconfinamento")
+	}
 	for _, h := range res.Hits {
 		if h.ManualTitle != "Regolamento A" {
 			t.Fatalf("la ricerca su gameA ha restituito %q: sconfina su un altro gioco", h.ManualTitle)
@@ -489,19 +495,14 @@ func TestSearch_AttachesTheNeighbourChunkAtAPageBoundary(t *testing.T) {
 
 	// Una pagina lunga abbastanza da produrre più chunk, con la parola
 	// chiave nel PRIMO e il seguito nel secondo.
-	coda := strings.Repeat("Testo che continua il regolamento oltre il taglio. ", 30)
+	coda := longEnoughForSeveralChunks()
 	if err := store.ReplacePages(ctx, gameID, mediaID, "it", []manuals.StoredPage{
 		{PageNumber: 4, Source: "manual",
 			Text: "Fase di Upkeep. Ogni giocatore paga una moneta. " + coda},
 	}); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
-
-	var chunks int
-	conn.QueryRow(`SELECT COUNT(*) FROM manual_chunk WHERE page_number = 4`).Scan(&chunks)
-	if chunks < 2 {
-		t.Skipf("la pagina ha prodotto %d chunk: niente bordo da verificare", chunks)
-	}
+	requireSeveralChunks(t, conn)
 
 	res, err := store.Search(ctx, gameID, "it", []string{"Upkeep"})
 	if err != nil {
@@ -529,7 +530,7 @@ func TestSearch_AttachesThePreviousChunkAtTheLastChunkBoundary(t *testing.T) {
 	gameID, mediaID := seed(t, conn, "Wingspan", "it", "Regolamento base")
 	ctx := context.Background()
 
-	coda := strings.Repeat("Testo che continua il regolamento oltre il taglio. ", 30)
+	coda := longEnoughForSeveralChunks()
 	if err := store.ReplacePages(ctx, gameID, mediaID, "it", []manuals.StoredPage{
 		{PageNumber: 4, Source: "manual",
 			Text: "Testo introduttivo del regolamento. " + coda +
@@ -537,12 +538,7 @@ func TestSearch_AttachesThePreviousChunkAtTheLastChunkBoundary(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
-
-	var chunks int
-	conn.QueryRow(`SELECT COUNT(*) FROM manual_chunk WHERE page_number = 4`).Scan(&chunks)
-	if chunks < 2 {
-		t.Skipf("la pagina ha prodotto %d chunk: niente bordo da verificare", chunks)
-	}
+	requireSeveralChunks(t, conn)
 
 	res, err := store.Search(ctx, gameID, "it", []string{"Zibaldone"})
 	if err != nil {
@@ -552,12 +548,47 @@ func TestSearch_AttachesThePreviousChunkAtTheLastChunkBoundary(t *testing.T) {
 		t.Fatal("nessun risultato per 'Zibaldone'")
 	}
 	// Il chunk trovato è l'ultimo della pagina: il payload deve portarsi
-	// dietro anche quel che lo precede — e "prima", non "dopo": un
-	// HasPrefix invece di un Contains, perché uno scambio del flag "after"
-	// (attaccherebbe comunque il testo giusto, solo in coda anziché in
-	// testa) altrimenti passerebbe inosservato.
-	if !strings.HasPrefix(res.Hits[0].Text, "Testo introduttivo") {
-		t.Fatalf("il chunk precedente non è in testa (o non è allegato):\n%s", res.Hits[0].Text)
+	// dietro anche quel che lo precede — e "prima", non "dopo". Non si
+	// controlla un prefisso specifico (dipenderebbe da quanti chunk produce
+	// la fixture, cioè di nuovo dai parametri di chunking) ma la posizione
+	// della frase trovata: deve avere del testo davanti, e niente dietro.
+	// Uno scambio del flag "after" attaccherebbe il testo giusto in coda
+	// anziché in testa, e senza il secondo controllo passerebbe inosservato.
+	const zibaldone = "Fase finale Zibaldone"
+	idx := strings.Index(res.Hits[0].Text, zibaldone)
+	switch {
+	case idx < 0:
+		t.Fatalf("il chunk trovato non contiene la frase cercata:\n%s", res.Hits[0].Text)
+	case idx == 0:
+		t.Fatalf("il chunk precedente non è stato allegato:\n%s", res.Hits[0].Text)
+	}
+	if !strings.HasSuffix(strings.TrimSpace(res.Hits[0].Text),
+		"il gioco termina quando la plancia e' piena.") {
+		t.Fatalf("il chunk precedente è finito in coda invece che in testa:\n%s", res.Hits[0].Text)
+	}
+}
+
+// longEnoughForSeveralChunks costruisce una coda di pagina dimensionata su
+// MaxChunkChars invece che su un numero fisso di ripetizioni: i due test sul
+// chunk adiacente hanno senso solo se la pagina si spezza davvero, e con una
+// lunghezza fissa basterebbe alzare MaxChunkChars perché smettessero in
+// silenzio di verificare quel che dice il loro nome.
+func longEnoughForSeveralChunks() string {
+	const frase = "Testo che continua il regolamento oltre il taglio. "
+	return strings.Repeat(frase, 2*manuals.MaxChunkChars/len(frase)+2)
+}
+
+// requireSeveralChunks fallisce — non salta — se la pagina non si è spezzata.
+// Uno Skipf qui renderebbe i due test auto-disattivanti: al primo cambio dei
+// parametri di chunking diventerebbero verdi senza esercitare niente.
+func requireSeveralChunks(t *testing.T, conn *sql.DB) {
+	t.Helper()
+	var chunks int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM manual_chunk WHERE page_number = 4`).Scan(&chunks); err != nil {
+		t.Fatalf("conteggio chunk: %v", err)
+	}
+	if chunks < 2 {
+		t.Fatalf("la pagina ha prodotto %d chunk: la fixture non esercita più il bordo che questo test verifica", chunks)
 	}
 }
 

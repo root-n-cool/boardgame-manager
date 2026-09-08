@@ -407,7 +407,14 @@ func TestExtractManual_OnePageFailingTranscriptionDoesNotLoseTheOthers(t *testin
 	router := httpapi.NewRouter(server)
 	cookie := loginAsAdmin(t, router)
 
-	gameID, mediaID := seedGameWithScannedManual(t, server, conn)
+	// TRE pagine, con quella che fallisce IN MEZZO: con due pagine la
+	// fallita sarebbe l'ultima, e il test non distinguerebbe una
+	// numerazione presa da img.Number da una presa dall'indice di append —
+	// che coincidono finché nessuna pagina "salta". Qui, se il numero
+	// venisse dall'indice, la pagina 3 arriverebbe numerata 3 lo stesso ma
+	// la 2 sarebbe l'unica a poter slittare: è il caso in mezzo che rende
+	// visibile l'accoppiamento.
+	gameID, mediaID := seedGameWithManual(t, server, conn, manuals.NewScannedPDFPages(3))
 
 	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
 	req.AddCookie(cookie)
@@ -427,14 +434,24 @@ func TestExtractManual_OnePageFailingTranscriptionDoesNotLoseTheOthers(t *testin
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("risposta non JSON: %v", err)
 	}
-	if len(body.Pages) != 2 {
-		t.Fatalf("attese 2 pagine (una fallita non deve far sparire le altre), ottenute %d", len(body.Pages))
+	if len(body.Pages) != 3 {
+		t.Fatalf("attese 3 pagine (una fallita non deve far sparire le altre), ottenute %d", len(body.Pages))
 	}
-	if body.Pages[0].PageNumber != 1 || body.Pages[1].PageNumber != 2 {
-		t.Fatalf("la numerazione non deve slittare: ottenuto %d, %d", body.Pages[0].PageNumber, body.Pages[1].PageNumber)
+	for i, p := range body.Pages {
+		if p.PageNumber != i+1 {
+			t.Fatalf("la numerazione non deve slittare: pagina in posizione %d numerata %d", i, p.PageNumber)
+		}
 	}
-	if body.Pages[0].Text == "" || body.Pages[0].Source != "vision" {
-		t.Fatalf("pagina 1 doveva riuscire: text=%q source=%q", body.Pages[0].Text, body.Pages[0].Source)
+	for _, i := range []int{0, 2} {
+		if body.Pages[i].Text == "" || body.Pages[i].Source != "vision" {
+			t.Fatalf("pagina %d doveva riuscire: text=%q source=%q",
+				i+1, body.Pages[i].Text, body.Pages[i].Source)
+		}
+		// Il testo del finto trascrittore contiene il numero di pagina: è
+		// così che si vede se una pagina ha ricevuto l'immagine di un'altra.
+		if !strings.Contains(body.Pages[i].Text, fmt.Sprint(i+1)) {
+			t.Fatalf("pagina %d ha ricevuto la trascrizione di un'altra pagina: %q", i+1, body.Pages[i].Text)
+		}
 	}
 	if body.Pages[1].Text != "" {
 		t.Fatalf("pagina 2 (fallita) doveva arrivare con testo vuoto, non %q", body.Pages[1].Text)

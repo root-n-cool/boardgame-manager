@@ -218,13 +218,14 @@ func (s *Server) extractManualHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	images, err := manuals.ExtractPageImages(raw)
-	if err != nil {
-		log.Printf("manuals: extract images: %v", err)
-		writeError(w, http.StatusUnprocessableEntity,
-			"non è stato possibile leggere le pagine di questo PDF: puoi scrivere il testo a mano")
-		return
-	}
+	// ExtractPageImages non restituisce mai un errore: una pagina illeggibile
+	// viene saltata e il resto del file continua a essere estratto, quindi
+	// "non ho trovato immagini" arriva sempre come lista vuota. Il ramo
+	// `if err != nil` che stava qui era morto, e se fosse mai tornato in vita
+	// avrebbe risposto 422 senza guardare extractedPages — contro la regola
+	// per cui il 422 si dà solo quando NESSUNO dei due percorsi ha prodotto
+	// qualcosa. La lista vuota qui sotto è l'unico punto in cui si decide.
+	images, _ := manuals.ExtractPageImages(raw)
 	if len(images) == 0 {
 		if len(extractedPages) > 0 {
 			// Nessuna immagine da trascrivere, ma un po' di testo vero
