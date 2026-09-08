@@ -23,8 +23,11 @@ type settingsResponse struct {
 	BGGAPITokenMasked string `json:"bggApiTokenMasked,omitempty"`
 	// L'indirizzo e il modello sono dati da rileggere, come PublicBaseURL;
 	// la chiave è un segreto e segue BGGAPIToken.
-	AIBaseURL      string `json:"aiBaseUrl"`
-	AIModel        string `json:"aiModel"`
+	AIBaseURL string `json:"aiBaseUrl"`
+	AIModel   string `json:"aiModel"`
+	// AIVisionModel è un nome di modello, non un segreto: esce in chiaro
+	// come AIModel, a differenza di AIAPIKey.
+	AIVisionModel  string `json:"aiVisionModel"`
 	AIAPIKeySet    bool   `json:"aiApiKeySet"`
 	AIAPIKeyMasked string `json:"aiApiKeyMasked,omitempty"`
 	// AIConfigured è il booleano su cui la UI decide se mostrare i comandi
@@ -69,6 +72,7 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	resp.AIBaseURL = cfg.AIBaseURL
 	resp.AIModel = cfg.AIModel
+	resp.AIVisionModel = cfg.AIVisionModel
 	resp.AIAPIKeySet = cfg.AIAPIKey != ""
 	if resp.AIAPIKeySet {
 		resp.AIAPIKeyMasked = maskKey(cfg.AIAPIKey)
@@ -95,6 +99,7 @@ type updateSettingsRequest struct {
 	AIBaseURL       string        `json:"aiBaseUrl"`
 	AIAPIKey        string        `json:"aiApiKey"`
 	AIModel         string        `json:"aiModel"`
+	AIVisionModel   string        `json:"aiVisionModel"`
 	SMTPHost        string        `json:"smtpHost"`
 	SMTPPort        smtpPortValue `json:"smtpPort"`
 	SMTPUsername    string        `json:"smtpUsername"`
@@ -201,6 +206,7 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		BGGAPIToken:     current.BGGAPIToken,
 		AIBaseURL:       aiBaseURL,
 		AIModel:         strings.TrimSpace(req.AIModel),
+		AIVisionModel:   strings.TrimSpace(req.AIVisionModel),
 		AIAPIKey:        current.AIAPIKey,
 		SMTPHost:        strings.TrimSpace(req.SMTPHost),
 		SMTPPort:        int(req.SMTPPort),

@@ -144,3 +144,39 @@ func TestGet_FreshDatabaseHasNoSMTPConfiguration(t *testing.T) {
 			out.SMTPHost, out.SMTPPort, out.SMTPFromAddress)
 	}
 }
+
+func TestUpdate_RoundTripsTheVisionModel(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	current, err := store.Get(ctx)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	current.AIVisionModel = "deepseek-v4-flash-vision-exp"
+	if err := store.Update(ctx, current); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	got, err := store.Get(ctx)
+	if err != nil {
+		t.Fatalf("get after update: %v", err)
+	}
+	if got.AIVisionModel != "deepseek-v4-flash-vision-exp" {
+		t.Fatalf("expected the vision model to round-trip, got %q", got.AIVisionModel)
+	}
+
+	// Svuotarlo deve tornare stringa vuota, non NULL letto come "NULL":
+	// è il campo che dice "nessuna trascrizione automatica".
+	got.AIVisionModel = ""
+	if err := store.Update(ctx, got); err != nil {
+		t.Fatalf("update to empty: %v", err)
+	}
+	cleared, err := store.Get(ctx)
+	if err != nil {
+		t.Fatalf("get after clear: %v", err)
+	}
+	if cleared.AIVisionModel != "" {
+		t.Fatalf("expected an empty vision model, got %q", cleared.AIVisionModel)
+	}
+}
