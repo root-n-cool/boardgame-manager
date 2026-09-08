@@ -152,7 +152,7 @@ func (s *Store) ListPages(ctx context.Context, mediaID int64) ([]StoredPage, err
 func (s *Store) DeletePages(ctx context.Context, mediaID int64) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("begin: %w", err)
 	}
 	defer tx.Rollback()
 	if _, err := tx.ExecContext(ctx, `DELETE FROM manual_chunk WHERE game_media_id = ?`, mediaID); err != nil {
@@ -182,7 +182,7 @@ func (s *Store) HasPages(ctx context.Context, gameID int64) (bool, error) {
 
 func (s *Store) Corpus(ctx context.Context, gameID int64) (Corpus, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT COALESCE(m.title, 'Manuale'), m.url_or_path, l.language_code,
+		`SELECT m.id, COALESCE(m.title, 'Manuale'), m.url_or_path, l.language_code,
 		        p.page_number, p.text, COALESCE(p.heading, ''), p.source
 		 FROM manual_page p
 		 JOIN game_media m ON m.id = p.game_media_id
@@ -194,25 +194,27 @@ func (s *Store) Corpus(ctx context.Context, gameID int64) (Corpus, error) {
 	}
 	defer rows.Close()
 
+	// Raggruppato per game_media_id, non per (title, language_code): il
+	// titolo è un campo libero e opzionale (COALESCE a 'Manuale' quando è
+	// NULL), quindi due media distinti nella stessa lingua senza titolo
+	// collasserebbero sulla stessa chiave e il secondo Path sparirebbe. Path
+	// alimenta il link "pag. 7" del Task 9: un Path sbagliato manda a un
+	// file diverso da quello dove quella pagina vive davvero.
 	var out Corpus
-	type key struct {
-		title string
-		lang  string
-	}
-	index := map[key]int{}
+	index := map[int64]int{}
 	for rows.Next() {
+		var mediaID int64
 		var title, path, lang string
 		var p StoredPage
-		if err := rows.Scan(&title, &path, &lang, &p.PageNumber, &p.Text, &p.Heading, &p.Source); err != nil {
+		if err := rows.Scan(&mediaID, &title, &path, &lang, &p.PageNumber, &p.Text, &p.Heading, &p.Source); err != nil {
 			return Corpus{}, err
 		}
 		out.Chars += len(p.Text)
-		k := key{title, lang}
-		i, ok := index[k]
+		i, ok := index[mediaID]
 		if !ok {
 			out.Manuals = append(out.Manuals, ManualText{Title: title, Path: path, LanguageCode: lang})
 			i = len(out.Manuals) - 1
-			index[k] = i
+			index[mediaID] = i
 		}
 		out.Manuals[i].Pages = append(out.Manuals[i].Pages, p)
 	}
@@ -298,6 +300,21 @@ func (s *Store) searchOne(ctx context.Context, gameID int64, preferLang, keyword
 		// operatori però sono utili (pesc*, "frase esatta"), quindi non si
 		// filtrano a monte: si riprova con la parola neutralizzata solo
 		// quando la prima forma è illegale.
+		//
+		// Il retry scatta su *qualunque* errore della prima query, non solo
+		// su un errore di sintassi FTS5 — inclusi un errore di contesto
+		// (timeout, richiesta annullata) o un problema di connessione. Ho
+		// considerato di restringerlo controllando il testo dell'errore
+		// (driver modernc.org/sqlite riporta "fts5: syntax error" per il
+		// caso che interessa), ma è un abbinamento su una stringa che il
+		// driver non promette di stabilizzare fra versioni: più fragile del
+		// problema che risolverebbe. Il costo del catch largo è concreto ma
+		// piccolo — una seconda query quasi identica — e nel caso di un
+		// contesto già annullato la seconda query fallisce a sua volta
+		// (rientra comunque nell'errore restituito sotto), quindi non si
+		// rischia un risultato silenzioso sbagliato: nel peggiore dei casi
+		// si perde il messaggio d'errore originale a favore di quello della
+		// query di retry.
 		rows, err = query(escapeFTS(keyword))
 		if err != nil {
 			return nil, fmt.Errorf("fts search %q: %w", keyword, err)

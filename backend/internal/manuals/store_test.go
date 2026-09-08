@@ -134,6 +134,22 @@ func TestReplacePages_IsIdempotentAndRebuilds(t *testing.T) {
 	if indexed != 1 {
 		t.Fatalf("l'indice FTS5 ha %d righe dopo la ricostruzione", indexed)
 	}
+
+	// I conteggi da soli non distinguono "ricostruito col contenuto giusto"
+	// da "ricostruito con contenuto vecchio che per caso conta uguale":
+	// 'Upkeep' era solo nella pagina 4, scartata dal secondo salvataggio
+	// (regolePagine[:1] è solo la pagina 3). Deve sparire anche dalla
+	// ricerca, non solo dal conteggio.
+	res, err := store.Search(ctx, gameID, "it", []string{"Upkeep"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(res.Hits) != 0 {
+		t.Fatalf("'Upkeep' era nella pagina scartata dal secondo salvataggio, ma è ancora trovabile: %+v", res.Hits)
+	}
+	if !containsString(res.Missing, "Upkeep") {
+		t.Fatalf("'Upkeep' doveva comparire fra i mancanti dopo la ricostruzione, Missing = %v", res.Missing)
+	}
 }
 
 func TestSearch_FindsByKeywordAndReportsTheMisses(t *testing.T) {
@@ -216,12 +232,30 @@ func TestSearch_SurvivesAnApostrophe(t *testing.T) {
 	ctx := context.Background()
 	store.ReplacePages(ctx, gameID, mediaID, "it", regolePagine)
 
-	for _, kw := range []string{"all'inizio", `virgoletta"dentro`, "chi vince in caso di parita'"} {
+	// "all'inizio" è l'unica delle tre che ha davvero un match nel
+	// corpus (pagina 3: "All'inizio del proprio turno..."), quindi è
+	// l'unica che può dimostrare che il fallback su escapeFTS non si limita
+	// a evitare l'errore ma trova ancora qualcosa. Le altre due restano nel
+	// test solo per il caso "non erra" (virgolette sbilanciate, un
+	// apostrofo in mezzo a una frase lunga): non hanno match nel corpus e
+	// non potrebbero provare niente di più, di proposito.
+	res, err := store.Search(ctx, gameID, "it", []string{"all'inizio"})
+	if err != nil {
+		t.Fatalf(`Search("all'inizio") ha restituito errore: %v`, err)
+	}
+	if len(res.Hits) == 0 {
+		t.Fatal(`"all'inizio" doveva trovare la pagina 3, nessun hit`)
+	}
+	if containsString(res.Missing, "all'inizio") {
+		t.Fatalf(`"all'inizio" è fra i mancanti nonostante il match: %v`, res.Missing)
+	}
+
+	for _, kw := range []string{`virgoletta"dentro`, "chi vince in caso di parita'"} {
 		res, err := store.Search(ctx, gameID, "it", []string{kw})
 		if err != nil {
 			t.Fatalf("Search(%q) ha restituito errore: %v", kw, err)
 		}
-		_ = res // il punto è che non erra: trovare o no è secondario
+		_ = res // qui il punto è solo che non erra: non c'è nessun match da provare
 	}
 }
 
@@ -324,6 +358,74 @@ func TestCorpusAndHasPages(t *testing.T) {
 	}
 }
 
+func TestCorpus_KeepsDistinctMediaSeparateWhenUntitled(t *testing.T) {
+	// Regressione: raggruppare Corpus per (title, language_code) fa
+	// collassare due media distinti nella stessa lingua quando entrambi non
+	// hanno titolo, perché la query fa COALESCE(title, 'Manuale') — stesso
+	// titolo fittizio, stessa chiave. Il secondo Path sparisce, e Path è ciò
+	// che trasforma "pag. 7" in un link al PDF giusto: un Path sbagliato
+	// manda al file sbagliato.
+	conn := newTestDB(t)
+	store := manuals.NewStore(conn)
+	ctx := context.Background()
+
+	g, err := conn.ExecContext(ctx, `INSERT INTO games (name, seats) VALUES (?, 1)`, "Brass")
+	if err != nil {
+		t.Fatalf("insert game: %v", err)
+	}
+	gameID, _ := g.LastInsertId()
+	l, err := conn.ExecContext(ctx,
+		`INSERT INTO game_languages (game_id, language_code, is_base_language, name)
+		 VALUES (?, 'it', 1, ?)`, gameID, "Brass")
+	if err != nil {
+		t.Fatalf("insert language: %v", err)
+	}
+	langID, _ := l.LastInsertId()
+
+	// Due media distinti sotto la stessa lingua, entrambi senza titolo.
+	m1, err := conn.ExecContext(ctx,
+		`INSERT INTO game_media (game_language_id, type, url_or_path, title) VALUES (?, 'file', 'base.pdf', NULL)`, langID)
+	if err != nil {
+		t.Fatalf("insert media 1: %v", err)
+	}
+	media1, _ := m1.LastInsertId()
+	m2, err := conn.ExecContext(ctx,
+		`INSERT INTO game_media (game_language_id, type, url_or_path, title) VALUES (?, 'file', 'espansione.pdf', NULL)`, langID)
+	if err != nil {
+		t.Fatalf("insert media 2: %v", err)
+	}
+	media2, _ := m2.LastInsertId()
+
+	if err := store.ReplacePages(ctx, gameID, media1, "it", []manuals.StoredPage{
+		{PageNumber: 1, Source: "manual", Text: "Regole base."},
+	}); err != nil {
+		t.Fatalf("replace media 1: %v", err)
+	}
+	if err := store.ReplacePages(ctx, gameID, media2, "it", []manuals.StoredPage{
+		{PageNumber: 1, Source: "manual", Text: "Regole dell'espansione."},
+	}); err != nil {
+		t.Fatalf("replace media 2: %v", err)
+	}
+
+	corpus, err := store.Corpus(ctx, gameID)
+	if err != nil {
+		t.Fatalf("corpus: %v", err)
+	}
+	if len(corpus.Manuals) != 2 {
+		t.Fatalf("attesi 2 manuali distinti, ottenuti %d: %+v", len(corpus.Manuals), corpus.Manuals)
+	}
+	paths := map[string]int{}
+	for _, m := range corpus.Manuals {
+		paths[m.Path]++
+		if len(m.Pages) != 1 {
+			t.Fatalf("manuale con path %q: attesa 1 pagina, ottenute %d", m.Path, len(m.Pages))
+		}
+	}
+	if paths["base.pdf"] != 1 || paths["espansione.pdf"] != 1 {
+		t.Fatalf("i due path distinti non sono entrambi presenti una volta sola: %v", paths)
+	}
+}
+
 func TestDeletePages_AndMediaCascade(t *testing.T) {
 	conn := newTestDB(t)
 	store := manuals.NewStore(conn)
@@ -413,6 +515,49 @@ func TestSearch_AttachesTheNeighbourChunkAtAPageBoundary(t *testing.T) {
 	// chunk successivo arriva al modello troncata.
 	if !strings.Contains(res.Hits[0].Text, "continua il regolamento") {
 		t.Fatalf("il chunk adiacente non è stato allegato:\n%s", res.Hits[0].Text)
+	}
+}
+
+func TestSearch_AttachesThePreviousChunkAtTheLastChunkBoundary(t *testing.T) {
+	// Simmetrico al test precedente: lì la parola chiave cade nel PRIMO
+	// chunk della pagina (ramo "h.seq == 0" di attachNeighbours, allega il
+	// seguito); qui cade nell'ULTIMO (ramo "h.seq == maxSeq", allega quel
+	// che precede). Senza questo test il secondo ramo non è mai esercitato:
+	// uno scambio di "after" o un off-by-one lì passerebbe inosservato.
+	conn := newTestDB(t)
+	store := manuals.NewStore(conn)
+	gameID, mediaID := seed(t, conn, "Wingspan", "it", "Regolamento base")
+	ctx := context.Background()
+
+	coda := strings.Repeat("Testo che continua il regolamento oltre il taglio. ", 30)
+	if err := store.ReplacePages(ctx, gameID, mediaID, "it", []manuals.StoredPage{
+		{PageNumber: 4, Source: "manual",
+			Text: "Testo introduttivo del regolamento. " + coda +
+				"Fase finale Zibaldone: il gioco termina quando la plancia e' piena."},
+	}); err != nil {
+		t.Fatalf("replace: %v", err)
+	}
+
+	var chunks int
+	conn.QueryRow(`SELECT COUNT(*) FROM manual_chunk WHERE page_number = 4`).Scan(&chunks)
+	if chunks < 2 {
+		t.Skipf("la pagina ha prodotto %d chunk: niente bordo da verificare", chunks)
+	}
+
+	res, err := store.Search(ctx, gameID, "it", []string{"Zibaldone"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(res.Hits) == 0 {
+		t.Fatal("nessun risultato per 'Zibaldone'")
+	}
+	// Il chunk trovato è l'ultimo della pagina: il payload deve portarsi
+	// dietro anche quel che lo precede — e "prima", non "dopo": un
+	// HasPrefix invece di un Contains, perché uno scambio del flag "after"
+	// (attaccherebbe comunque il testo giusto, solo in coda anziché in
+	// testa) altrimenti passerebbe inosservato.
+	if !strings.HasPrefix(res.Hits[0].Text, "Testo introduttivo") {
+		t.Fatalf("il chunk precedente non è in testa (o non è allegato):\n%s", res.Hits[0].Text)
 	}
 }
 
