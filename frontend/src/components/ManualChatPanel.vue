@@ -124,12 +124,65 @@ const connect = computed(() => ({ url: `/api/games/${props.gameId}/ask`, method:
 // conversazione non arriverebbe affatto al server.
 const requestBodyLimits = { maxMessages: 40 }
 
+// I due bottoni del campo (invia, detta) nascono come SVG grigio chiaro su
+// bianco. `brightness(0)` li porta al nero pieno — il filtro è la sola via
+// che deep-chat offre per il colore di quelle icone — e `scale` ingrandisce
+// il disegno dentro il bottone, che resta della sua misura.
+//
+// La misura del *bersaglio* resta quella di deep-chat, 22px: quei bottoni
+// sono in `position: absolute` dentro contenitori a larghezza zero nel suo
+// shadow DOM, e imporre 44px dalle proprietà documentate li sposta fuori dal
+// campo e taglia il microfono oltre il bordo dello schermo (provato e
+// osservato in browser). Chi scrive da telefono manda comunque la domanda
+// col tasto invio della tastiera, che è un bersaglio a misura piena.
+const inputIconButton = {
+  container: { hover: { backgroundColor: '#f2ead4' } }, // --card-alt
+  svg: { styles: { default: { filter: 'brightness(0)', transform: 'scale(1.15)' } } },
+}
+
+const submitButtonStyles = { submit: inputIconButton }
+
 // Nessuna chiave: webSpeech usa la Web Speech API del browser. it-IT va
 // messo esplicito, il default è en-US. Richiede HTTPS (o localhost): in
 // LAN su http il microfono non funziona, ed è documentato nel README.
-const speechToText = { webSpeech: { language: 'it-IT' } }
+const speechToText = {
+  webSpeech: { language: 'it-IT' },
+  // `inside-start` e non il default `outside-end`: il campo qui è largo
+  // quanto il pannello, e un bottone *fuori* dal campo finisce oltre il
+  // bordo destro dello schermo, tagliato a metà (visto su 390px). Dentro,
+  // il microfono sta a sinistra e l'invio a destra, uno per capo.
+  button: { default: inputIconButton, position: 'inside-start' },
+}
 
-const textInput = { placeholder: { text: 'Chiedi una regola…' } }
+// Il campo di deep-chat nasce bianco, con ombra propria e un margine che lo
+// stacca dai bordi: dentro questa app leggeva come un widget incollato
+// sopra il cartoncino. Qui prende la stessa resa degli altri campi — fondo
+// carta, bordo `--card-line`, raggio 6px, anello rosso al focus — e tutta
+// la larghezza del pannello. Le misure sono generose di proposito: il
+// campo si tocca col pollice, in piedi al tavolo.
+const textInput = {
+  placeholder: { text: 'Chiedi una regola…', style: { color: '#6e6250' } }, // --ink-muted
+  styles: {
+    container: {
+      width: '100%',
+      margin: '0',
+      backgroundColor: '#faf6ec', // --card
+      border: '1px solid #ddd0ab', // --card-line
+      borderRadius: '6px',
+      boxShadow: 'none',
+    },
+    text: {
+      color: '#241f18', // --ink
+      padding: '0.6rem 0.75rem',
+      // I due bottoni stanno *dentro* il campo, uno per capo: senza questi
+      // due rientri il testo ci passa sotto (il microfono copriva la prima
+      // lettera del placeholder).
+      paddingLeft: '2.7em',
+      paddingRight: '2.7em',
+    },
+    focus: { border: '1px solid #9c2b2b', outline: '2px solid #9c2b2b' }, // --accent
+  },
+}
 
 const errorMessages = {
   overrides: {
@@ -149,6 +202,17 @@ const messageStyles = {
     shared: { bubble: { borderRadius: '10px', fontSize: '0.95rem', maxWidth: '92%' } },
     user: { bubble: { backgroundColor: '#1f4d3a', color: '#f4efe1' } }, // --felt / --felt-text
     ai: { bubble: { backgroundColor: '#f2ead4', color: '#241f18' } }, // --card-alt / --ink
+  },
+  // Senza questa voce l'errore usciva nel rosa di serie di deep-chat: in
+  // una palette dove non esiste un rosa era la cosa più fuori posto della
+  // pagina. Qui porta gli stessi due colori di `.error` in app.css.
+  error: {
+    bubble: {
+      backgroundColor: '#f8e3d4', // --danger-bg
+      color: '#ad4a22', // --danger
+      borderRadius: '10px',
+      fontSize: '0.95rem',
+    },
   },
 }
 
@@ -191,6 +255,7 @@ const auxiliaryStyle = `
       :requestBodyLimits="requestBodyLimits"
       :speechToText="speechToText"
       :textInput="textInput"
+      :submitButtonStyles="submitButtonStyles"
       :errorMessages="errorMessages"
       :messageStyles="messageStyles"
       :auxiliaryStyle="auxiliaryStyle"

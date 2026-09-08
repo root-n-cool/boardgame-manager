@@ -2636,10 +2636,18 @@ tbody tr:nth-child(3) .rank-medal {
   margin: 0;
 }
 
+/* 44px di lato con l'icona ferma a 1rem: la × è l'unica uscita di una
+   modale su telefono (l'Esc lì non c'è) e la usano le pagine pubbliche —
+   prenotazione e chiedi al manuale. Il `margin-right` negativo compensa il
+   padding cresciuto, così la × resta otticamente a filo della testata come
+   quando era 28px. */
 .modal-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin-right: -0.4rem;
   margin-left: auto;
   padding: 0.35rem;
   background: transparent;
@@ -3664,9 +3672,23 @@ tbody tr:nth-child(3) .rank-medal {
     grid-template-columns: minmax(0, 1fr) 2.75rem;
   }
 
+  /* Da collassata la barra è larga 44px: il titolo si gira e il chevron gli
+     va sopra invece che di fianco, dove non ci starebbero entrambi. */
+  .manual-chat-aside.is-collapsed .manual-chat-toggle {
+    flex-direction: column;
+    padding: 0.7rem 0.25rem;
+  }
+
   .manual-chat-aside.is-collapsed .manual-chat-toggle-label {
     writing-mode: vertical-rl;
     padding: 0.75rem 0;
+  }
+
+  /* Il chevron punta verso il contenuto: fuori quando è aperta (si chiude a
+     destra), dentro quando è chiusa (si riapre a sinistra). */
+  .manual-chat-aside.is-collapsed .manual-chat-toggle-icon {
+    order: -1;
+    transform: rotate(180deg);
   }
 
   .manual-chat-aside-body {
@@ -3681,6 +3703,7 @@ tbody tr:nth-child(3) .rank-medal {
   justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
+  min-height: 44px;
   padding: 0.7rem 0.85rem;
   font-family: 'Display', system-ui, sans-serif;
   font-size: 0.95rem;
@@ -3688,6 +3711,31 @@ tbody tr:nth-child(3) .rank-medal {
   background: var(--felt);
   border: 0;
   cursor: pointer;
+}
+
+.manual-chat-toggle-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* La regola globale `button:hover` (0,1,1) batte una classe nuda (0,1,0):
+   senza questa riga il capo verde della chat diventava rosso accento al
+   passaggio del mouse. Stessa eredità che `.loan-row` ha già dovuto
+   rifiutare — chi aggiunge un bottone fuori dal rosso primario dichiara
+   anche il suo hover. */
+.manual-chat-toggle:hover {
+  background: var(--felt-deep);
+}
+
+/* Sul feltro il rosso seme dell'anello di focus sta a 1.3:1: la regola
+   generale vale già per topbar e sidebar, e ogni superficie verde nuova va
+   aggiunta a mano (qui e sulla testata del dialog, più sotto). In più
+   `.manual-chat-aside` ha `overflow: hidden`, quindi l'anello va portato
+   dentro o viene ritagliato. */
+.manual-chat-toggle:focus-visible {
+  outline-color: var(--felt-text);
+  outline-offset: -2px;
 }
 
 .manual-chat-panel {
@@ -3704,22 +3752,57 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--ink-muted);
 }
 
+/* `margin-top: auto` porta in fondo l'invito, le tre domande e il campo
+   come un blocco solo: nel dialog a tutto schermo l'intero stato di riposo
+   finisce nella zona che il pollice raggiunge, e lo spazio che resta sopra è
+   proprio quello dove compariranno le risposte — un filo di conversazione
+   ancora vuoto, non un buco. Nella sidebar desktop non c'è spazio libero da
+   distribuire e non cambia niente. */
 .manual-chat-intro {
-  margin: 0 0 0.75rem;
+  margin: auto 0 0.75rem;
 }
 
+/* Lo stato di riposo occupa tutta l'altezza che ha: nel dialog a tutto
+   schermo questo porta il finto campo in fondo, dove atterrerà quello vero
+   di deep-chat e dove arriva il pollice di chi sta in piedi al tavolo.
+   Prima le tre domande e il campo stavano in cima e i due terzi bassi dello
+   schermo erano avorio vuoto, con l'invito a scrivere fuori portata.
+   Nella sidebar desktop non c'è spazio libero da occupare e nulla cambia. */
+.manual-chat-rest {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Spogliata come `.admin-list`: la regola globale `ul` la vestirebbe da
+   card (fondo, bordo, raggio, ombra, overflow) e `li` metterebbe padding e
+   filetto a ogni riga, incorniciando due volte tre bottoni che sono già
+   pastiglie. */
 .manual-chat-suggestions {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
   margin: 0 0 0.85rem;
   padding: 0;
+  overflow: visible;
   list-style: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.manual-chat-suggestions li {
+  display: block;
+  padding: 0;
+  border: 0;
 }
 
 .manual-chat-suggestions button {
   width: 100%;
-  padding: 0.5rem 0.7rem;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
   font: inherit;
   color: var(--ink);
   text-align: left;
@@ -3729,10 +3812,21 @@ tbody tr:nth-child(3) .rank-medal {
   cursor: pointer;
 }
 
+/* `li button:hover` (0,1,2) tingeva la domanda suggerita di `--danger-bg`
+   col bordo `--danger`: il colore di "Rimuovi" sul controllo più
+   accogliente della funzione. Al passaggio del mouse il bordo si chiude
+   sull'accento, come fa il tratteggio di `.add-card`: la pastiglia si fa
+   azione. */
+.manual-chat-suggestions button:hover {
+  background: var(--card-alt);
+  border-color: var(--accent);
+}
+
 /* Ha le misure del campo vero, così montare deep-chat non fa saltare il
    layout. */
 .manual-chat-fakeinput {
   width: 100%;
+  min-height: 44px;
   padding: 0.6rem 0.75rem;
   font: inherit;
   color: var(--ink-muted);
@@ -3741,6 +3835,13 @@ tbody tr:nth-child(3) .rank-medal {
   border: 1px solid var(--card-line);
   border-radius: var(--radius-sm);
   cursor: text;
+}
+
+/* Anche qui il rosso di `button:hover` andava respinto: solo il bordo si
+   accende, il fondo resta quello di un campo a riposo. */
+.manual-chat-fakeinput:hover {
+  background: var(--bg);
+  border-color: var(--accent);
 }
 
 /* Bottone tondo, in basso al centro. env(safe-area-inset-bottom) lo tiene
@@ -3763,6 +3864,15 @@ tbody tr:nth-child(3) .rank-medal {
   box-shadow: var(--shadow-lift);
   transform: translateX(-50%);
   cursor: pointer;
+}
+
+/* Come `.manual-chat-toggle`: senza un hover proprio, `button:hover`
+   colorava di rosso accento il bottone verde. L'anello di focus qui invece
+   resta il rosso della regola generale, e va bene: `outline-offset: 2px` lo
+   disegna *fuori* dal bottone, sul cartoncino della pagina, dove sta a
+   6.4:1. */
+.manual-chat-fab:hover {
+  background: var(--felt-deep);
 }
 
 .manual-chat-fab svg {
@@ -3822,14 +3932,37 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--felt-text);
 }
 
-/* deep-chat dimensiona sé stesso da attributi: qui gli si dice solo di
-   riempire il contenitore, che è la sidebar o il dialog. */
+/* L'hover globale di `.modal-close` porta il fondo a `--card-alt`: su
+   feltro, con il testo rimasto `--felt-text`, la × spariva (1.05:1).
+   Sul verde il rilievo lo dà lo stesso bianco al 14% dei filetti. */
+.manual-chat-dialog-head .modal-close:hover {
+  color: var(--felt-text);
+  background: var(--felt-line);
+}
+
+.manual-chat-dialog-head .modal-close:focus-visible {
+  outline-color: var(--felt-text);
+}
+
 .manual-chat-widget {
   flex: 1;
   width: 100%;
   min-height: 18rem;
   border: 0;
   background-color: transparent;
+}
+
+/* deep-chat non eredita l'altezza da `flex: 1`: il suo `#container` interno
+   resta al default di 350px e si incolla in cima, lasciando il campo di
+   testo a mezzo schermo con la metà bassa del dialog vuota (osservato in
+   browser, misurato: elemento 738px, container 350px). Con un'altezza
+   dichiarata il container la segue e il campo torna in fondo.
+   **Solo nel dialog**: nella sidebar la stessa riga fa il danno opposto,
+   il container scende a 171px dentro un elemento da 270 e resta una fascia
+   avorio morta sotto al campo (anche questo misurato, dopo averlo prima
+   dato per scontato). Lì deep-chat si dimensiona da sé e va bene così. */
+.manual-chat-dialog .manual-chat-widget {
+  height: 100%;
 }
 
 /* ---------- Preparazione manuale (admin) ---------- */
@@ -3865,9 +3998,12 @@ tbody tr:nth-child(3) .rank-medal {
 
 /* Un manuale di quaranta pagine è quaranta caselle: un tetto in altezza con
    scroll proprio tiene i bottoni di salvataggio raggiungibili senza dover
-   scorrere oltre l'intera trascrizione ogni volta. */
+   scorrere oltre l'intera trascrizione ogni volta. Il tetto è relativo alla
+   finestra, non fisso: si corregge una trascrizione confrontandola col PDF
+   accanto, e 32rem su un laptop lasciavano metà schermo inutilizzato mentre
+   la finestra di lettura restava una fessura. */
 .manual-prep-pages {
-  max-height: 32rem;
+  max-height: min(70vh, 48rem);
   overflow-y: auto;
   padding-right: 0.35rem;
   margin: 0.75rem 0;
@@ -3877,16 +4013,31 @@ tbody tr:nth-child(3) .rank-medal {
   margin-bottom: 0.75rem;
 }
 
+/* L'etichetta resta appesa in cima mentre si scorre dentro una pagina
+   lunga: chi confronta la trascrizione col PDF deve sempre sapere quale
+   pagina sta guardando, e il numero altrimenti esce dalla finestra al primo
+   scroll. Il fondo pieno serve: il testo ci passa sotto. */
 .manual-prep-page label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: block;
+  padding: 0.2rem 0;
   margin-bottom: 0.2rem;
   font-family: 'Data', ui-monospace, monospace;
   font-size: 0.8rem;
   color: var(--ink-muted);
+  background: var(--card);
 }
 
+/* Non `--danger`: una pagina vuota è la cosa attesa quando nessun modello di
+   visione è configurato (è la via dell'inserimento a mano) e quando una
+   pagina sola di uno scan non riesce. Non c'è niente di rotto da riparare,
+   c'è una casella da riempire — quindi l'oro dei distintivi, la stessa
+   scelta di `.loan-warning`, dove il rosso avrebbe detto "non puoi". */
 .manual-prep-page-empty {
-  color: var(--danger);
+  color: var(--gold-text);
+  font-weight: 600;
 }
 
 .manual-prep-page textarea {
@@ -3894,4 +4045,12 @@ tbody tr:nth-child(3) .rank-medal {
   font-family: 'Data', ui-monospace, monospace;
   font-size: 0.85rem;
   line-height: 1.5;
+  /* Progressivo: dove è supportato (Chrome/Edge) la casella prende
+     l'altezza del testo che contiene entro questi limiti, invece di dare a
+     ogni pagina le stesse otto righe — troppe per una pagina di due righe,
+     una fessura con scroll interno per una da sessanta. Altrove decide
+     `rows="8"` come prima. */
+  field-sizing: content;
+  min-height: 6rem;
+  max-height: 26rem;
 }

@@ -185,7 +185,19 @@ function discardDraft() {
     </p>
 
     <div class="manual-prep-actions">
-      <button type="button" :disabled="busy" @click="prepare">
+      <!--
+        Rosso pieno solo la prima volta, quando preparare è davvero l'azione
+        della sezione. Su un manuale già indicizzato non c'è niente da fare:
+        "Prepara di nuovo" rifà una lettura lunga e sostituisce quel che c'è,
+        e lasciarlo il bottone più acceso della card lo faceva pesare più del
+        "Salva" della scheda accanto.
+      -->
+      <button
+        type="button"
+        :class="{ 'btn-secondary': saved.length > 0 }"
+        :disabled="busy"
+        @click="prepare"
+      >
         {{
           busyAction === 'prepare'
             ? 'Lettura del manuale in corso, pagina per pagina…'

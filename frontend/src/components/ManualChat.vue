@@ -96,8 +96,21 @@ function closeDialog() {
 </script>
 
 <template>
-  <!-- Desktop: sidebar sticky, collassabile in una barra verticale. -->
-  <aside v-if="wide" class="manual-chat-aside" :class="{ 'is-collapsed': collapsed }">
+  <!--
+    Desktop: sidebar sticky, collassabile in una barra verticale.
+
+    L'aria-label c'è perché un <aside> è una region di landmark: senza nome
+    compare nell'elenco dei landmark di uno screen reader come
+    "complementary" e basta, e da lì la chat non si trova. Non è il caso di
+    WCAG 2.5.3 (Label in Name), che riguarda i controlli: il bottone dentro,
+    quello sì comandabile a voce, prende il nome dal suo testo visibile.
+  -->
+  <aside
+    v-if="wide"
+    class="manual-chat-aside"
+    :class="{ 'is-collapsed': collapsed }"
+    aria-label="Chiedi al manuale"
+  >
     <!--
       Niente aria-label dinamico: il testo visibile è sempre "Chiedi al
       manuale" e un nome accessibile diverso da quel testo viola il
@@ -108,16 +121,25 @@ function closeDialog() {
       type="button"
       class="manual-chat-toggle"
       :aria-expanded="!collapsed"
+      aria-controls="manual-chat-aside-body"
       @click="collapsed = !collapsed"
     >
       <span class="manual-chat-toggle-label">Chiedi al manuale</span>
-      <span class="manual-chat-toggle-icon" aria-hidden="true">{{ collapsed ? '‹' : '›' }}</span>
+      <!--
+        Un chevron disegnato, non i caratteri ‹ › : il sistema visivo vieta
+        il carattere Unicode improvvisato al posto di un'icona, e in Display
+        quelle due virgolette angolari si leggevano come un refuso. Ruota
+        invece di cambiare glifo, così è un oggetto solo che si gira.
+      -->
+      <svg class="manual-chat-toggle-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
+      </svg>
     </button>
     <!--
       v-show e non v-if: collassare non deve smontare il pannello,
       altrimenti la conversazione in corso si perde a ogni clic.
     -->
-    <div v-show="!collapsed" class="manual-chat-aside-body">
+    <div v-show="!collapsed" id="manual-chat-aside-body" class="manual-chat-aside-body">
       <ManualChatPanel :game-id="gameId" :game-name="gameName" :headings="headings" />
     </div>
   </aside>
@@ -125,16 +147,20 @@ function closeDialog() {
   <!-- Mobile: bottone tondo sempre visibile, e dialog a tutto schermo. -->
   <template v-else>
     <button type="button" class="manual-chat-fab" @click="openDialog">
+      <!--
+        Il dado che parla: la stessa sagoma tonda del segnaposto copertina
+        (rect rx, pip pieni) con la codina di un fumetto, e i pip disposti in
+        diagonale come la faccia 3 di un dado — la diagonale è la firma del
+        dado, tre puntini in fila sarebbero il glifo "chat" di chiunque.
+        Sostituisce il segnaposto precedente, una freccia circolare che si
+        leggeva "ricarica".
+      -->
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path
-          d="M20 12a8 8 0 1 1-3.2-6.4M20 4v4h-4"
-          stroke="currentColor"
-          stroke-width="1.8"
-          stroke-linecap="round"
-        />
-        <circle cx="9" cy="12" r="1.1" fill="currentColor" />
-        <circle cx="12.5" cy="12" r="1.1" fill="currentColor" />
-        <circle cx="16" cy="12" r="1.1" fill="currentColor" />
+        <rect x="2.6" y="3.6" width="18.8" height="13.4" rx="3.4" stroke="currentColor" stroke-width="1.7" />
+        <path d="M8.4 17v3.6L12.9 17" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+        <circle cx="7.7" cy="7.6" r="1.25" fill="currentColor" />
+        <circle cx="12" cy="10.3" r="1.25" fill="currentColor" />
+        <circle cx="16.3" cy="13" r="1.25" fill="currentColor" />
       </svg>
       Chiedi al manuale
     </button>

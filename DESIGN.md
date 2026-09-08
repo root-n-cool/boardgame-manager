@@ -355,17 +355,70 @@ questa scheda.
   coprire quel contenuto. I due valori si muovono insieme — non è successo
   al primo tentativo, va tenuto a mente a ogni modifica dell'uno o
   dell'altro.
+- **Il bottone tondo porta il dado che parla**: la sagoma del fumetto con
+  dentro tre pip in **diagonale**, la faccia 3 di un dado — la diagonale è la
+  firma del dado, tre puntini in fila sarebbero il glifo "chat" di chiunque.
+  È la stessa grammatica del segnaposto copertina (rettangolo tondo, pip
+  pieni), non un'icona presa a prestito.
+- **Sul verde l'anello di focus passa al cartoncino anche qui.** La regola
+  generale (vedi Do) vale ora su tre superfici in feltro oltre a topbar e
+  sidebar: `.manual-chat-toggle`, la testata del dialog e la sua ×. Il
+  bottone tondo fa eccezione e tiene il rosso: `outline-offset: 2px` disegna
+  l'anello **fuori** dal bottone, sul cartoncino della pagina, dove sta a
+  6.4:1. E sul toggle l'anello va portato **dentro** (`outline-offset:
+  -2px`), perché `.manual-chat-aside` ha `overflow: hidden` e fuori
+  verrebbe ritagliato.
 - **deep-chat vive in shadow DOM**: i token di `app.css` (`--felt`,
-  `--felt-text`, `--card-alt`, `--ink`) non attraversano quel confine. I
-  colori dei fumetti si passano invece per proprietà JS
-  (`messageStyles`/`auxiliaryStyle`), il che significa che **i valori di
-  quei quattro token sono duplicati a mano, come letterali esadecimali, in
-  `frontend/src/components/ManualChatPanel.vue`** (variabile `messageStyles`:
-  bolla utente = `--felt`/`--felt-text`, bolla IA = `--card-alt`/`--ink`).
-  Chi cambia `--felt` o `--card-alt` in `app.css` non vede quella chat
-  seguire: deve aprire anche `ManualChatPanel.vue` e aggiornare i quattro
-  valori a mano, altrimenti la chat resta l'unica isola col colore vecchio,
-  e niente nel codice lo segnala da solo.
+  `--felt-text`, `--card`, `--card-alt`, `--card-line`, `--ink`,
+  `--ink-muted`, `--accent`, `--danger`, `--danger-bg`) non attraversano quel
+  confine. Colori e misure si passano invece per proprietà JS
+  (`messageStyles`, `textInput`, `submitButtonStyles`, `speechToText.button`,
+  `auxiliaryStyle`), il che significa che **i valori di quei token sono
+  duplicati a mano, come letterali esadecimali, in
+  `frontend/src/components/ManualChatPanel.vue`**: bolla utente =
+  `--felt`/`--felt-text`, bolla IA = `--card-alt`/`--ink`, bolla d'errore =
+  `--danger-bg`/`--danger` (gli stessi due di `.error`, perché il rosa di
+  serie di deep-chat non esiste in questa palette), campo di testo =
+  `--card`/`--card-line`/`--ink` col fuoco in `--accent`. Chi cambia uno di
+  quei token in `app.css` non vede la chat seguire: deve aprire anche
+  `ManualChatPanel.vue` e aggiornare i valori a mano, altrimenti la chat
+  resta l'unica isola col colore vecchio, e niente nel codice lo segnala da
+  solo.
+- **Il campo deve dichiarare la sua altezza, non ereditarla.** `flex: 1`
+  stira l'elemento `<deep-chat>` ma il suo `#container` interno resta al
+  default di 350px e si incolla in cima: nel dialog a tutto schermo il campo
+  di testo finiva a metà schermo con la parte bassa vuota (misurato:
+  elemento 738px, container 350px). Serve `height: 100%`, ma **solo dentro
+  il dialog** (`.manual-chat-dialog .manual-chat-widget`): nella sidebar la
+  stessa riga fa il danno opposto — il container scende a 171px dentro un
+  elemento da 270 e resta una fascia avorio morta sotto al campo. Lì
+  deep-chat si dimensiona da sé. Entrambi i numeri sono misurati in
+  browser; il secondo caso era stato dato per scontato al primo tentativo e
+  la sidebar ci aveva rimesso.
+- **Il microfono sta dentro il campo** (`speechToText.button.position:
+  'inside-start'`): con il campo largo quanto il pannello, il default
+  `outside-end` cade oltre il bordo destro dello schermo e si vede a metà.
+  Microfono a sinistra, invio a destra, uno per capo.
+- **I due bottoni dentro il campo restano bersagli da 22px** ed è un limite
+  accettato, non una svista: sono `position: absolute` dentro contenitori a
+  larghezza zero nello shadow DOM di deep-chat, e imporre 44px dalle
+  proprietà documentate li sposta fuori dal campo (provato e osservato). Chi
+  scrive da telefono manda comunque con il tasto invio della tastiera. Tutti
+  i bersagli che sono **nostri** — domande suggerite, finto campo, toggle,
+  bottone tondo, × del dialog — stanno a 44px.
+- **Lo stato di riposo si ancora in fondo** (`.manual-chat-rest` è
+  `flex: 1`, `.manual-chat-intro` porta `margin-top: auto`): introduzione,
+  domande e finto campo scendono insieme come un blocco solo. Nel dialog a
+  tutto schermo questo li porta dove arriva il pollice di chi sta in piedi
+  al tavolo, e lascia sopra lo spazio dove compariranno le risposte — un
+  filo di conversazione ancora vuoto, non un buco. Ancorarli in alto
+  significava, al primo gesto, veder saltare l'invito dalla cima del
+  telefono al fondo, dove deep-chat mette il campo vero. Nella sidebar
+  desktop non c'è spazio libero da distribuire e non cambia niente.
+- **Le domande suggerite sono una `<ul>` spogliata** come `.admin-list`:
+  senza, la regola globale la veste da card e mette a ogni `li` padding e
+  filetto, e tre pastiglie finiscono incorniciate due volte dentro un
+  riquadro dentro la card della chat.
 - **Stato di riposo, non un caricamento silenzioso.** Prima di ogni gesto
   il pannello mostra markup nostro: l'introduzione, tre domande suggerite
   (dai titoli di sezione del manuale quando ce ne sono almeno tre,
@@ -419,6 +472,35 @@ questa scheda.
   `position: absolute` nell'angolo, invisibile finché non serve, sempre
   visibile dove l'hover non esiste (`@media (hover: none)`), con l'area di
   tocco portata a 44px da uno `::after` trasparente.
+
+#### Preparazione di un manuale (`ManualPrepPanel.vue`, `.manual-prep`)
+In coda alla sezione Media, oltre un filetto, un pannello per ogni PDF della
+lingua attiva: titolo, stato in mono ("3 pagine indicizzate." / "Non
+preparato per le domande."), le azioni, e — dopo una preparazione — la
+bozza da correggere.
+
+- **Rosso pieno solo la prima volta.** "Prepara per le domande" è l'azione
+  della sezione finché un indice non c'è; su un manuale già indicizzato
+  "Prepara di nuovo" passa a `.btn-secondary`: rifà una lettura lunga e
+  sostituisce quel che c'è, e da bottone più acceso della card pesava più
+  del "Salva" della scheda accanto.
+- **Le pagine restano in ordine di documento, una casella per pagina**, in
+  un contenitore con scroll proprio: chi corregge una trascrizione la legge
+  contro il PDF, dalla prima all'ultima, e un accordion l'avrebbe costretto
+  ad aprire quaranta pannelli per fare il suo lavoro normale. Quel che
+  cambia è la finestra in cui lo fa: il tetto è `min(70vh, 48rem)` e non
+  32rem fissi (su un laptop metà schermo restava inutilizzato mentre la
+  finestra di lettura era una fessura), **l'etichetta della pagina è
+  `sticky`** in cima al contenitore — scorrendo dentro una pagina lunga il
+  numero non deve uscire di scena, perché è la sola cosa che dice a quale
+  pagina del PDF confrontarla — e la casella prende l'altezza del suo testo
+  dove `field-sizing: content` è supportato, con `rows="8"` a fare da
+  ripiego altrove.
+- **La pagina uscita vuota è oro, non rossa** (`.manual-prep-page-empty`):
+  è la cosa attesa quando nessun modello di visione è configurato — è la via
+  dell'inserimento a mano — e quando una pagina sola di uno scan non riesce.
+  Non c'è niente di rotto, c'è una casella da riempire. Stessa scelta di
+  `.loan-warning`, dove `--danger` avrebbe detto "non puoi".
 
 ### Amministratori (`/admin/users`)
 - **La riga admin** (`.admin-row`, dentro `.admin-list` in un `.panel-card`):
@@ -824,9 +906,26 @@ prima di questa voce.
 - **Do** avvolgere ogni tabella larga in `.table-scroll` prima di
   aggiungere colonne: la pagina non scorre mai in orizzontale.
 - **Do** cambiare il colore dell'anello di focus sul feltro
-  (`.app-topbar`/`.app-sidebar` → `outline-color: var(--felt-text)`): il
-  rosso seme della regola globale sta a 1.3:1 contro il verde, l'anello
-  esiste ma non si vede. Su cartoncino resta il rosso.
+  (`.app-topbar`/`.app-sidebar`/`.manual-chat-toggle`/`.manual-chat-dialog-head`
+  → `outline-color: var(--felt-text)`): il rosso seme della regola globale
+  sta a 1.3:1 contro il verde, l'anello esiste ma non si vede. Su cartoncino
+  resta il rosso. **Ogni superficie verde nuova va aggiunta a quella lista**:
+  non è una regola che si applica da sé, ed è già stata dimenticata due
+  volte (la × del dialog della chat disegnava un rettangolo rosso sul feltro,
+  trovato in audit).
+- **Do** dare a un bottone che non è il rosso primario **anche il suo
+  `:hover`**: la regola globale `button:hover` (specificità 0,1,1) batte una
+  classe nuda (0,1,0), e dentro una `<li>` batte pure `li button:hover`
+  (0,1,2). Un bottone verde feltro senza hover proprio diventa rosso accento
+  al passaggio del mouse, una pastiglia in lista diventa `--danger-bg` col
+  bordo di "Rimuovi". Bug reale trovato in audit su `.manual-chat-toggle`,
+  `.manual-chat-fab`, `.manual-chat-fakeinput` e sulle domande suggerite —
+  la stessa eredità che `.loan-row` aveva già dovuto rifiutare.
+- **Do** tenere ogni bersaglio delle pagine pubbliche a **44px** di lato
+  minimo, la × delle modali compresa (`.modal-close`): su un telefono quella
+  × è l'unica uscita, l'Esc non c'è, e a 28px si manca. L'icona resta a
+  1rem — cresce l'area, non il disegno — e un `margin-right` negativo
+  rimette la × otticamente a filo della testata.
 - **Do** portare l'anello di focus **dentro** la card
   (`outline-offset: -2px`) su ogni contenitore con `overflow: hidden`: la
   regola globale lo disegna 2px fuori dal link, dove viene ritagliato e la
