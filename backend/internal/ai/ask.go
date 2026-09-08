@@ -304,8 +304,17 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 	defer cancel()
 
 	inline := req.CorpusChars > 0 && req.CorpusChars <= InlineCorpusMaxChars
+	// toolsDeclared è la sola condizione che decide se il tool compare
+	// nella richiesta E se il prompt promette di poterlo usare: calcolata
+	// una volta, usata da entrambi, così le due cose non possono
+	// disallinearsi. Senza questo, un manuale sopra soglia ma senza
+	// Search (req.Search == nil — non dovrebbe succedere nell'uso reale,
+	// ma è difensivo) produrrebbe un prompt che dice "usa lo strumento di
+	// ricerca" mentre la richiesta non dichiara nessun tool: il modello
+	// annasperebbe dietro un'istruzione impossibile da eseguire.
+	toolsDeclared := !inline && req.Search != nil
 
-	system, err := json.Marshal(chatMessage{Role: "system", Content: askSystemPrompt(req, inline)})
+	system, err := json.Marshal(chatMessage{Role: "system", Content: askSystemPrompt(req, inline, toolsDeclared)})
 	if err != nil {
 		return "", err
 	}
@@ -323,7 +332,7 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 	}
 
 	var tools []toolDef
-	if !inline && req.Search != nil {
+	if toolsDeclared {
 		tools = append(tools, toolDef{
 			Type: "function",
 			Function: toolFunctionDef{
@@ -453,7 +462,12 @@ func trimAll(in []string) []string {
 
 // askSystemPrompt costruisce le istruzioni. La regola che conta è la terza:
 // al tavolo una regola inventata fa più danno di un "non lo dice".
-func askSystemPrompt(req AskRequest, inline bool) string {
+//
+// toolsDeclared governa se si promette lo strumento di ricerca: deve
+// essere la stessa condizione che decide se il tool compare nella
+// richiesta (vedi Ask), altrimenti il prompt può promettere uno strumento
+// che il modello non ha davvero a disposizione.
+func askSystemPrompt(req AskRequest, inline, toolsDeclared bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Sei l'assistente regole di %q per un'associazione di giochi da tavolo. ", req.GameName)
 	b.WriteString("Chi ti scrive è in piedi a un tavolo, con le carte in mano: rispondi in italiano, breve, come si parla. ")
@@ -465,12 +479,20 @@ func askSystemPrompt(req AskRequest, inline bool) string {
 	if req.CorpusIndex != "" {
 		fmt.Fprintf(&b, "Indice del regolamento: %s\n\n", req.CorpusIndex)
 	}
-	if inline {
+	switch {
+	case inline:
 		b.WriteString("Il regolamento completo:\n\n")
 		b.WriteString(req.CorpusText)
-	} else {
+	case toolsDeclared:
 		b.WriteString("Per leggere il regolamento usa lo strumento di ricerca. ")
 		b.WriteString("Se una ricerca non trova nulla, riprova con altre parole prima di dire che il manuale non lo dice.")
+	default:
+		// Non dovrebbe succedere nell'uso reale (Task 9 passa sempre
+		// Search sopra soglia), ma se capitasse non si deve promettere
+		// uno strumento che non è stato dichiarato: meglio dire al
+		// modello di limitarsi all'indice piuttosto che fargli credere
+		// di poter cercare quando non può.
+		b.WriteString("Non hai a disposizione né il testo completo né uno strumento di ricerca: rispondi solo se l'indice qui sopra basta, altrimenti di' che non puoi controllare il regolamento in questo momento.")
 	}
 	return b.String()
 }

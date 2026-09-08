@@ -132,8 +132,14 @@ func (a *askServer) handler() http.HandlerFunc {
 
 const answerOnly = `{"choices":[{"finish_reason":"stop","message":{"role":"assistant","content":"La partita finisce subito. Regolamento base, pag. 7."}}]}`
 
+// toolCallResponse include un campo "refusal" che ai.assistantMessage NON
+// modella (è un campo reale che i provider OpenAI-compatible a volte
+// mandano). Serve a TestAsk_CallsTheToolThenAnswers: solo passando avanti
+// il json.RawMessage grezzo della risposta quel campo sopravvive nella
+// richiesta successiva; ricostruendo il messaggio dai campi conosciuti di
+// assistantMessage sparirebbe senza che nessun altro assert se ne accorga.
 func toolCallResponse(args string) string {
-	return `{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,` +
+	return `{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"refusal":null,` +
 		`"tool_calls":[{"id":"call_1","type":"function","function":{"name":"cerca_nel_manuale","arguments":` +
 		strconv.Quote(args) + `}}]}}]}`
 }
@@ -186,6 +192,17 @@ func TestAsk_CallsTheToolThenAnswers(t *testing.T) {
 	}
 	if !strings.Contains(srv.requests[1], "La partita termina") {
 		t.Fatalf("il risultato della ricerca non è stato rimandato al modello:\n%s", srv.requests[1])
+	}
+	// "refusal" non è un campo che ai.assistantMessage modella: sopravvive
+	// nella seconda richiesta solo se il messaggio assistant è rimandato
+	// come json.RawMessage grezzo, non ricostruito da quei campi. Senza
+	// questo assert, ricostruire il messaggio dal parsed assistantMessage
+	// passerebbe comunque gli altri due controlli sopra (il tool_call_id e
+	// il testo del risultato sopravvivono anche a una ricostruzione, dato
+	// che sono modellati): questo è l'unico modo in cui il test scopre la
+	// ricostruzione.
+	if !strings.Contains(srv.requests[1], `"refusal":null`) {
+		t.Fatalf("un campo non modellato dal messaggio assistant non è sopravvissuto verbatim:\n%s", srv.requests[1])
 	}
 }
 
