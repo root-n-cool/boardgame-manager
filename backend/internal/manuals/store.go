@@ -328,11 +328,11 @@ func (s *Store) searchOne(ctx context.Context, gameID int64, preferLang, keyword
 	})
 
 	out := map[int64]Hit{}
-	for i, s := range all {
+	for i, row := range all {
 		if i >= hitsPerKeyword {
 			break
 		}
-		out[s.id] = s.h
+		out[row.id] = row.h
 	}
 	return out, nil
 }
