@@ -193,10 +193,13 @@ const errorMessages = {
 }
 
 // deep-chat vive in shadow DOM: i token di app.css (--felt, --felt-text,
-// --card-alt, --ink in frontend/src/app.css) non ci cascano dentro, quindi
-// i colori sono ricopiati qui come valori letterali. Se --felt o gli altri
-// cambiano in app.css, questi vanno aggiornati a mano — è la duplicazione
-// che DESIGN.md documenta (task 13).
+// --card-alt, --ink per le bolle, --danger e --danger-bg per la bolla di
+// errore qui sotto) non ci cascano dentro, quindi i colori sono ricopiati
+// qui come valori letterali. Se uno di questi token cambia in app.css, va
+// aggiornato a mano anche qui — è la duplicazione che DESIGN.md documenta
+// (task 13). Lo stesso vale per --card, --card-line, --ink-muted e
+// --accent più sopra (textInput, inputIconButton) e per --card-line nello
+// scrollbar qui sotto.
 const messageStyles = {
   default: {
     shared: { bubble: { borderRadius: '10px', fontSize: '0.95rem', maxWidth: '92%' } },
@@ -218,7 +221,7 @@ const messageStyles = {
 
 const auxiliaryStyle = `
   ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-thumb { background-color: #ddd0ab; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb { background-color: #ddd0ab; border-radius: 4px; } /* --card-line */
 `
 </script>
 

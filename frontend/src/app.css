@@ -33,12 +33,17 @@
 }
 
 :root {
-  /* ATTENZIONE prima di cambiare --felt, --felt-text, --card-alt o --ink:
-     questi quattro valori sono RICOPIATI A MANO, in esadecimale, dentro
-     `messageStyles` di src/components/ManualChatPanel.vue. deep-chat vive in
-     uno shadow DOM, dove le variabili CSS di questo file non arrivano, e i
-     colori delle bolle della chat vanno passati come valori letterali.
-     Cambiarli qui e non lì lascia la chat col verde vecchio. */
+  /* ATTENZIONE prima di cambiare uno di questi token — --felt, --felt-text,
+     --card-alt o --ink (nelle bolle della chat), oppure --danger o
+     --danger-bg (nella bolla di errore): questi valori sono RICOPIATI A
+     MANO, in esadecimale, dentro `messageStyles` di
+     src/components/ManualChatPanel.vue. deep-chat vive in uno shadow DOM,
+     dove le variabili CSS di questo file non arrivano, e i colori delle
+     bolle della chat vanno passati come valori letterali. Cambiarli qui e
+     non lì lascia la chat con la palette vecchia. (Lo stesso file ricopia
+     a mano anche --card, --card-line, --ink-muted e --accent per il campo
+     di input di deep-chat: ogni occorrenza lì è commentata col nome del
+     token.) */
 
   /* Ground / structural chrome — il feltro verde del tavolo. */
   --felt: #1f4d3a;

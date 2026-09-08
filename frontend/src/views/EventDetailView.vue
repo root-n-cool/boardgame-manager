@@ -320,6 +320,7 @@ onMounted(async () => {
           <p v-if="g.canAsk" class="event-game-ask">
             <router-link :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }">
               Dubbi sulle regole? Chiedi al manuale
+              <span class="visually-hidden">di {{ copyLabel(g) }}</span>
             </router-link>
           </p>
         </div>

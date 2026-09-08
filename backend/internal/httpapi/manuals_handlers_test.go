@@ -447,8 +447,17 @@ func TestExtractManual_OnePageFailingTranscriptionDoesNotLoseTheOthers(t *testin
 			t.Fatalf("pagina %d doveva riuscire: text=%q source=%q",
 				i+1, body.Pages[i].Text, body.Pages[i].Source)
 		}
-		// Il testo del finto trascrittore contiene il numero di pagina: è
-		// così che si vede se una pagina ha ricevuto l'immagine di un'altra.
+		// fakeTranscriber ignora i byte JPEG ed echeggia il proprio
+		// argomento page (vedi fakeTranscriber più sopra): il testo che
+		// arriva qui è quindi il numero di pagina passato a Transcribe,
+		// non una lettura dell'immagine. Con la pagina fallita IN MEZZO
+		// (vedi sopra), verificare che la pagina in posizione i porti il
+		// numero i+1 lega il PageNumber della risposta all'argomento
+		// realmente passato a Transcribe per quella pagina — e non
+		// all'indice della sua posizione nello slice dei successi, che
+		// coinciderebbe comunque se il codice ricomponesse per indice le
+		// sole trascrizioni riuscite (bug invisibile se il fallimento è
+		// l'ultima pagina).
 		if !strings.Contains(body.Pages[i].Text, fmt.Sprint(i+1)) {
 			t.Fatalf("pagina %d ha ricevuto la trascrizione di un'altra pagina: %q", i+1, body.Pages[i].Text)
 		}

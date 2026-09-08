@@ -83,8 +83,11 @@ func NewScannedPDF() []byte {
 // l'ultima, e un test così non distingue una numerazione presa da img.Number
 // da una presa dall'indice di append.
 //
-// Ogni pagina ha un'immagine di dimensioni diverse dalle altre, così un test
-// può anche verificare l'accoppiamento pagina/immagine.
+// Ogni pagina ha un'immagine di dimensioni diverse dalle altre. Nessun test
+// esistente lo verifica oggi (fakeTranscriber in internal/httpapi ignora i
+// byte JPEG ed echeggia solo l'argomento page): la variazione resta qui
+// pronta per un futuro test che debba distinguere le pagine anche
+// dall'immagine, non dal solo numero.
 func NewScannedPDFPages(n int) []byte {
 	content := "q 200 0 0 260 0 0 cm /Im0 Do Q"
 	page := func(imgRef, contentRef string) string {
