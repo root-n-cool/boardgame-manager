@@ -101,6 +101,11 @@ Al primo accesso viene richiesto di creare il primo account admin.
 I dati (database SQLite + upload) vivono nella cartella `./data`, montata
 come volume nel container — sopravvivono a rebuild e restart.
 
+> Se l'app resterà raggiungibile in LAN a un indirizzo come
+> `http://192.168.1.50:8080`, leggi in *Configurazione opzionale* la nota
+> «La dettatura richiede HTTPS»: il microfono del campo domanda della chat
+> non compare sui contesti non cifrati, e non è un guasto dell'app.
+
 Variabili d'ambiente (già impostate in `docker-compose.yml`):
 
 | Variabile  | Descrizione                          | Default   |
@@ -293,6 +298,17 @@ l'assenza del comando.
   campo, i manuali scansionati si trascrivono a mano nella stessa
   schermata di revisione — tutto il resto (chat, citazioni di pagina)
   funziona comunque una volta salvato il testo.
+
+  **Dietro un reverse proxy, alza il timeout di lettura su questa rotta.**
+  Preparare un manuale scansionato è **una sola richiesta HTTP** che dentro
+  fa una chiamata al modello **per ogni pagina**: su una scansione di 40
+  pagine la richiesta può restare aperta molti minuti. nginx chiude a 60
+  secondi di default (`proxy_read_timeout`), e la connessione tagliata
+  butta via un lavoro già pagato al provider — le pagine trascritte fino a
+  quel momento non sono ancora state salvate. Un valore generoso
+  (`proxy_read_timeout 1800s;`, o l'equivalente del tuo proxy) sulla rotta
+  `/api/games/{id}/languages/{lang}/media/{mediaId}/extract` evita il
+  problema.
 - **La dettatura richiede HTTPS.** Il campo domanda della chat offre un
   microfono basato sulla Web Speech API del browser, che i browser
   restringono ai *secure context*: funziona su `localhost` e dietro HTTPS

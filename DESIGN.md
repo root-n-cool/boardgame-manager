@@ -421,8 +421,12 @@ questa scheda.
   riquadro dentro la card della chat.
 - **Stato di riposo, non un caricamento silenzioso.** Prima di ogni gesto
   il pannello mostra markup nostro: l'introduzione, tre domande suggerite
-  (dai titoli di sezione del manuale quando ce ne sono almeno tre,
-  altrimenti tre fisse) e un finto campo di input con le stesse misure di
+  (dai titoli di sezione del manuale quando ce ne sono almeno tre — la
+  scheda gioco li manda in `manualHeadings`, al più otto, in ordine di
+  pagina; un titolo noto diventa la domanda naturale, gli altri la forma
+  «Cosa dice il manuale su "…"?» — altrimenti tre domande fisse: come
+  finisce la partita, in quanti si gioca, come si contano i punti) e un
+  finto campo di input con le stesse misure di
   quello vero. deep-chat si monta solo al primo clic. Il motivo è il peso:
   misurato in build, il chunk `deepChat` pesa **457 KB** non compresso, da
   solo più dell'intero resto del JavaScript dell'app (`index.js`, **228
