@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/manuals"
@@ -123,6 +124,57 @@ func TestHasTextLayer_IsNotFooledByBinaryImageData(t *testing.T) {
 			"stream\n\xff\xd8\xff\xe0\x00\x10JFIF)'\x00\x01\x02)\"\xff\xd9\nendstream\nendobj\n")
 	if manuals.HasTextLayer(binaryImageData) {
 		t.Fatal("byte binari con )' e )\" ma senza /Font non hanno layer testo, ma HasTextLayer ha detto sì")
+	}
+}
+
+// TestHasTextLayer_RequiresBothConditions pinna la congiunzione: ogni
+// fixture usata altrove nel file ha o entrambe le condizioni o nessuna
+// delle due, quindi da sola la suite passerebbe anche se HasTextLayer
+// degradasse silenziosamente a una sola delle due condizioni. Qui invece
+// ciascun caso ne ha esattamente una.
+func TestHasTextLayer_RequiresBothConditions(t *testing.T) {
+	fontOnly := []byte("%PDF-1.4\n1 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
+	if manuals.HasTextLayer(fontOnly) {
+		t.Fatal("/Font senza Tj/TJ non ha layer testo, ma HasTextLayer ha detto sì")
+	}
+
+	tjOnly := []byte("%PDF-1.4\n1 0 obj\n<< /Length 10 >>\nstream\n(ciao) Tj\nendstream\nendobj\n")
+	if manuals.HasTextLayer(tjOnly) {
+		t.Fatal("Tj senza /Font non ha layer testo, ma HasTextLayer ha detto sì")
+	}
+}
+
+func TestExtractText_ReadsOnePageOfRealText(t *testing.T) {
+	pages, err := manuals.ExtractText(textPDF(t))
+	if err != nil {
+		t.Fatalf("extract text: %v", err)
+	}
+	if len(pages) != 1 {
+		t.Fatalf("attesa 1 pagina, ottenute %d", len(pages))
+	}
+	if pages[0].Number != 1 {
+		t.Fatalf("numero pagina atteso 1, ottenuto %d", pages[0].Number)
+	}
+	if !strings.Contains(pages[0].Text, "Upkeep") {
+		t.Fatalf("il testo della pagina non contiene 'Upkeep': %q", pages[0].Text)
+	}
+	if !strings.Contains(pages[0].Text, "moneta") {
+		t.Fatalf("il testo della pagina non contiene la seconda riga: %q", pages[0].Text)
+	}
+}
+
+func TestExtractText_OnAScanReturnsNoText(t *testing.T) {
+	pages, err := manuals.ExtractText(scannedPDF(t))
+	// Una scansione può far restituire pagine vuote o un errore di parsing:
+	// entrambi sono esiti accettabili. Ciò che NON deve accadere è tornare
+	// testo inventato, o andare in panic.
+	if err != nil {
+		return
+	}
+	for _, p := range pages {
+		if strings.TrimSpace(p.Text) != "" {
+			t.Fatalf("pagina %d di una scansione ha prodotto testo: %q", p.Number, p.Text)
+		}
 	}
 }
 

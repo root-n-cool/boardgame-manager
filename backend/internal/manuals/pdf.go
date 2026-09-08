@@ -5,9 +5,13 @@ package manuals
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	_ "image/jpeg" // registra il decoder JPEG per image.DecodeConfig
 	"regexp"
+	"strings"
+
+	"github.com/ledongthuc/pdf"
 )
 
 // Page è una pagina di manuale come testo. Number è 1-based, come la
@@ -120,4 +124,58 @@ func ExtractPageImages(pdf []byte) ([]PageImage, error) {
 		})
 	}
 	return out, nil
+}
+
+// repeatedBlank e blankLines sono compilate a livello di package: sono
+// usate una volta per pagina da normalizeWhitespace, e ricompilarle a ogni
+// chiamata rifarebbe lo stesso lavoro per ogni pagina di ogni manuale.
+var (
+	repeatedBlank = regexp.MustCompile(`[ \t]+`)
+	blankLines    = regexp.MustCompile(`\n{3,}`)
+)
+
+// ExtractText legge il layer testo di un PDF, una Page per pagina.
+//
+// Non ricostruisce l'impaginazione: su un manuale a più colonne le colonne
+// possono uscire interlacciate. È un limite accettato, non un difetto da
+// aggirare qui — un manuale che esce male si manda per il percorso vision,
+// che su impaginazioni dense dà comunque risultati migliori di qualunque
+// estrattore di testo.
+func ExtractText(raw []byte) ([]Page, error) {
+	reader, err := pdf.NewReader(bytes.NewReader(raw), int64(len(raw)))
+	if err != nil {
+		return nil, fmt.Errorf("apertura pdf: %w", err)
+	}
+
+	total := reader.NumPage()
+	pages := make([]Page, 0, total)
+	for n := 1; n <= total; n++ {
+		page := reader.Page(n)
+		if page.V.IsNull() {
+			continue
+		}
+		// GetPlainText vuole una mappa di font condivisa fra le pagine:
+		// passarne una nuova per pagina rifarebbe lo stesso lavoro N volte.
+		text, err := page.GetPlainText(nil)
+		if err != nil {
+			// Una pagina illeggibile non deve far perdere le altre: il
+			// manuale resta utilizzabile e l'admin vede il buco
+			// nell'anteprima, dove può riempirlo a mano.
+			pages = append(pages, Page{Number: n, Text: ""})
+			continue
+		}
+		pages = append(pages, Page{Number: n, Text: normalizeWhitespace(text)})
+	}
+	return pages, nil
+}
+
+// normalizeWhitespace compatta gli spazi ripetuti e uniforma gli a capo,
+// senza fondere i paragrafi: il chunking (chunk.go) taglia sui paragrafi,
+// quindi la riga vuota fra due paragrafi è informazione da conservare.
+func normalizeWhitespace(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	s = repeatedBlank.ReplaceAllString(s, " ")
+	s = blankLines.ReplaceAllString(s, "\n\n")
+	return strings.TrimSpace(s)
 }
