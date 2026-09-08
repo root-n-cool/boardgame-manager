@@ -34,10 +34,15 @@ type Translator interface {
 
 type HTTPClient struct {
 	// BaseURL è la radice OpenAI-compatible, senza /chat/completions.
-	BaseURL    string
-	APIKey     string
-	Model      string
-	HTTPClient *http.Client
+	BaseURL string
+	APIKey  string
+	Model   string
+	// VisionModel è il modello per leggere le pagine scansionate. Separato
+	// da Model perché un modello di chat può essere solo-testo:
+	// deepseek-v4-flash non accetta immagini, deepseek-v4-flash-vision-exp
+	// sì. Vuoto = nessuna trascrizione automatica, e non è un guasto.
+	VisionModel string
+	HTTPClient  *http.Client
 }
 
 func NewHTTPClient(baseURL, apiKey, model string) *HTTPClient {
@@ -47,6 +52,14 @@ func NewHTTPClient(baseURL, apiKey, model string) *HTTPClient {
 		Model:      strings.TrimSpace(model),
 		HTTPClient: &http.Client{Timeout: requestTimeout},
 	}
+}
+
+// NewHTTPClientWithVision è NewHTTPClient più il modello di trascrizione.
+// NewHTTPClient resta per i chiamanti che traducono e non leggono manuali.
+func NewHTTPClientWithVision(baseURL, apiKey, model, visionModel string) *HTTPClient {
+	c := NewHTTPClient(baseURL, apiKey, model)
+	c.VisionModel = strings.TrimSpace(visionModel)
+	return c
 }
 
 // languageNames rende leggibile il codice ISO: "traduci in italiano"
