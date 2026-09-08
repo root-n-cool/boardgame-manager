@@ -59,8 +59,29 @@ func TestTranscribe_SendsTheImageAsAnImageURLPart(t *testing.T) {
 		t.Fatalf("l'immagine non è un data URI base64:\n%s", gotBody)
 	}
 	// Il numero di pagina serve al modello per non inventare intestazioni.
-	if !strings.Contains(gotBody, "4") {
+	// Non basta cercare "4" nel body: ci compare comunque dentro
+	// "deepseek-v4-flash-vision-exp" anche se il prompt non lo contenesse.
+	if !strings.Contains(gotBody, "Pagina 4 del regolamento") {
 		t.Fatalf("il numero di pagina non è nel prompt:\n%s", gotBody)
+	}
+}
+
+func TestTranscribe_VuotaIsNotAnError(t *testing.T) {
+	// Una pagina di sola illustrazione è un esito legittimo, non un
+	// guasto: il chiamante deve poterla distinguere da un errore per
+	// salvarla vuota invece di riproporla per un retry.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"choices":[{"message":{"content":"VUOTA"}}]}`)
+	}))
+	defer srv.Close()
+
+	client := ai.NewHTTPClientWithVision(srv.URL, "sk-test", "m", "mv")
+	out, err := client.Transcribe(context.Background(), []byte{0xFF, 0xD8}, 2)
+	if err != nil {
+		t.Fatalf("VUOTA non deve essere un errore: %v", err)
+	}
+	if out != "" {
+		t.Fatalf("attesa stringa vuota, ottenuto %q", out)
 	}
 }
 
