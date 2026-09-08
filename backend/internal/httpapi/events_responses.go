@@ -100,6 +100,7 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 	resp["eventTitle"] = event.Title
 	resp["eventDate"] = event.EventDate
 	resp["startTime"] = event.StartTime
+	resp["gameId"] = game.ID
 	resp["gameName"] = game.Name
 	resp["copyIndex"] = eventGame.CopyIndex
 	resp["seats"] = eventGame.Seats

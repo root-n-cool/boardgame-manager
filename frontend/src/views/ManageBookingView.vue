@@ -31,6 +31,7 @@ interface BookingResult {
   eventTitle: string
   eventDate: string
   startTime: string
+  gameId: number
   gameName: string
   copyIndex: number
   seats: number
@@ -179,6 +180,11 @@ onMounted(async () => {
     <div v-if="booking">
       <div class="booking-summary">
         <h2>{{ gameLabel }}</h2>
+        <p v-if="booking.gameId" class="row-meta">
+          <router-link :to="{ path: `/games/${booking.gameId}`, query: { chat: '1' } }">
+            Dubbi sulle regole? Chiedi al manuale
+          </router-link>
+        </p>
         <p class="booking-summary-meta">
           {{ booking.eventTitle }} · {{ booking.eventDate }} · {{ booking.startTime }}
         </p>

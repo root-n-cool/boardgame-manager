@@ -140,7 +140,13 @@ async function save() {
 }
 
 async function remove() {
-  if (!window.confirm(`Rimuovere l'indice di "${props.mediaTitle}"? Le domande su questo gioco smettono di funzionare finché non lo prepari di nuovo.`)) {
+  // Stessa causa del confirm in prepare(), altra via: una bozza aperta porta
+  // correzioni non salvate, e "Rimuovi indice" resta visibile e attivo anche
+  // mentre draft non è nullo. Il testo deve dirlo, non solo che l'indice sparisce.
+  const draftWarning = draft.value
+    ? ' Le correzioni scritte finora nella bozza aperta vengono perse insieme all\'indice.'
+    : ''
+  if (!window.confirm(`Rimuovere l'indice di "${props.mediaTitle}"? Le domande su questo gioco smettono di funzionare finché non lo prepari di nuovo.${draftWarning}`)) {
     return
   }
   busyAction.value = 'remove'

@@ -317,6 +317,12 @@ onMounted(async () => {
             <span aria-hidden="true">&rarr;</span>
             <span class="visually-hidden">di {{ copyLabel(g) }}</span>
           </router-link>
+          <router-link
+            class="detail-link"
+            :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }"
+          >
+            Dubbi sulle regole? Chiedi al manuale
+          </router-link>
         </div>
       </li>
     </ul>

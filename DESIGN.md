@@ -325,6 +325,59 @@ BGG) e `GameMediaList` (la griglia media, con prop `editable`).
   stringa dell'API (`game not found`) e mai una pagina bianca, che è quel
   che faceva prima con `v-if="game"` e il messaggio d'errore dentro.
 
+#### Chiedi al manuale (`ManualChat.vue`, `ManualChatPanel.vue`)
+
+Sulla scheda pubblica di un gioco con manuale indicizzato compare una chat
+che risponde a domande sul regolamento a parole proprie, citando la pagina.
+`ManualChat.vue` decide **dove** vive, `ManualChatPanel.vue` **cosa** ci
+sta dentro — la stessa divisione di `GameFacts`/`GameMediaList` altrove in
+questa scheda.
+
+- **Due forme, una soglia sola.** Da 1100px in su è una sidebar destra
+  sticky (`.manual-chat-aside`, 22rem, dentro `.game-detail-layout.has-chat`
+  in griglia); sotto, un bottone tondo in basso al centro
+  (`.manual-chat-fab`) che apre un `<dialog>` nativo a tutto schermo
+  (`.manual-chat-dialog`). **Perché 1100 e non 900**: `.app-page` è larga
+  56rem (896px). Una sidebar da 22rem dentro quello spazio lascerebbe alla
+  colonna di testo `56rem − 22rem − gap(1.5rem) ≈ 32.5rem` — sotto la
+  misura leggibile (60–75 caratteri, che qui vale circa 34rem). Il breakpoint
+  non è la larghezza di `.app-page` stessa: è quella più il margine che
+  serve perché la pagina non tocchi i bordi del viewport, da cui i ~1100px
+  effettivi invece dei 896px nudi.
+- **Il bottone tondo**: `position: fixed`, centrato con
+  `left: 50%; transform: translateX(-50%)`, `bottom: calc(1rem +
+  env(safe-area-inset-bottom))` — il termine `env()` lo tiene sopra la home
+  indicator di iPhone invece che sotto, coperto. **Il padding della pagina
+  sotto 1100px deve portare lo stesso termine** (`.game-detail-layout.has-chat
+  { padding-bottom: calc(4rem + env(safe-area-inset-bottom)) }`): senza,
+  su un device con inset diverso da zero il bottone sale ma la riserva di
+  spazio sotto l'ultimo contenuto resta quella vecchia, e il bottone torna a
+  coprire quel contenuto. I due valori si muovono insieme — non è successo
+  al primo tentativo, va tenuto a mente a ogni modifica dell'uno o
+  dell'altro.
+- **deep-chat vive in shadow DOM**: i token di `app.css` (`--felt`,
+  `--felt-text`, `--card-alt`, `--ink`) non attraversano quel confine. I
+  colori dei fumetti si passano invece per proprietà JS
+  (`messageStyles`/`auxiliaryStyle`), il che significa che **i valori di
+  quei quattro token sono duplicati a mano, come letterali esadecimali, in
+  `frontend/src/components/ManualChatPanel.vue`** (variabile `messageStyles`:
+  bolla utente = `--felt`/`--felt-text`, bolla IA = `--card-alt`/`--ink`).
+  Chi cambia `--felt` o `--card-alt` in `app.css` non vede quella chat
+  seguire: deve aprire anche `ManualChatPanel.vue` e aggiornare i quattro
+  valori a mano, altrimenti la chat resta l'unica isola col colore vecchio,
+  e niente nel codice lo segnala da solo.
+- **Stato di riposo, non un caricamento silenzioso.** Prima di ogni gesto
+  il pannello mostra markup nostro: l'introduzione, tre domande suggerite
+  (dai titoli di sezione del manuale quando ce ne sono almeno tre,
+  altrimenti tre fisse) e un finto campo di input con le stesse misure di
+  quello vero. deep-chat si monta solo al primo clic. Il motivo è il peso:
+  misurato in build, il chunk `deepChat` pesa **457 KB** non compresso, da
+  solo più dell'intero resto del JavaScript dell'app (`index.js`, **228
+  KB**). Chi apre una scheda gioco per leggerla — la maggioranza — non deve
+  pagare quel download. È anche quello che rende sostenibile tenere la
+  sidebar desktop aperta di default: se deep-chat si caricasse al mount
+  della pagina, aprirla per tutti costerebbe quel peso a ogni visita.
+
 #### Scheda di modifica (`/admin/games/:id`)
 - **La copertina è il controllo di caricamento** (`.cover-uploader`): un
   `<button>` che avvolge l'immagine, con un velo feltro all'88% e l'icona
