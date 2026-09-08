@@ -3613,3 +3613,198 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--ink-muted);
   overflow-wrap: anywhere;
 }
+
+/* ---------- Chiedi al manuale ---------- */
+
+/* Una colonna sola per default: la sidebar entra solo dove c'è spazio
+   davvero. 1100px = 56rem di colonna leggibile + 22rem di chat + i
+   margini di .app-page. */
+.game-detail-layout {
+  display: block;
+}
+
+@media (min-width: 1100px) {
+  .game-detail-layout.has-chat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .game-detail-layout.has-chat .game-detail-main {
+    min-width: 0;
+  }
+
+  /* Sticky sotto la topbar (3.25rem), con il suo scroll interno: la
+     colonna di sinistra scorre e la chat resta ferma. */
+  .manual-chat-aside {
+    position: sticky;
+    top: calc(3.25rem + 1rem);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 3.25rem - 3rem);
+    overflow: hidden;
+    background: var(--card);
+    border: 1px solid var(--card-line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+  }
+
+  .manual-chat-aside.is-collapsed {
+    /* Collassata: una barra stretta col titolo ruotato. */
+    align-self: start;
+    max-height: none;
+  }
+
+  .game-detail-layout.has-chat:has(.manual-chat-aside.is-collapsed) {
+    grid-template-columns: minmax(0, 1fr) 2.75rem;
+  }
+
+  .manual-chat-aside.is-collapsed .manual-chat-toggle-label {
+    writing-mode: vertical-rl;
+    padding: 0.75rem 0;
+  }
+
+  .manual-chat-aside-body {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+.manual-chat-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.7rem 0.85rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 0.95rem;
+  color: var(--felt-text);
+  background: var(--felt);
+  border: 0;
+  cursor: pointer;
+}
+
+.manual-chat-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.85rem;
+}
+
+.manual-chat-note {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.manual-chat-intro {
+  margin: 0 0 0.75rem;
+}
+
+.manual-chat-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  list-style: none;
+}
+
+.manual-chat-suggestions button {
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* Ha le misure del campo vero, così montare deep-chat non fa saltare il
+   layout. */
+.manual-chat-fakeinput {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  color: var(--ink-muted);
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  cursor: text;
+}
+
+/* Bottone tondo, in basso al centro. env(safe-area-inset-bottom) lo tiene
+   sopra la barra home dell'iPhone. */
+.manual-chat-fab {
+  position: fixed;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 25;
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.7rem 1.15rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 0.95rem;
+  color: var(--felt-text);
+  background: var(--felt);
+  border: 1px solid var(--felt-line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lift);
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+.manual-chat-fab svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* Il bottone non deve coprire l'ultimo contenuto della pagina. */
+@media (max-width: 1099px) {
+  .game-detail-layout.has-chat {
+    padding-bottom: 4rem;
+  }
+}
+
+/* Il dialog occupa il viewport: dvh e non vh, perché su iOS Safari vh
+   include la barra degli indirizzi e taglia l'input fuori schermo. */
+.manual-chat-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  color: var(--ink);
+  background: var(--card);
+  border: 0;
+}
+
+.manual-chat-dialog-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.85rem;
+  background: var(--felt);
+  border-bottom: 1px solid var(--felt-line);
+}
+
+.manual-chat-dialog-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--felt-text);
+}
+
+.manual-chat-dialog-head .modal-close {
+  color: var(--felt-text);
+}

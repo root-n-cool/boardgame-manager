@@ -33,5 +33,7 @@ export interface GameDetail {
   seats: number
   /** Vero quando esiste una descrizione BGG originale da cui ritradurre. */
   canTranslate: boolean
+  /** Vero quando il gioco ha un manuale indicizzato e il provider AI è configurato. */
+  canAsk: boolean
   languages: GameLanguageInfo[]
 }
