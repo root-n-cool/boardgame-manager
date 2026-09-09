@@ -256,6 +256,93 @@ func TestAskHandler_LinksEachCitationToItsOwnManual(t *testing.T) {
 	}
 }
 
+func TestAskHandler_LinksDisambiguatedReferencesToTheirOwnManual(t *testing.T) {
+	// TestAskHandler_LinksEachCitationToItsOwnManual usa due manuali con
+	// TITOLI GIÀ distinti ("Regolamento base", "English rulebook"): in quel
+	// caso un'implementazione a lookup-per-titolo funzionerebbe per caso,
+	// perché ogni titolo individua un solo media. Il caso che DAVVERO mette
+	// alla prova la mappa costruita dalle hit (invece che da un lookup per
+	// titolo) è due media con lo STESSO titolo: sourceReference (in
+	// manuals_handlers.go, Task 5) li disambigua aggiungendo la lingua al
+	// secondo — "Regolamento" e "Regolamento (it)" — e un lookup per
+	// titolo non saprebbe scegliere fra i due, risolvendo entrambe le
+	// citazioni sullo stesso file.
+	server, conn := newTestServerWithDB(t)
+	ctx := context.Background()
+
+	g, err := conn.ExecContext(ctx, `INSERT INTO games (name, seats) VALUES ('Wingspan', 1)`)
+	if err != nil {
+		t.Fatalf("insert game: %v", err)
+	}
+	gameID, _ := g.LastInsertId()
+	l, err := conn.ExecContext(ctx,
+		`INSERT INTO game_languages (game_id, language_code, is_base_language, name)
+		 VALUES (?, 'it', 1, 'Wingspan')`, gameID)
+	if err != nil {
+		t.Fatalf("insert language: %v", err)
+	}
+	langID, _ := l.LastInsertId()
+
+	// Due media, STESSO titolo, url_or_path distinti: esattamente il caso
+	// che sourceReference disambigua in scrittura.
+	m1, err := conn.ExecContext(ctx,
+		`INSERT INTO game_media (game_language_id, type, url_or_path, title)
+		 VALUES (?, 'file', 'manuale-v1.pdf', 'Regolamento')`, langID)
+	if err != nil {
+		t.Fatalf("insert media 1: %v", err)
+	}
+	media1, _ := m1.LastInsertId()
+	m2, err := conn.ExecContext(ctx,
+		`INSERT INTO game_media (game_language_id, type, url_or_path, title)
+		 VALUES (?, 'file', 'manuale-v2.pdf', 'Regolamento')`, langID)
+	if err != nil {
+		t.Fatalf("insert media 2: %v", err)
+	}
+	media2, _ := m2.LastInsertId()
+
+	// Le reference sono quelle che sourceReference produce DAVVERO per due
+	// fonti con lo stesso titolo e la stessa lingua (letta in
+	// manuals_handlers.go, non indovinata): la prima resta il titolo
+	// così com'è, la seconda guadagna " (it)" perché "Regolamento" risulta
+	// già used quando si indicizza la seconda.
+	store := manuals.NewStore(conn)
+	if err := store.ReplaceSource(ctx, gameID, &media1, []manuals.SourceChunk{
+		{ReferenceType: "document", Reference: "Regolamento", ReferenceDetail: "pagina 3",
+			Heading: "Preparazione", LanguageCode: "it", Seq: 0,
+			Text: "Preparazione. Si mescolano le carte e si formano i mazzi."},
+	}); err != nil {
+		t.Fatalf("replace source 1: %v", err)
+	}
+	if err := store.ReplaceSource(ctx, gameID, &media2, []manuals.SourceChunk{
+		{ReferenceType: "document", Reference: "Regolamento (it)", ReferenceDetail: "pagina 9",
+			Heading: "Varianti", LanguageCode: "it", Seq: 0,
+			Text: "Varianti. Si possono aggiungere le espansioni."},
+	}); err != nil {
+		t.Fatalf("replace source 2: %v", err)
+	}
+
+	server.Asker = &fakeAsker{
+		answer: "Vedi Regolamento, pagina 3, e anche Regolamento (it), pagina 9.",
+		// Una ricerca per manuale: "mescolano" trova solo il chunk del
+		// primo media, "espansioni" solo quello del secondo.
+		searchQueries: [][]string{{"mescolano"}, {"espansioni"}},
+	}
+	router := httpapi.NewRouter(server)
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	var body struct {
+		Text string `json:"text"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &body)
+
+	if !strings.Contains(body.Text, "[Regolamento, pagina 3](/api/uploads/manuale-v1.pdf#page=3)") {
+		t.Fatalf("la reference non disambiguata non punta al primo manuale: %q", body.Text)
+	}
+	if !strings.Contains(body.Text, "[Regolamento (it), pagina 9](/api/uploads/manuale-v2.pdf#page=9)") {
+		t.Fatalf("la reference disambiguata non punta al secondo manuale: %q", body.Text)
+	}
+}
+
 func TestAskHandler_BuildsTheCorpusIndexGroupedBySource(t *testing.T) {
 	// Senza l'indice il modello perde l'unica cosa che gli evita la
 	// ricerca esplorativa (vedi askSystemPrompt in internal/ai/ask.go).

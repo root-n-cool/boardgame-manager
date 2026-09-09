@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"boardgames-manager/internal/ai"
 	"boardgames-manager/internal/games"
@@ -255,6 +256,15 @@ type citationTarget struct {
 	mediaPath     string
 }
 
+// minReferenceLength è la soglia (in rune) sotto la quale una reference
+// NON si sostituisce. game_media.title è testo libero: un titolo cortissimo
+// come "A" trasformerebbe OGNI "A" della risposta in un link, rendendola
+// illeggibile — il costo di un falso positivo qui è più alto del beneficio
+// di linkare un titolo che, nella pratica, un admin non sceglie mai così
+// corto. Sotto la soglia si preferisce lasciare la citazione come testo
+// semplice piuttosto che rischiare di linkare mezza risposta.
+const minReferenceLength = 4
+
 // linkifyCitations trasforma le citazioni della risposta in link markdown,
 // usando SOLO la mappa reference → bersaglio costruita dalle hit
 // EFFETTIVAMENTE restituite al modello in questa richiesta (vedi search()
@@ -292,9 +302,19 @@ func linkifyCitations(answer string, citations map[string]citationTarget) string
 
 	references := make([]string, 0, len(citations))
 	for r := range citations {
-		if r != "" {
-			references = append(references, r)
+		if r == "" || utf8.RuneCountInString(r) < minReferenceLength {
+			continue
 		}
+		if strings.Contains(r, "]") {
+			// Un "]" dentro il testo del link chiuderebbe la sintassi
+			// markdown in anticipo (il resto della reference finirebbe
+			// come testo normale, seguito da un "(url)" letterale): si
+			// salta la sostituzione piuttosto che produrre markdown
+			// corrotto. Caso remoto (richiede un game_media.title con
+			// quel carattere), ma il controllo costa una riga.
+			continue
+		}
+		references = append(references, r)
 	}
 	if len(references) == 0 {
 		return answer
@@ -305,6 +325,12 @@ func linkifyCitations(answer string, citations map[string]citationTarget) string
 	for i, r := range references {
 		quoted[i] = regexp.QuoteMeta(r)
 	}
+	// Il pattern si ricompila a ogni richiesta, e non può diventare una
+	// variabile di pacchetto: incorpora l'alternanza delle reference
+	// EFFETTIVAMENTE trovate in QUESTA richiesta (vedi search() sopra), che
+	// cambia per gioco e per domanda. Una variabile statica sarebbe o
+	// sbagliata (reference di un altro gioco) o ricostruita comunque a ogni
+	// chiamata, vanificando la cache.
 	pattern := regexp.MustCompile(`(?:` + strings.Join(quoted, "|") + `)(?:, pagina (\d+))?`)
 
 	return pattern.ReplaceAllStringFunc(answer, func(match string) string {
