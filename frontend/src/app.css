@@ -3899,13 +3899,12 @@ tbody tr:nth-child(3) .rank-medal {
     width: 22rem;
     overflow: hidden;
     background: var(--card);
-    /* Bordo e angoli solo sul lato che guarda il contenuto: una barra
-       incollata al bordo del viewport con un angolo arrotondato a destra
-       si legge come una card mal posizionata, non come una barra — è
-       il difetto che l'ha portata qui. */
+    /* Solo il filetto sul lato che guarda il contenuto: nessun raggio.
+       Gli angoli tondi a sinistra facevano leggere una barra alta quanto
+       il viewport come una card gigante fuori posto — è il difetto che li
+       ha fatti togliere. Una barra è una parete, e una parete non ha
+       angoli smussati. */
     border-left: 1px solid var(--card-line);
-    border-top-left-radius: var(--radius);
-    border-bottom-left-radius: var(--radius);
     box-shadow: var(--shadow-card);
   }
 
@@ -3926,30 +3925,120 @@ tbody tr:nth-child(3) .rank-medal {
   .app-main:has(.manual-chat-aside) {
     padding-right: 22rem;
   }
-
-  /* Il corpo (non l'aside) porta `flex: 1`: senza, un figlio senza grow
-     dentro una colonna flex resta alto quanto il suo contenuto, ed è
-     esattamente il difetto misurato in una fase precedente — la barra si
-     fermava a ~455px con spazio vuoto sotto anche ad altezza piena. */
-  .manual-chat-aside-body {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    min-height: 0;
-    overflow-y: auto;
-  }
 }
 
+/* Il pannello è la colonna: testata ferma in cima, corpo che prende il
+   resto. `flex: 1` perché è figlio diretto di una colonna flex (l'aside
+   su desktop, il dialog su mobile) e senza grow resterebbe alto quanto il
+   suo contenuto — la barra si fermava a metà schermo. */
 .manual-chat-panel {
   display: flex;
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  padding: 0.85rem;
+}
+
+/* Un figlio solo (vedi ManualChatPanel.vue): lo stato di riposo oppure il
+   widget, che da qui prende l'altezza. `overflow: hidden` perché lo scroll
+   è di deep-chat, dentro di sé: senza, attorno alla sua barra di
+   scorrimento ne comparirebbe una seconda. */
+.manual-chat-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0 0.85rem 0.85rem;
+  overflow: hidden;
+}
+
+/* ---- Testata: nome, sottotitolo, ＋ e (su mobile) × ---- */
+
+.manual-chat-head {
+  display: flex;
+  flex: none;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem 0.85rem;
+  background: var(--felt);
+  border-bottom: 1px solid var(--felt-line);
+}
+
+.manual-chat-head-name {
+  min-width: 0;
+}
+
+.manual-chat-head-name h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.2;
+  color: var(--felt-text);
+}
+
+.manual-chat-head-name p {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--felt-text-muted);
+}
+
+.manual-chat-head-actions {
+  display: flex;
+  flex: none;
+  gap: 0.15rem;
+  align-items: center;
+}
+
+/* 44px come `.modal-close` accanto: è un bersaglio nostro, e nel dialog si
+   preme col dito. Su feltro il rilievo lo dà il bianco al 14% dei filetti,
+   non `--card-alt`, che lascerebbe l'icona chiara su fondo chiaro
+   (1.05:1). */
+.manual-chat-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.35rem;
+  color: var(--felt-text);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.manual-chat-new:hover {
+  color: var(--felt-text);
+  background: var(--felt-line);
+}
+
+.manual-chat-new:focus-visible {
+  outline-color: var(--felt-text);
+}
+
+.manual-chat-new svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.manual-chat-head .modal-close {
+  color: var(--felt-text);
+}
+
+/* L'hover globale di `.modal-close` porta il fondo a `--card-alt`: su
+   feltro, con il testo rimasto `--felt-text`, la × spariva (1.05:1). */
+.manual-chat-head .modal-close:hover {
+  color: var(--felt-text);
+  background: var(--felt-line);
+}
+
+.manual-chat-head .modal-close:focus-visible {
+  outline-color: var(--felt-text);
 }
 
 .manual-chat-note {
-  margin: 0 0 0.75rem;
+  flex: none;
+  margin: 0;
+  padding: 0.7rem 0.85rem;
   font-size: 0.8rem;
   color: var(--ink-muted);
 }
@@ -4114,58 +4203,24 @@ tbody tr:nth-child(3) .rank-medal {
   border: 0;
 }
 
-.manual-chat-dialog-head {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.75rem 0.85rem;
-  background: var(--felt);
-  border-bottom: 1px solid var(--felt-line);
-}
-
-.manual-chat-dialog-head h2 {
-  margin: 0;
-  font-size: 1.05rem;
-  color: var(--felt-text);
-}
-
-.manual-chat-dialog-head .modal-close {
-  color: var(--felt-text);
-}
-
-/* L'hover globale di `.modal-close` porta il fondo a `--card-alt`: su
-   feltro, con il testo rimasto `--felt-text`, la × spariva (1.05:1).
-   Sul verde il rilievo lo dà lo stesso bianco al 14% dei filetti. */
-.manual-chat-dialog-head .modal-close:hover {
-  color: var(--felt-text);
-  background: var(--felt-line);
-}
-
-.manual-chat-dialog-head .modal-close:focus-visible {
-  outline-color: var(--felt-text);
-}
-
+/* `height: 100%` e non solo `flex: 1`: deep-chat non eredita l'altezza dal
+   flex, il suo `#container` interno resta al default di 350px e si incolla
+   in cima — il campo di testo finiva a metà altezza con una fascia avorio
+   morta sotto (misurato nel dialog: elemento 738px, container 350px; e
+   segnalato dall'utente sulla barra desktop). Con un'altezza dichiarata il
+   container la segue e il campo torna in fondo. Vale in entrambi i
+   contenitori perché ora entrambi sono colonne a tutta altezza: la
+   distinzione «solo nel dialog» risaliva a quando la barra era una colonna
+   da 270px dentro la griglia della pagina.
+   Nessun `min-height`: il 100% è già l'altezza del corpo, e un minimo più
+   alto dello spazio disponibile spingerebbe il campo sotto il taglio. */
 .manual-chat-widget {
-  flex: 1;
   width: 100%;
-  min-height: 18rem;
+  height: 100%;
   border: 0;
   background-color: transparent;
 }
 
-/* deep-chat non eredita l'altezza da `flex: 1`: il suo `#container` interno
-   resta al default di 350px e si incolla in cima, lasciando il campo di
-   testo a mezzo schermo con la metà bassa del dialog vuota (osservato in
-   browser, misurato: elemento 738px, container 350px). Con un'altezza
-   dichiarata il container la segue e il campo torna in fondo.
-   **Solo nel dialog**: nella sidebar la stessa riga fa il danno opposto,
-   il container scende a 171px dentro un elemento da 270 e resta una fascia
-   avorio morta sotto al campo (anche questo misurato, dopo averlo prima
-   dato per scontato). Lì deep-chat si dimensiona da sé e va bene così. */
-.manual-chat-dialog .manual-chat-widget {
-  height: 100%;
-}
 
 /* ---------- Sezione Chatbot (admin) ---------- */
 

@@ -89,10 +89,8 @@ function closeDialog() {
     compare nell'elenco dei landmark di uno screen reader come
     "complementary" e basta, e da lì la chat non si trova.
   -->
-  <aside v-if="wide" class="manual-chat-aside" aria-label="Chiedi al manuale">
-    <div class="manual-chat-aside-body">
-      <ManualChatPanel :game-id="gameId" :game-name="gameName" :headings="headings" />
-    </div>
+  <aside v-if="wide" class="manual-chat-aside" aria-label="L'Arbitro — chiedi al manuale">
+    <ManualChatPanel :game-id="gameId" :game-name="gameName" :headings="headings" />
   </aside>
 
   <!-- Mobile: bottone tondo sempre visibile, e dialog a tutto schermo. -->
@@ -127,17 +125,21 @@ function closeDialog() {
       v-if="dialogMounted"
       ref="dialog"
       class="manual-chat-dialog"
-      aria-labelledby="manual-chat-dialog-title"
+      aria-label="L'Arbitro — chiedi al manuale"
     >
-      <div class="manual-chat-dialog-head">
-        <h2 id="manual-chat-dialog-title">Chiedi al manuale</h2>
-        <button type="button" class="modal-close" aria-label="Chiudi" @click="closeDialog">
-          <svg viewBox="0 0 24 24" fill="none">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
-          </svg>
-        </button>
-      </div>
-      <ManualChatPanel :game-id="gameId" :game-name="gameName" :headings="headings" />
+      <!--
+        La testata (titolo, nuova conversazione, ×) sta dentro il pannello:
+        `closable` accende la × e l'evento la ricollega a closeDialog. Prima
+        era markup del dialog, e la sidebar desktop — che monta lo stesso
+        pannello — restava senza titolo.
+      -->
+      <ManualChatPanel
+        :game-id="gameId"
+        :game-name="gameName"
+        :headings="headings"
+        closable
+        @close="closeDialog"
+      />
     </dialog>
   </template>
 </template>

@@ -359,11 +359,12 @@ questa scheda.
   che la rendeva "non tutta a destra" (segnalato dall'utente). Ora
   `.manual-chat-aside` è `position: fixed; top: 3.25rem; right: 0; bottom:
   0`: esce dal flusso di `.app-page` e si ancora al viewport, non a una
-  scatola centrata al suo interno. **Bordo e angoli solo sul lato che
-  guarda il contenuto** (`border-left`, `border-top-left-radius`,
-  `border-bottom-left-radius`): un angolo arrotondato sul lato incollato
-  al bordo del viewport si legge come una card mal posizionata, non come
-  una barra.
+  scatola centrata al suo interno. **Solo il filetto sul lato che guarda
+  il contenuto** (`border-left`), **nessun raggio**: gli angoli tondi a
+  sinistra, provati in una prima resa, facevano leggere una barra alta
+  quanto il viewport come una card gigante fuori posto (segnalato
+  dall'utente). Una barra è una parete, e una parete non ha angoli
+  smussati.
 - **Lo spazio si riserva su `.app-main`, non su `.app-page`.** Uscita dal
   flusso, la barra non spinge più via nessuno: senza una riserva
   esplicita il contenuto le passerebbe sotto. La riserva **non** può stare
@@ -378,10 +379,13 @@ questa scheda.
   `.app-sidebar` a sinistra. `:has()` limita la riserva alle pagine che
   montano davvero la barra: senza, ogni pagina admin/pubblica perderebbe
   22rem a destra per niente.
-- **`.manual-chat-aside-body` porta `flex: 1`**: senza, un figlio senza
+- **`.manual-chat-panel` porta `flex: 1`**: senza, un figlio senza
   `flex-grow` dentro una colonna flex resta alto quanto il suo contenuto
   — il difetto misurato in una fase precedente, la barra si fermava a
-  ~455px con spazio vuoto sotto anche ad altezza piena. **Sopra il
+  ~455px con spazio vuoto sotto anche ad altezza piena. Il pannello è
+  figlio diretto dell'aside (e del dialog): il vecchio involucro
+  intermedio `.manual-chat-aside-body` è stato tolto, non serviva un
+  secondo contenitore per portare lo stesso `flex: 1`. **Sopra il
   breakpoint non collassa più**: il toggle (`.manual-chat-toggle`) e lo
   stato `is-collapsed` sono stati rimossi, scelta esplicita — la sidebar
   di sinistra non si nasconde da desktop, e un bottone che facesse
@@ -405,8 +409,8 @@ questa scheda.
   È la stessa grammatica del segnaposto copertina (rettangolo tondo, pip
   pieni), non un'icona presa a prestito.
 - **Sul verde l'anello di focus passa al cartoncino anche qui.** La regola
-  generale (vedi Do) vale ora su due superfici in feltro oltre a topbar e
-  sidebar: la testata del dialog e la sua ×. Il bottone tondo fa eccezione
+  generale (vedi Do) vale ora su una superficie in feltro in più oltre a
+  topbar e sidebar: la testata della chat, con il suo ＋ e la sua ×. Il bottone tondo fa eccezione
   e tiene il rosso: `outline-offset: 2px` disegna l'anello **fuori** dal
   bottone, sul cartoncino della pagina, dove sta a 6.4:1.
 - **deep-chat vive in shadow DOM**: i token di `app.css` (`--felt`,
@@ -425,21 +429,75 @@ questa scheda.
   `ManualChatPanel.vue` e aggiornare i valori a mano, altrimenti la chat
   resta l'unica isola col colore vecchio, e niente nel codice lo segnala da
   solo.
+- **La chat ha un nome e una testata** (`.manual-chat-head`, dentro
+  `ManualChatPanel.vue`, quindi la stessa in barra e in dialog): fondo
+  feltro, **"L'Arbitro"** in Display — chi risolve le dispute al tavolo —
+  con sotto `risposte dal manuale` in `--felt-text-muted`, e a destra il
+  ＋ di "Nuova conversazione" più, **solo nel dialog** (prop `closable`,
+  evento `close`), la ×. Prima la testata era markup del dialog e la barra
+  desktop era una colonna di bolle senza nome, che non diceva nemmeno di
+  essere una chat (segnalato dall'utente). Il ＋ compare **solo a
+  conversazione avviata**: nello stato di riposo non c'è niente da
+  azzerare, e un ＋ che non fa nulla è peggio di un ＋ che manca. Quando
+  spariscono il ＋ e la conversazione, il fuoco va sul finto campo
+  (`nextTick`), non sul body.
+- **Lo storico vive in `localStorage`, non nel database.** Una chiave per
+  gioco (`bgm-chat-<gameId>`), gestita da `browserStorage` di deep-chat —
+  che scrive a ogni messaggio e rilegge al render, purché non gli si passi
+  anche `history` — con lo stesso tetto di `requestBodyLimits`
+  (40 messaggi). Nessuna tabella e nessun identificativo da inventare per
+  chi non ha un account: la conversazione resta sul telefono di chi l'ha
+  fatta. Il ＋ toglie la chiave e smonta il componente; l'unico punto in
+  cui la chiave la leggiamo noi è al mount, per decidere se **montare
+  deep-chat subito** (c'è una conversazione da riaprire, e quei 457 KB chi
+  la ha fatta li ha già scaricati) o restare nello stato di riposo. Ogni
+  accesso è in `try/catch`: in navigazione privata su Safari il solo
+  toccare `localStorage` lancia, e lì la chat funziona senza storico.
 - **Il campo deve dichiarare la sua altezza, non ereditarla.** `flex: 1`
   stira l'elemento `<deep-chat>` ma il suo `#container` interno resta al
-  default di 350px e si incolla in cima: nel dialog a tutto schermo il campo
-  di testo finiva a metà schermo con la parte bassa vuota (misurato:
-  elemento 738px, container 350px). Serve `height: 100%`, ma **solo dentro
-  il dialog** (`.manual-chat-dialog .manual-chat-widget`): nella sidebar la
-  stessa riga fa il danno opposto — il container scende a 171px dentro un
-  elemento da 270 e resta una fascia avorio morta sotto al campo. Lì
-  deep-chat si dimensiona da sé. Entrambi i numeri sono misurati in
-  browser; il secondo caso era stato dato per scontato al primo tentativo e
-  la sidebar ci aveva rimesso.
-- **Il microfono sta dentro il campo** (`speechToText.button.position:
-  'inside-start'`): con il campo largo quanto il pannello, il default
-  `outside-end` cade oltre il bordo destro dello schermo e si vede a metà.
-  Microfono a sinistra, invio a destra, uno per capo.
+  default di 350px e si incolla in cima: il campo di testo finisce a metà
+  altezza con una fascia avorio morta sotto (misurato nel dialog: elemento
+  738px, container 350px; e segnalato dall'utente sulla barra desktop).
+  Serve `height: 100%` sul widget, **in entrambi i contenitori** ora che
+  entrambi sono colonne a tutta altezza — la vecchia eccezione «solo nel
+  dialog» risaliva a quando la barra era una colonna da 270px dentro la
+  griglia della pagina, dove la stessa riga faceva il danno opposto.
+  Perché quel 100% sia esatto, **il corpo che lo contiene ha un figlio
+  solo** (`.manual-chat-body`): la nota "Controlla sempre la pagina
+  citata." sta fuori, sopra, sotto la testata. Un fratello dentro quel
+  corpo si prende una fetta della colonna e spinge il campo sotto il
+  taglio, perché il corpo è `overflow: hidden` (lo scroll è di deep-chat,
+  dentro di sé: senza, attorno alla sua barra ne comparirebbe una
+  seconda).
+- **Microfono e invio stanno dentro il campo, a destra, uno accanto
+  all'altro** (`position: 'inside-end'` per entrambi). I nomi ammessi sono
+  solo `inside-start`, `inside-end`, `outside-start`, `outside-end`: un
+  valore fuori da questi (provato `inside-right`) spinge l'invio fuori dal
+  campo, oltre il bordo destro dello schermo, e lo taglia a metà — che è
+  anche quel che fa `outside-end` di suo, con il campo largo quanto il
+  pannello. Due bottoni nella **stessa** posizione però deep-chat li
+  disegna allo stesso scarto (`left: -27px`, misurato), uno sopra
+  l'altro: il microfono prende quindi `left: 'auto'; right: '2.2em'` nel
+  suo `container.default` (`micIconButton`) e si sposta di un bottone a
+  sinistra, nell'ordine di ogni app di messaggi — dettatura, poi invio.
+  **Il rientro del testo è solo a destra** (`paddingRight: '4.3em'`): il
+  microfono a sinistra costringeva a un rientro di 2.7em anche sui browser
+  senza Web Speech, dove quel bottone non esiste, e il placeholder partiva
+  da metà campo (segnalato dall'utente).
+- **Un anello di focus solo.** `border: 1px` più `outline: 2px` sullo
+  stesso bordo da 6px di raggio si scollavano agli angoli e il campo
+  sembrava avere gli spigoli smangiati (segnalato dall'utente). Resta il
+  bordo in `--accent` e l'anello passa a
+  `box-shadow: 0 0 0 3px rgb(156 43 43 / 32%)`, che segue il raggio
+  esattamente.
+- **Le bolle non hanno la stessa larghezza.** A 92% per tutte arrivavano
+  quasi da bordo a bordo e la conversazione si leggeva come una pila di
+  blocchi centrati, senza un lato di chi parla: la domanda sta a 82%, la
+  risposta a 88%, e l'angolo basso dal lato del parlante è schiacciato a
+  3px — una codina, la stessa idea del dado che parla sul bottone tondo.
+  Dentro la bolla il link alla pagina del manuale prende `--accent`
+  (`auxiliaryStyle`): di serie era il blu del browser (#0000EE, misurato),
+  l'unica cosa blu dell'app, nell'unica bolla che cita una fonte.
 - **I due bottoni si centrano da soli, non a un valore fisso.** deep-chat
   li ancora al fondo del campo con un margine costante
   (`inset-block-end: .85em`, indipendente dall'altezza della riga), e la
@@ -456,14 +514,17 @@ questa scheda.
   bottoni entrambi a 442,7px in un altro punto della pagina), in sidebar,
   nel dialog e sull'hover (che tocca solo `backgroundColor`, non
   `top`/`transform`, perché `default` viene sempre riapplicato prima di
-  `hover`).
+  `hover`). Lo stesso centraggio va passato anche a `loading` e `stop`
+  (`inputIconPosition`, il solo `container` e non il filtro sull'SVG, che
+  sono i tre puntini dell'attesa e il quadrato di stop, già del grigio
+  giusto): senza, durante l'attesa la riga sobbalza di quei 7px.
 - **I due bottoni dentro il campo restano bersagli da 22px** ed è un limite
   accettato, non una svista: sono `position: absolute` dentro contenitori a
   larghezza zero nello shadow DOM di deep-chat, e imporre 44px dalle
   proprietà documentate li sposta fuori dal campo (provato e osservato). Chi
   scrive da telefono manda comunque con il tasto invio della tastiera. Tutti
   i bersagli che sono **nostri** — domande suggerite, finto campo, bottone
-  tondo, × del dialog — stanno a 44px.
+  tondo, ＋ della testata e × del dialog — stanno a 44px.
 - **Lo stato di riposo si ancora in fondo** (`.manual-chat-rest` è
   `flex: 1`, `.manual-chat-intro` porta `margin-top: auto`): introduzione,
   domande e finto campo scendono insieme come un blocco solo. Nel dialog a
@@ -1065,7 +1126,7 @@ prima di questa voce.
 - **Do** avvolgere ogni tabella larga in `.table-scroll` prima di
   aggiungere colonne: la pagina non scorre mai in orizzontale.
 - **Do** cambiare il colore dell'anello di focus sul feltro
-  (`.app-topbar`/`.app-sidebar`/`.manual-chat-dialog-head`
+  (`.app-topbar`/`.app-sidebar`/`.manual-chat-head`
   → `outline-color: var(--felt-text)`): il rosso seme della regola globale
   sta a 1.3:1 contro il verde, l'anello esiste ma non si vede. Su cartoncino
   resta il rosso. **Ogni superficie verde nuova va aggiunta a quella lista**:
