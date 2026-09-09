@@ -225,7 +225,7 @@ func TestDocxToMarkdown_NoTextReturnsError(t *testing.T) {
 			if err == nil {
 				t.Fatalf("%s: nessun errore per un docx senza testo utile", name)
 			}
-			if !strings.Contains(err.Error(), "non contiene testo") {
+			if !errors.Is(err, manuals.ErrDocxNoText) {
 				t.Fatalf("%s: errore inatteso per un docx senza testo: %v", name, err)
 			}
 		})

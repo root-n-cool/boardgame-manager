@@ -626,6 +626,167 @@ func TestIndexMedia_TextLayerPDFCallsSegmentation(t *testing.T) {
 	}
 }
 
+// newTwoPageTextPDF costruisce un PDF di due pagine con un VERO layer
+// testo (stesso schema di manuals.NewTextPDF: un font standard non
+// embeddato, un operatore Tj per pagina), dove il testo di ciascuna pagina
+// è esattamente page1/page2 — incluso un "\n\n" letterale se lo si vuole
+// dentro il corpo, perché un byte di newline dentro una stringa PDF fra
+// parentesi arriva verbatim nel testo estratto (verificato empiricamente:
+// senza, ExtractText concatena il contenuto di Tj separati senza nessun
+// separatore, nemmeno uno spazio). Non tocca testpdf.go (di cui questo
+// task non ha la proprietà in questo giro di fix): usa solo
+// manuals.BuildTestPDF, già esportato.
+func newTwoPageTextPDF(page1, page2 string) []byte {
+	contentFor := func(text string) string {
+		return fmt.Sprintf("BT /F1 12 Tf 20 240 Td (%s) Tj ET", text)
+	}
+	streamObj := func(s string) string {
+		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
+	}
+	return manuals.BuildTestPDF([]string{
+		"<< /Type /Catalog /Pages 2 0 R >>",                     // 1
+		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",       // 2
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " + // 3
+			"/Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " + // 4
+			"/Resources << /Font << /F1 7 0 R >> >> /Contents 6 0 R >>",
+		streamObj(contentFor(page1)),                             // 5
+		streamObj(contentFor(page2)),                             // 6
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 7
+	})
+}
+
+// TestIndexMedia_TextLayerPDFChunkThatBeginsOnSecondPageGetsThatPage è il
+// finding 1 del primo giro di review: il percorso PDF-con-layer-testo
+// (pdfTextChunks/pageStartsInSegmented) condivide con quello vision solo
+// pageForOffset, non il calcolo degli starts — e non aveva NESSUN test con
+// più di una pagina, quindi il ramo i>0 di pageStartsInSegmented (la vera
+// ricerca dell'ancora) non veniva mai eseguito da nessun test. Qui uso un
+// segmentatore finto a IDENTITÀ (fakeSegmenter senza .out: restituisce il
+// testo invariato) così il testo "segmentato" è byte-per-byte lo stesso
+// testo unito che pageStartsInSegmented deve ritrovare per pagina — il
+// titolo "## Fase di Upkeep" è già nel PDF vero (disegnato via Tj), non
+// aggiunto da un finto Segment.
+//
+// Stessa fixture (a parte il canale: qui è un vero layer testo via
+// ExtractText, non vision) del test gemello sul percorso vision: un
+// paragrafo di pagina 1 lungo (~960 caratteri, solo virgole, nessuna fine
+// di frase negli ultimi 100 caratteri) forza splitToSize a NON portare una
+// coda di sovrapposizione nel chunk di pagina 2, che quindi comincia
+// esattamente all'offset di pagina 2.
+func TestIndexMedia_TextLayerPDFChunkThatBeginsOnSecondPageGetsThatPage(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{} // identità: nessun titolo aggiunto, il testo passa invariato
+	server.Vision = &pageTranscriber{}  // se mai chiamato, il test lo scopre sotto
+
+	clause := "ogni giocatore paga una moneta per ciascun edificio che possiede, in ordine di turno, senza fermarsi mai, "
+	page1Body := strings.Repeat(clause, 10)
+	page1Body = strings.TrimSpace(page1Body[:960])
+	page1 := "## Fase di Upkeep\n\n" + page1Body
+	page2 := "Se un giocatore non puo pagare, scarta l'edificio invece di pagarlo. Poi si passa alla fase successiva."
+
+	raw := newTwoPageTextPDF(page1, page2)
+	if !manuals.HasTextLayer(raw) {
+		t.Fatal("il fixture deve avere un vero layer testo, altrimenti il test esercita vision, non il percorso testo")
+	}
+
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, raw, "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if v, ok := server.Vision.(*pageTranscriber); ok && v.calls != 0 {
+		t.Fatalf("un PDF con layer testo usabile non deve chiamare Transcribe, chiamato %d volte", v.calls)
+	}
+
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"scarta"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	found := false
+	for _, h := range hits {
+		if strings.Contains(h.Text, "scarta l'edificio") {
+			found = true
+			if h.ReferenceDetail != "pagina 2" {
+				t.Fatalf("il chunk che comincia a pagina 2 doveva portare \"pagina 2\", ha %q (testo: %q)",
+					h.ReferenceDetail, h.Text)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("nessun chunk contiene il testo di pagina 2: %+v", hits)
+	}
+
+	hitsPage1, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"moneta"})
+	if err != nil {
+		t.Fatalf("search moneta: %v", err)
+	}
+	if len(hitsPage1) == 0 || hitsPage1[0].ReferenceDetail != "pagina 1" {
+		t.Fatalf("il chunk che comincia a pagina 1 doveva portare \"pagina 1\": %+v", hitsPage1)
+	}
+}
+
+// TestIndexMedia_TextLayerPDFAnchorFailureFallsBackToThePreviousPage è la
+// seconda parte del finding 1: pageStartsInSegmented dichiara, quando
+// l'ancora di una pagina non si ritrova, un fallback silenzioso — "quella
+// pagina eredita l'offset della precedente". Un fallback non provato è una
+// supposizione. Qui si forza il fallimento facendo restituire al
+// segmentatore finto un testo TOTALMENTE estraneo (che non contiene
+// nessuna delle due pagine originali): l'ancora di pagina 2 (i primi 40
+// caratteri del suo testo VERO) non può comparire in un testo che non
+// condivide una sola parola con l'originale, quindi pageStartsInSegmented
+// deve ripiegare su starts[1] = starts[0].
+//
+// L'asserzione verifica che il ripiego sia DAVVERO quello dichiarato: ogni
+// chunk del testo sostituito (compreso quello che, per contenuto,
+// "sembrerebbe" appartenere a una pagina successiva) risulta attribuito
+// alla PAGINA PRECEDENTE (pagina 1), non a pagina 2. Prima della
+// correzione a pageForOffset fatta in questo stesso giro di fix, un
+// confronto ingenuo su starts uguali avrebbe vinto per l'indice più alto
+// (pagina 2, quella il cui ancoraggio è fallito) — l'esatto contrario di
+// quanto promesso: vedi il commento su pageForOffset per la prova
+// rosso/verde di QUESTA correzione, fatta rompendo di nuovo la funzione.
+func TestIndexMedia_TextLayerPDFAnchorFailureFallsBackToThePreviousPage(t *testing.T) {
+	replaced := "Testo completamente estraneo restituito dal segmentatore finto, che non condivide " +
+		"nessuna parola con le due pagine originali del PDF e quindi non puo essere ritrovato tramite " +
+		"l'ancora dei primi quaranta caratteri di nessuna delle due, forzando il ripiego dichiarato."
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{out: replaced}
+
+	page1 := "## Sezione\n\n" + "Questo e il testo vero della prima pagina, che non compare nel sostituito."
+	page2 := "Questo e il testo vero della seconda pagina, anche lui assente dal sostituito."
+	raw := newTwoPageTextPDF(page1, page2)
+	if !manuals.HasTextLayer(raw) {
+		t.Fatal("il fixture deve avere un vero layer testo")
+	}
+
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, raw, "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"estraneo"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("nessun chunk trovato per il testo sostituito")
+	}
+	for _, h := range hits {
+		if h.ReferenceDetail != "pagina 1" {
+			t.Fatalf("con l'ancora di pagina 2 introvabile, il fallback dichiarato è \"eredita l'offset della "+
+				"precedente\": atteso \"pagina 1\", ottenuto %q (testo: %q)", h.ReferenceDetail, h.Text)
+		}
+	}
+}
+
 // TestManualTarget_RejectsMediaFromAnotherGame pinna il controllo che
 // manualTarget faceva già prima di questo task: un media di un altro
 // gioco è "non trovato" (404), non un parametro di rotta malformato.

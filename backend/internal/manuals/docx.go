@@ -45,6 +45,17 @@ const maxDocumentXMLBytes = 5 * 1024 * 1024
 // da "era troncato in un punto che ha rotto l'XML".
 var ErrDocumentXMLTooLarge = errors.New("docx: word/document.xml supera il limite consentito una volta decompresso")
 
+// ErrDocxNoText è l'errore restituito quando word/document.xml si legge e si
+// analizza correttamente ma non produce nessun paragrafo utile (un
+// documento vuoto, o il cui unico contenuto è escluso di proposito, come
+// una tabella senza altro testo intorno). Esportato con lo stesso schema
+// di ErrDocumentXMLTooLarge, per lo stesso motivo: il Task 5 deve poter
+// dire all'admin "questo file non ha testo" con errors.Is, non con un
+// confronto sul testo del messaggio — che si romperebbe alla prima
+// riformulazione della frase in questo file, un accoppiamento fra due
+// package che un sentinel elimina.
+var ErrDocxNoText = errors.New("docx: il documento non contiene testo")
+
 // DocxToMarkdown legge un .docx (uno zip OOXML) e ne restituisce il corpo
 // come markdown: un sottoinsieme deliberatamente limitato — paragrafi,
 // titoli, elenchi puntati — pensato per alimentare ParseSections
@@ -136,7 +147,7 @@ func DocxToMarkdown(raw []byte) (string, error) {
 		return "", err
 	}
 	if md == "" {
-		return "", fmt.Errorf("docx: il documento non contiene testo")
+		return "", ErrDocxNoText
 	}
 	return md, nil
 }

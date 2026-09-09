@@ -395,7 +395,11 @@ func concatTextsTracked(texts []string) (string, []int) {
 // quanto il tetto di tolleranza dovrebbe permettere), quella pagina eredita
 // l'offset della precedente: i suoi chunk finiscono attribuiti alla pagina
 // prima, una degradazione ragionevole per un caso che il tetto di
-// tolleranza di Segment dovrebbe già rendere raro.
+// tolleranza di Segment dovrebbe già rendere raro. Questa garanzia dipende
+// da pageForOffset, che deve saltare i confini ripetuti prodotti qui:
+// senza quel salto un confronto ingenuo attribuirebbe l'ESATTO CONTRARIO
+// (alla pagina il cui ancoraggio è fallito, non a quella prima) — vedi il
+// commento su pageForOffset.
 func pageStartsInSegmented(pages []manuals.Page, segmented string) []int {
 	starts := make([]int, len(pages))
 	cursor := 0
@@ -445,15 +449,29 @@ func anchorText(pageText string) string {
 // cui intervallo di offset contiene chunk.Offset" del brief. starts è per
 // costruzione non decrescente (sia in concatTextsTracked sia in
 // pageStartsInSegmented il cursore avanza sempre), quindi l'ultima che
-// soddisfa la condizione è quella giusta.
+// soddisfa la condizione è quella giusta — MA solo fra i confini VERI
+// (starts[i] > starts[i-1]): un confine ripetuto è il fallback silenzioso
+// di un'ancora non trovata in pageStartsInSegmented (starts[i] =
+// starts[i-1]), non un nuovo inizio di pagina davvero letto. Senza questo
+// filtro, un confronto ingenuo "offset >= starts[i]" per ogni i farebbe
+// vincere sempre l'INDICE PIÙ ALTO fra due starts uguali — cioè la pagina
+// il cui ancoraggio è FALLITO — e quel guasto si mangerebbe all'indietro
+// anche i chunk che appartengono davvero alla pagina precedente, ben
+// ancorata: l'opposto di "eredita l'offset della precedente" che
+// pageStartsInSegmented promette nel suo commento. Saltando i confini
+// ripetuti, un'ancora fallita per la pagina i lascia correttamente i suoi
+// chunk (e quelli della pagina prima) attribuiti all'ultimo confine vero
+// trovato, cioè alla pagina precedente.
 func pageForOffset(pageNumbers, starts []int, offset int) int {
 	page := pageNumbers[0]
-	for i, s := range starts {
-		if offset >= s {
-			page = pageNumbers[i]
-		} else {
+	for i := 1; i < len(starts); i++ {
+		if starts[i] <= starts[i-1] {
+			continue // confine non vero: un'ancora fallita, non un nuovo inizio di pagina
+		}
+		if offset < starts[i] {
 			break
 		}
+		page = pageNumbers[i]
 	}
 	return page
 }
@@ -521,7 +539,7 @@ func indexErrorResponse(err error) (int, string) {
 	case errors.Is(err, manuals.ErrDocumentXMLTooLarge):
 		return http.StatusUnprocessableEntity,
 			"Questo file .docx è troppo grande per essere letto: prova a semplificarlo o a esportarlo in un altro formato."
-	case strings.Contains(err.Error(), "docx: il documento non contiene testo"):
+	case errors.Is(err, manuals.ErrDocxNoText):
 		return http.StatusUnprocessableEntity,
 			"Questo file .docx non contiene testo: verifica che il documento abbia davvero del contenuto scritto."
 	default:
