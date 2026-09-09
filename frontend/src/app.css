@@ -4066,6 +4066,32 @@ tbody tr:nth-child(3) .rank-medal {
   min-height: 0;
 }
 
+/* Le tre domande ora sono frasi vere di lunghezza variabile scritte dal
+   modello (fino a 120 caratteri), non più tre righe della stessa forma: in
+   barra desktop, larga 22rem, una sola arriva a quattro righe e il blocco a
+   418px (misurato). Se non ci sta — telefono in orizzontale, finestra bassa
+   — `overflow: hidden` di `.manual-chat-body` lo tagliava senza
+   scorrimento, e la prima cosa a sparire era proprio il finto campo, cioè
+   l'invito a scrivere. Scorrono invito e domande; il finto campo resta
+   fermo in fondo, dove atterrerà quello vero e dove arriva il pollice.
+   Dove il blocco ci sta — la barra desktop e il telefono in verticale — non
+   cambia niente: nessuna barra di scorrimento compare. */
+.manual-chat-rest-scroll {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Nessuno dei due si stringe: senza questo la `<ul>` (che non ha
+   `min-height`) collassa sotto le sue pastiglie da 44px e il testo esce dal
+   suo box invece di far scorrere il blocco. */
+.manual-chat-intro,
+.manual-chat-suggestions {
+  flex: none;
+}
+
 /* Spogliata come `.admin-list`: la regola globale `ul` la vestirebbe da
    card (fondo, bordo, raggio, ombra, overflow) e `li` metterebbe padding e
    filetto a ogni riga, incorniciando due volte tre bottoni che sono già
@@ -4090,6 +4116,12 @@ tbody tr:nth-child(3) .rank-medal {
   border: 0;
 }
 
+/* `min-height` e non `height`: una domanda lunga manda a capo e la pastiglia
+   cresce. `text-align: left` perché su due o tre righe il testo centrato
+   perde il bordo su cui l'occhio scende. `overflow-wrap: anywhere` è la
+   sola difesa contro una domanda senza spazi: il server ne limita la
+   lunghezza (120 caratteri), non la forma, e a 22rem di barra una parola
+   lunga sfonderebbe la pastiglia. */
 .manual-chat-suggestions button {
   width: 100%;
   min-height: 44px;
@@ -4097,6 +4129,7 @@ tbody tr:nth-child(3) .rank-medal {
   font: inherit;
   color: var(--ink);
   text-align: left;
+  overflow-wrap: anywhere;
   background: var(--card-alt);
   border: 1px solid var(--card-line);
   border-radius: var(--radius-sm);
@@ -4114,8 +4147,10 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 /* Ha le misure del campo vero, così montare deep-chat non fa saltare il
-   layout. */
+   layout. `flex: none` perché è fratello del blocco scorrevole: è l'unica
+   cosa dello stato di riposo che non deve mai uscire dallo schermo. */
 .manual-chat-fakeinput {
+  flex: none;
   width: 100%;
   min-height: 44px;
   padding: 0.6rem 0.75rem;
@@ -4267,55 +4302,126 @@ tbody tr:nth-child(3) .rank-medal {
 
 /* Le tre domande di riposo della chat, sotto la lista dei documenti nello
    stesso `.panel-card`: un filetto in alto le separa come farebbe un
-   secondo foglio, senza raddoppiare bordo e ombra. */
-.suggested-questions {
+   secondo foglio, senza raddoppiare bordo e ombra.
+
+   È un `<form>`, quindi eredita la colonna flex e il `gap` di `form`: qui il
+   gap scende a 0.85rem perché separa gruppi già compatti (testata, lista,
+   riga azioni) dentro un foglio che ha altro sopra, non le sezioni di una
+   pagina.
+
+   `form.suggested-questions` e non `.suggested-questions`: `.app-page form`
+   porta `align-items: flex-start` per non stirare i submit, e `.panel-card
+   form` non lo tocca — una sola classe non lo batte (classe+tipo vince), e
+   senza `align-items: stretch` la lista delle tre domande si stringe sul suo
+   contenuto (misurato: 305px dentro un foglio da 753px), contro la regola
+   del campo largo quanto il foglio. Su domande da 120 caratteri quel
+   restringimento non è estetico: si vede un terzo della frase che si sta
+   correggendo. Il submit non si stira comunque, perché sta dentro
+   `.suggested-questions-actions`, che è una riga sua. */
+form.suggested-questions {
+  align-items: stretch;
+  gap: 0.85rem;
   margin-top: 1.5rem;
   padding-top: 1.25rem;
   border-top: 1px solid var(--card-line);
 }
 
+/* Il ritmo del pannello lo governa il `gap`. La `.field-hint` dell'app porta
+   un margine negativo, pensato per incollarsi sotto il campo che descrive:
+   dentro una colonna flex non collassa con niente e risalirebbe dentro il
+   titolo e dentro la riga dei bottoni. */
+.suggested-questions > .field-hint,
+.suggested-questions > .empty-note,
+.suggested-questions > .error,
+.suggested-questions-head > .field-hint,
+.suggested-questions-head > .empty-note {
+  margin: 0;
+}
+
+/* Testata e sue didascalie sono un gruppo solo: il `gap` del form separa i
+   gruppi, non un titolo dalla riga che lo spiega. */
+.suggested-questions-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+/* `.section-head` col suo margine proprio azzerato: qui la spaziatura sotto
+   la testata la dà il `gap` del gruppo. */
+.suggested-questions-head-row {
+  margin-bottom: 0;
+}
+
 .suggested-questions h3 {
-  margin: 0 0 0.3rem;
+  margin: 0;
   font-family: 'Display', system-ui, sans-serif;
   font-size: 1rem;
   font-weight: 600;
 }
 
+/* Spogliata come `.admin-list`: la regola globale delle liste la veste da
+   card e dà a ogni `li` padding e filetto propri — misurato, ogni riga di
+   campo arrivava rientrata di 15px e sottolineata da un filo, come una
+   lista di dati e non come tre campi di un form. */
 .suggested-questions-list {
   list-style: none;
-  margin: 0.75rem 0 1rem;
+  margin: 0;
   padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
 }
 
+/* `justify-content` dichiarato e non ereditato: la regola globale dei `li`
+   distribuisce agli estremi, e la riga senza pastiglia — le due su tre che
+   il modello ha scritto — si ritroverebbe il campo tirato al bordo. */
 .suggested-questions-list li {
   display: flex;
   align-items: center;
+  justify-content: flex-start;
   flex-wrap: wrap;
   gap: 0.5rem;
+  padding: 0;
+  border: 0;
 }
 
 .suggested-questions-list input {
   flex: 1 1 16rem;
 }
 
-/* Stessa pastiglia neutra di `.lang-chip`: non è un allarme, dice solo da
-   dove viene la domanda — perché un reindex non l'ha cambiata. */
+/* Stessa pastiglia neutra di `.lang-chip`, maiuscoletto tracciato compreso:
+   non è un allarme, dice solo da dove viene la domanda — perché un reindex
+   non l'ha cambiata. Il maiuscoletto tracciato è la voce delle etichette in
+   questo progetto ed è quel che la distingue da un bottone, che qui è sempre
+   sentence-case in font di corpo: senza, una pastiglia in fondo a una riga di
+   form si legge come il bottone che applica quel campo. */
 .suggested-questions-badge {
   flex: none;
   font-family: 'Data', monospace;
   font-size: 0.7rem;
   font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
   color: var(--ink-muted);
   background: var(--card-alt);
   border-radius: 999px;
   padding: 0.15rem 0.55rem;
 }
 
+/* Una sola azione: "Rigenera" sta nella testata del pannello, non qui.
+   `align-self: flex-start` sulla riga (e non il `flex-start` che la regola
+   `form button[type='submit']` metterebbe sul bottone) perché la riga non ha
+   motivo di essere larga quanto il foglio. */
 .suggested-questions-actions {
   display: flex;
-  gap: 0.5rem;
+  align-self: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 

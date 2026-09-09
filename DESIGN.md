@@ -534,10 +534,24 @@ questa scheda.
   significava, al primo gesto, veder saltare l'invito dalla cima del
   telefono al fondo, dove deep-chat mette il campo vero. Nella sidebar
   desktop non c'è spazio libero da distribuire e non cambia niente.
+- **Scorrono invito e domande, non il finto campo**
+  (`.manual-chat-rest-scroll` con `overflow-y: auto`, il finto campo suo
+  fratello a `flex: none`). Da quando le tre domande le scrive un modello
+  sono frasi di lunghezza variabile fino a 120 caratteri, non più tre righe
+  della stessa forma: misurato, in barra desktop (22rem) una domanda lunga
+  prende quattro righe e il blocco arriva a 418px. Dove non ci sta —
+  telefono in orizzontale, finestra bassa — l'`overflow: hidden` di
+  `.manual-chat-body` lo tagliava senza scorrimento, e la prima cosa a
+  sparire era proprio il finto campo, cioè l'invito a scrivere. Dove ci sta
+  (barra desktop e telefono in verticale, misurati) non compare nessuna
+  barra di scorrimento e non cambia niente.
 - **Le domande suggerite sono una `<ul>` spogliata** come `.admin-list`:
   senza, la regola globale la veste da card e mette a ogni `li` padding e
   filetto, e tre pastiglie finiscono incorniciate due volte dentro un
-  riquadro dentro la card della chat.
+  riquadro dentro la card della chat. La pastiglia è `min-height: 44px` e
+  **non** `height`, con `overflow-wrap: anywhere`: cresce su più righe, e
+  una domanda senza spazi (il server ne limita la lunghezza, non la forma)
+  non sfonda la barra.
 - **Stato di riposo, non un caricamento silenzioso.** Prima di ogni gesto
   il pannello mostra markup nostro: l'introduzione, tre domande suggerite
   (dai titoli di sezione del manuale quando ce ne sono almeno tre — la
@@ -710,6 +724,48 @@ testo estratto non si conserva da nessuna parte, per scelta.
   controllo lato server che rifiuta la risposta del modello quando somiglia
   a una riscrittura invece che a una segmentazione col solo aggiunta di
   titoli.
+
+#### Domande suggerite (`SuggestedQuestionsPanel.vue`)
+Il secondo foglio della sezione «Chatbot», staccato dall'elenco dei
+documenti da un filetto (`.suggested-questions`, `border-top`) invece che
+da una card propria: raddoppiare bordo e ombra dentro una card è la
+`.panel-card` dentro `.panel-card` che il sistema rifiuta altrove. È il
+**pattern nuovo di questa fase**: una lista ordinata di campi editabili,
+ciascuno con una pastiglia di stato, dentro un form annidato in un foglio.
+
+- **È un `<form>` e la lista è una `<ol>`.** Tre campi etichettati più un
+  "Salva" sono un form, non un `<div>` con dei `@click`: dichiararlo
+  restituisce l'invio col tasto Invio, che mancava. La `<ol>` resta perché
+  la posizione è un dato — le tre domande compaiono nella chat in
+  quell'ordine — e porta `role="list"` come ogni lista spogliata del
+  progetto.
+- **La pastiglia di stato è maiuscoletto tracciato, non sentence-case**
+  (`.suggested-questions-badge`, la resa di `.lang-chip`). Il maiuscoletto
+  tracciato in mono è la voce delle etichette qui, e in fondo a una riga di
+  form è la sola cosa che distingue una pastiglia di stato da un bottone,
+  che nel progetto è sempre sentence-case in font di corpo con un
+  riempimento o un bordo `--card-line`. La pastiglia è anche legata al suo
+  campo da `aria-describedby`: senza, per chi legge con la voce resta un
+  testo orfano accanto a un campo, non una proprietà del campo.
+- **Un controllo spento dice sempre perché.** "Rigenera" è spento senza
+  provider AI, e il motivo sta nel pannello — non nella sezione sopra, che
+  lo dice solo quando il gioco ha documenti indicizzabili e quindi taceva
+  proprio nella combinazione peggiore (nessun provider *e* nessun
+  documento: bottone spento, nessuna spiegazione). Vale anche per "Salva",
+  spento finché una delle tre caselle è vuota perché il server la rifiuta:
+  la regola si dice prima del click, non con un 400 dopo. La distinzione
+  con `ManualPrepPanel`, che invece **nasconde** "Prepara" senza provider,
+  è deliberata: si nasconde un'azione quando l'intera riga non ha più
+  senso, si spegne con la spiegazione quando il pannello ha ancora un
+  lavoro da fare — qui le tre domande si scrivono a mano comunque.
+- **Distruttivo e primario non stanno affiancati.** "Rigenera" riscrive
+  tutte e tre le domande, comprese quelle a mano, e per scelta di prodotto
+  **non ha una conferma**. Sta quindi nella testata del pannello, come
+  l'azione di una `.section-head`, e non accanto a "Salva": due bottoni in
+  fila si leggono come "scegline uno per finire", e quello che distrugge il
+  lavoro appena fatto era a mezzo centimetro da quello che lo salva. Quel
+  che altrove sarebbe un modale, qui è distanza più copia adiacente al
+  bottone.
 
 ### Amministratori (`/admin/users`)
 - **La riga admin** (`.admin-row`, dentro `.admin-list` in un `.panel-card`):
@@ -1202,3 +1258,24 @@ prima di questa voce.
   numero galleggia in mezzo alla riga, fuori dalla colonna dove sta nelle
   sezioni accanto. Spinge il gruppo il primo dei due
   (`.section-head .section-count + button { margin-left: 0 }`).
+- **Don't** stilare un `<form>` dentro un `.panel-card` con la sola classe:
+  `.app-page form` porta `align-items: flex-start` (serve a non stirare i
+  submit) e `.panel-card form` non lo tocca, quindi una classe sola non lo
+  batte — classe+tipo vince. Senza `align-items: stretch` a specificità
+  sufficiente (`form.la-tua-classe`) ogni figlio si stringe sul proprio
+  contenuto: bug reale misurato su `.suggested-questions`, la lista dei
+  campi larga 305px dentro un foglio da 753px, contro la regola del campo
+  largo quanto il foglio.
+- **Don't** dare per scontato che `list-style: none` e `padding: 0` basti a
+  spogliare una lista: il padding e il `border-bottom` stanno sul `li`, non
+  sulla `<ul>`/`<ol>`. Una lista di righe di form che li eredita arriva
+  rientrata di 15px e sottolineata da un filo — si legge come una lista di
+  dati e non come i campi di un form (bug reale su
+  `.suggested-questions-list`, la stessa trappola già annotata per `<ul>`
+  qui sopra). Si copia il blocco di `.admin-list`, `li` compreso.
+- **Don't** lasciare un controllo `disabled` senza il motivo a schermo:
+  `button:disabled` è solo `opacity: 0.55`, quindi un bottone spento non
+  comunica nient'altro che di essere spento, ed è un vicolo cieco. Si
+  nasconde l'azione quando l'intero contesto non ha senso
+  (`ManualPrepPanel` senza provider AI) oppure si spegne **e** si scrive
+  accanto perché, legandolo al bottone con `aria-describedby`.

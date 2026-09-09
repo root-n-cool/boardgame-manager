@@ -439,14 +439,33 @@ const auxiliaryStyle = `
     -->
     <div class="manual-chat-body">
       <div v-if="!started && !failed" class="manual-chat-rest">
-        <p class="manual-chat-intro">
-          Chiedi una regola di <strong>{{ gameName }}</strong> a parole tue.
-        </p>
-        <ul class="manual-chat-suggestions">
-          <li v-for="q in suggestions" :key="q">
-            <button type="button" @click="start(q)">{{ q }}</button>
-          </li>
-        </ul>
+        <!--
+          Invito e domande scorrono, il finto campo no: le domande ora sono
+          frasi di lunghezza variabile e su una finestra bassa (telefono in
+          orizzontale) il blocco non ci sta. Prima veniva tagliato
+          dall'`overflow: hidden` del corpo, e la prima cosa a sparire era
+          l'invito a scrivere in fondo.
+        -->
+        <div class="manual-chat-rest-scroll">
+          <p class="manual-chat-intro">
+            Chiedi una regola di <strong>{{ gameName }}</strong> a parole tue.
+          </p>
+          <!--
+            `role="list"` come ogni altra lista spogliata del progetto: con
+            `list-style: none` Safari/VoiceOver le toglie la semantica di
+            lista, e queste tre ora sono domande vere, non tre righe della
+            stessa forma da scorrere con l'occhio.
+
+            La chiave è l'indice e non il testo: le domande le scrive un
+            modello e due uguali sono possibili — con `:key="q"` sarebbero
+            chiavi duplicate.
+          -->
+          <ul role="list" class="manual-chat-suggestions">
+            <li v-for="(q, i) in suggestions" :key="i">
+              <button type="button" @click="start(q)">{{ q }}</button>
+            </li>
+          </ul>
+        </div>
         <button ref="fakeInput" type="button" class="manual-chat-fakeinput" @click="start()">
           Chiedi una regola…
         </button>
