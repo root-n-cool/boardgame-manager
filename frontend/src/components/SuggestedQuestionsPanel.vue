@@ -108,6 +108,7 @@ async function save() {
 }
 
 async function regenerate() {
+  if (busy.value) return
   regenerating.value = true
   error.value = ''
   savedTexts.value = null

@@ -796,16 +796,6 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// "chunks"/"reference" bastano per un'indicizzazione piena. Ma quando
-	// pageStats dice che alcune pagine di un PDF scansionato sono state
-	// saltate per un errore di trascrizione, un successo pieno e uno
-	// parziale sarebbero indistinguibili per l'admin: senza pagesIndexed/
-	// pagesSkipped vedrebbe solo "N sezioni indicizzate" senza sapere che
-	// al manuale mancano delle pagine — e la chat risponderebbe poi con
-	// sicurezza da un regolamento incompleto. Campi additivi in
-	// camelCase, aggiunti SOLO quando c'è davvero qualcosa da segnalare:
-	// il resto del formato risposta (e il frontend che lo legge) resta
-	// invariato per ogni altro caso.
 	// Le tre domande suggerite si rigenerano qui, best-effort: un errore si
 	// logga e si ignora. Aggiungere qualche secondo a un'operazione che su
 	// un manuale scansionato ne dura più di cento non si nota, ma
@@ -823,6 +813,16 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// "chunks"/"reference" bastano per un'indicizzazione piena. Ma quando
+	// pageStats dice che alcune pagine di un PDF scansionato sono state
+	// saltate per un errore di trascrizione, un successo pieno e uno
+	// parziale sarebbero indistinguibili per l'admin: senza pagesIndexed/
+	// pagesSkipped vedrebbe solo "N sezioni indicizzate" senza sapere che
+	// al manuale mancano delle pagine — e la chat risponderebbe poi con
+	// sicurezza da un regolamento incompleto. Campi additivi in
+	// camelCase, aggiunti SOLO quando c'è davvero qualcosa da segnalare:
+	// il resto del formato risposta (e il frontend che lo legge) resta
+	// invariato per ogni altro caso.
 	resp := map[string]any{"reference": reference, "chunks": len(sourceChunks)}
 	if pageStats.skippedPages > 0 {
 		resp["pagesIndexed"] = pageStats.indexedPages

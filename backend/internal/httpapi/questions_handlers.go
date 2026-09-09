@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"boardgames-manager/internal/ai"
+	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/manuals"
 )
 
@@ -181,9 +182,15 @@ func (s *Server) regenerateSuggestedQuestionsHandler(w http.ResponseWriter, r *h
 	}
 	// Il 404 su un gioco inesistente prima di qualunque lavoro:
 	// regenerateQuestions ricaricherà il gioco per il suo nome, ma un id
-	// inventato deve rispondere 404 e non un errore del provider.
+	// inventato deve rispondere 404 e non un errore del provider. Un guasto
+	// DB vero, invece, non è "gioco non trovato": è un 500, come fa
+	// getGameHandler.
 	if _, err := s.Games.GetGame(r.Context(), gameID); err != nil {
-		writeError(w, http.StatusNotFound, "gioco non trovato")
+		if errors.Is(err, games.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "gioco non trovato")
+			return
+		}
+		writeError(w, http.StatusInternalServerError, "could not load game")
 		return
 	}
 

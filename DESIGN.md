@@ -554,10 +554,10 @@ questa scheda.
   non sfonda la barra.
 - **Stato di riposo, non un caricamento silenzioso.** Prima di ogni gesto
   il pannello mostra markup nostro: l'introduzione, tre domande suggerite
-  (dai titoli di sezione del manuale quando ce ne sono almeno tre — la
-  scheda gioco li manda in `manualHeadings`, al più otto, in ordine di
-  pagina; un titolo noto diventa la domanda naturale, gli altri la forma
-  «Cosa dice il manuale su "…"?» — altrimenti tre domande fisse: come
+  (le manda il server già scritte, `suggestedQuestions` — le genera il
+  modello dai titoli di sezione del manuale a ogni indicizzazione e
+  l'admin le riscrive a mano nel pannello dedicato, vedi «Domande
+  suggerite» più sotto; a lista vuota restano tre domande fisse: come
   finisce la partita, in quanti si gioca, come si contano i punti) e un
   finto campo di input con le stesse misure di
   quello vero. deep-chat si monta solo al primo clic. Il motivo è il peso:

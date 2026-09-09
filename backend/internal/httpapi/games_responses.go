@@ -79,14 +79,16 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 	// domande fisse quando la lista è vuota, e tre stringhe vuote non sono
 	// una lista vuota. Sempre un array, mai null.
 	questions := []string{}
-	if qs, err := s.Manuals.SuggestedQuestions(ctx, g.ID); err != nil {
-		// Un errore qui non deve costare la scheda del gioco: senza
-		// domande suggerite il frontend usa le sue tre fisse.
-		log.Printf("game detail: suggested questions for game %d: %v", g.ID, err)
-	} else {
-		for _, q := range qs {
-			if strings.TrimSpace(q.Text) != "" {
-				questions = append(questions, q.Text)
+	if s.Manuals != nil {
+		if qs, err := s.Manuals.SuggestedQuestions(ctx, g.ID); err != nil {
+			// Un errore qui non deve costare la scheda del gioco: senza
+			// domande suggerite il frontend usa le sue tre fisse.
+			log.Printf("game detail: suggested questions for game %d: %v", g.ID, err)
+		} else {
+			for _, q := range qs {
+				if strings.TrimSpace(q.Text) != "" {
+					questions = append(questions, q.Text)
+				}
 			}
 		}
 	}

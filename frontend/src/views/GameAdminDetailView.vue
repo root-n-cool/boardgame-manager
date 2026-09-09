@@ -81,9 +81,18 @@ const indexableMedia = computed(() =>
   ),
 )
 
+// `load()` non azzera mai `game`, quindi il blocco `v-if="game"` resta
+// montato tra una chiamata e l'altra: `SuggestedQuestionsPanel` non viene
+// mai ricreato e il suo `onMounted(load)` non rileggerebbe le domande
+// appena generate da un'indicizzazione. Questo contatore, passato come
+// `:key`, forza Vue a ricreare il pannello a ogni `load()` così da farlo
+// rileggere — senza un watcher che scatterebbe a ogni mutazione di `game`.
+const suggestedQuestionsKey = ref(0)
+
 async function load() {
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
   editSeats.value = game.value.seats
+  suggestedQuestionsKey.value++
   try {
     const s = await api.get<{ aiConfigured: boolean }>('/settings')
     aiConfigured.value = s.aiConfigured
@@ -579,7 +588,11 @@ onMounted(async () => {
           sezione Media qui sopra.
         </p>
 
-        <SuggestedQuestionsPanel :game-id="game.id" :ai-configured="aiConfigured" />
+        <SuggestedQuestionsPanel
+          :key="suggestedQuestionsKey"
+          :game-id="game.id"
+          :ai-configured="aiConfigured"
+        />
       </section>
     </template>
 

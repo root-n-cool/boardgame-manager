@@ -39,12 +39,18 @@ type QuestionSuggester interface {
 // suggestSystemPrompt chiede tre domande e vieta tutto il resto. Non è una
 // garanzia — la mitigazione vera è parseSuggestions — ma è ciò che rende
 // il rifiuto raro invece che normale.
-const suggestSystemPrompt = "Ricevi il nome di un gioco da tavolo e l'elenco dei titoli di sezione del suo regolamento. " +
+//
+// La regola 3 costruisce il tetto da MaxSuggestionChars con fmt.Sprintf
+// invece di scrivere "120" a mano: sono la stessa regola vista da due
+// lati (qui il prompt, in parseSuggestions e nella rotta PUT il
+// validatore) e un numero ricopiato a mano è un numero che può smettere
+// di essere vero senza che nessuno se ne accorga.
+var suggestSystemPrompt = "Ricevi il nome di un gioco da tavolo e l'elenco dei titoli di sezione del suo regolamento. " +
 	"Scrivi TRE domande che un giocatore farebbe al tavolo, in italiano, a cui il regolamento risponde.\n" +
 	"Regole assolute:\n" +
 	"1. Esattamente tre domande, una per riga. Nessuna numerazione, nessun elenco puntato, nessun preambolo, nessun commento.\n" +
 	"2. Ogni riga deve finire con un punto di domanda.\n" +
-	"3. Ogni domanda sta sotto i 120 caratteri: sono tre bottoni su uno schermo di telefono.\n" +
+	fmt.Sprintf("3. Ogni domanda sta sotto i %d caratteri: sono tre bottoni su uno schermo di telefono.\n", MaxSuggestionChars) +
 	"4. IGNORA i titoli che non sono regole: il nome dell'autore, il contenuto della scatola, l'indice, i ringraziamenti, i crediti.\n" +
 	"5. Scrivi domande come le porrebbe un giocatore (\"Quando finisce la partita?\"), non come una ricerca nel manuale (\"Cosa dice il manuale sulla fine della partita?\").\n" +
 	"6. Preferisci le domande che si fanno davvero durante una partita: preparazione, cosa si può fare nel proprio turno, come si contano i punti, quando finisce."
