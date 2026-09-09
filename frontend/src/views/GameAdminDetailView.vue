@@ -85,20 +85,33 @@ const indexableMedia = computed(() =>
 // montato tra una chiamata e l'altra: `SuggestedQuestionsPanel` non viene
 // mai ricreato e il suo `onMounted(load)` non rileggerebbe le domande
 // appena generate da un'indicizzazione. Questo contatore, passato come
-// `:key`, forza Vue a ricreare il pannello a ogni `load()` così da farlo
-// rileggere — senza un watcher che scatterebbe a ogni mutazione di `game`.
+// `:key`, forza Vue a ricreare il pannello così da farlo rileggere —
+// senza un watcher che scatterebbe a ogni mutazione di `game`.
+// Il bump vive solo nel percorso di indicizzazione (vedi
+// `onIndexChanged`): gli altri `load()` sparsi in questa pagina (salvare
+// lingue/seat, aggiungere media, tradurre la descrizione, ...) non
+// possono aver cambiato le domande sul server, e ricreare il pannello lì
+// butterebbe via il testo non salvato che l'admin sta scrivendo nei tre
+// campi.
 const suggestedQuestionsKey = ref(0)
 
 async function load() {
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
   editSeats.value = game.value.seats
-  suggestedQuestionsKey.value++
   try {
     const s = await api.get<{ aiConfigured: boolean }>('/settings')
     aiConfigured.value = s.aiConfigured
   } catch {
     aiConfigured.value = false
   }
+}
+
+// Indicizzare un manuale (o rimuoverne l'indice) è l'unico evento che può
+// aver cambiato le domande suggerite sul server: solo qui ha senso
+// ricreare il pannello per farlo rileggere.
+async function onIndexChanged() {
+  await load()
+  suggestedQuestionsKey.value++
 }
 
 function selectLanguage(code: string) {
@@ -578,7 +591,7 @@ onMounted(async () => {
                 :media-url="media.url"
                 :indexed-chunks="media.indexedChunks"
                 :ai-configured="aiConfigured"
-                @changed="load"
+                @changed="onIndexChanged"
               />
             </li>
           </ul>
