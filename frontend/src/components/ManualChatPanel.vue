@@ -22,8 +22,8 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 const props = defineProps<{
   gameId: number
   gameName: string
-  /** I titoli di sezione del manuale, per le domande suggerite. */
-  headings: string[]
+  /** Le tre domande suggerite, già formulate dal modello. Vuota = si usano le fisse. */
+  suggestedQuestions: string[]
   /** Nel dialog mobile la testata porta anche la ×; nella sidebar no. */
   closable?: boolean
 }>()
@@ -93,32 +93,23 @@ function newConversation() {
   nextTick(() => fakeInput.value?.focus())
 }
 
-// Le domande suggerite: dai titoli del manuale quando ce ne sono almeno
-// tre, altrimenti tre domande fisse. Una chat vuota su un telefono non
-// suggerisce cosa farne.
+// Le domande suggerite: tre domande fisse. Una chat vuota su un telefono
+// non suggerisce cosa farne.
 const fallbackQuestions = [
   'Come finisce la partita?',
   'In quanti si gioca?',
   'Come si contano i punti?',
 ]
 
-/** Rende un titolo di sezione come domanda. Tabella fissa, niente magia. */
-const headingToQuestion: Record<string, string> = {
-  'fine partita': 'Come finisce la partita?',
-  'fine della partita': 'Come finisce la partita?',
-  preparazione: 'Come si prepara il gioco?',
-  punteggio: 'Come si contano i punti?',
-  conteggio: 'Come si contano i punti?',
-  turno: 'Cosa posso fare nel mio turno?',
-  'turno del giocatore': 'Cosa posso fare nel mio turno?',
-}
-
-const suggestions = computed<string[]>(() => {
-  const fromHeadings = props.headings
-    .map((h) => headingToQuestion[h.trim().toLowerCase()] ?? `Cosa dice il manuale su "${h}"?`)
-    .filter((q, i, all) => all.indexOf(q) === i)
-  return fromHeadings.length >= 3 ? fromHeadings.slice(0, 3) : fallbackQuestions
-})
+// Le domande suggerite arrivano già formulate dal server, generate dal
+// modello sui titoli del manuale vero. Prima si costruivano qui da quei
+// titoli con una tabella fissa, e su un manuale reale il risultato era
+// «Cosa dice il manuale su "di Klaus-Jürgen Wrede"?»: il template non
+// poteva fare di meglio, perché una domanda non è un titolo di sezione con
+// un giro di frase intorno.
+const suggestions = computed<string[]>(() =>
+  props.suggestedQuestions.length >= 3 ? props.suggestedQuestions.slice(0, 3) : fallbackQuestions,
+)
 
 /**
  * deep-chat è un web component, non un componente Vue:

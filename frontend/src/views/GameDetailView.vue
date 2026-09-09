@@ -17,11 +17,11 @@ const game = ref<GameDetail | null>(null)
 const error = ref('')
 const activeLangCode = ref('')
 
-// I titoli di sezione delle fonti alimentano le domande suggerite. Non c'è
-// un endpoint dedicato: arrivano sulla scheda del gioco, ricavati dalla
-// stessa lettura che decide canAsk. Se non ce ne sono almeno tre il
-// pannello usa le sue domande fisse.
-const sourceHeadings = ref<string[]>([])
+// Le domande suggerite arrivano già formulate dal server, generate dal
+// modello sulle fonti indicizzate. Non c'è un endpoint dedicato: arrivano
+// sulla scheda del gioco, insieme alla stessa lettura che decide canAsk. Se
+// non ce ne sono almeno tre il pannello usa le sue domande fisse.
+const suggestedQuestions = ref<string[]>([])
 
 function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
@@ -41,7 +41,7 @@ function goBack() {
 onMounted(async () => {
   try {
     game.value = await api.get<GameDetail>(`/games/${gameId}`)
-    sourceHeadings.value = game.value.sourceHeadings ?? []
+    suggestedQuestions.value = game.value.suggestedQuestions ?? []
     if (game.value.languages.length > 0) {
       activeLangCode.value = game.value.languages[0].code
     }
@@ -154,7 +154,7 @@ onMounted(async () => {
       v-if="game.canAsk"
       :game-id="game.id"
       :game-name="game.name"
-      :headings="sourceHeadings"
+      :suggested-questions="suggestedQuestions"
     />
   </div>
   <div v-else-if="error">

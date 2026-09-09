@@ -26,7 +26,7 @@ import ManualChatPanel from './ManualChatPanel.vue'
 const props = defineProps<{
   gameId: number
   gameName: string
-  headings: string[]
+  suggestedQuestions: string[]
 }>()
 
 const SIDEBAR_MIN_WIDTH = '(min-width: 1100px)'
@@ -90,7 +90,7 @@ function closeDialog() {
     "complementary" e basta, e da lì la chat non si trova.
   -->
   <aside v-if="wide" class="manual-chat-aside" aria-label="L'Arbitro — chiedi al manuale">
-    <ManualChatPanel :game-id="gameId" :game-name="gameName" :headings="headings" />
+    <ManualChatPanel :game-id="gameId" :game-name="gameName" :suggested-questions="suggestedQuestions" />
   </aside>
 
   <!-- Mobile: bottone tondo sempre visibile, e dialog a tutto schermo. -->
@@ -136,7 +136,7 @@ function closeDialog() {
       <ManualChatPanel
         :game-id="gameId"
         :game-name="gameName"
-        :headings="headings"
+        :suggested-questions="suggestedQuestions"
         closable
         @close="closeDialog"
       />
