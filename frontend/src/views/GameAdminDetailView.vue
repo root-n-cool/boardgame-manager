@@ -69,6 +69,17 @@ function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
 }
 
+// Gli stessi quattro formati che il server accetta per l'indicizzazione
+// (vedi indexMediaHandler): un file di un altro tipo non ha un pannello di
+// preparazione, perché indicizzarlo fallirebbe comunque.
+const indexableExtensions = ['.pdf', '.txt', '.md', '.docx']
+
+const indexableMedia = computed(() =>
+  (activeLanguage()?.media || []).filter(
+    (m) => m.type === 'file' && indexableExtensions.some((ext) => m.url.toLowerCase().endsWith(ext)),
+  ),
+)
+
 async function load() {
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
   editSeats.value = game.value.seats
@@ -516,19 +527,21 @@ onMounted(async () => {
         <p v-if="mediaError && !mediaModalOpen" class="error">{{ mediaError }}</p>
 
         <!--
-          La preparazione di un manuale è un'azione da admin: GameMediaList è
+          La preparazione di una fonte è un'azione da admin: GameMediaList è
           condiviso con la scheda pubblica, quindi il pannello vive qui e non
-          lì. Un manuale per pannello, uno per ogni PDF della lingua attiva.
+          lì. Un pannello per ogni file indicizzabile della lingua attiva
+          (PDF, txt, md, docx — gli unici formati che l'indicizzazione accetta).
         -->
         <ManualPrepPanel
-          v-for="media in (activeLanguage()?.media || []).filter(
-            (m) => m.type === 'file' && m.url.toLowerCase().endsWith('.pdf'),
-          )"
+          v-for="media in indexableMedia"
           :key="media.id"
           :game-id="game.id"
           :lang="activeLangCode"
           :media-id="media.id"
           :media-title="media.title || 'Manuale'"
+          :indexed-chunks="media.indexedChunks"
+          :ai-configured="aiConfigured"
+          @changed="load"
         />
       </section>
     </template>
@@ -597,9 +610,13 @@ onMounted(async () => {
         <template v-if="mediaKind === 'file'">
           <label>
             File del manuale
-            <input type="file" accept="application/pdf" @change="onFileSelected" />
+            <input
+              type="file"
+              accept=".pdf,.txt,.md,.docx,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              @change="onFileSelected"
+            />
           </label>
-          <p class="field-hint">Solo PDF, massimo 20MB.</p>
+          <p class="field-hint">PDF, txt, md o docx, massimo 20MB.</p>
           <label>
             Titolo
             <input v-model="fileTitle" placeholder="Regolamento" />

@@ -9,6 +9,8 @@ export interface GameMediaInfo {
   type: 'file' | 'link' | 'youtube'
   url: string
   title: string | null
+  /** Chunk indicizzati per questo media: 0 quando non è (ancora) una fonte. */
+  indexedChunks: number
 }
 
 export interface GameLanguageInfo {
@@ -36,12 +38,12 @@ export interface GameDetail {
   /** Vero quando il gioco ha un manuale indicizzato e il provider AI è configurato. */
   canAsk: boolean
   /**
-   * I primi titoli di sezione del manuale, in ordine di pagina. Sono la
+   * I primi titoli di sezione delle fonti indicizzate, in ordine. Sono la
    * materia delle domande suggerite della chat; l'API ne manda pochi
-   * (bastano tre domande) e la lista è vuota quando il manuale non è
-   * preparato o non ha titoli riconosciuti.
+   * (bastano tre domande) e la lista è vuota quando nessuna fonte è
+   * preparata o non ha titoli riconosciuti.
    */
-  manualHeadings: string[]
+  sourceHeadings: string[]
   languages: GameLanguageInfo[]
 }
 
