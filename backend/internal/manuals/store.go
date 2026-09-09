@@ -3,7 +3,10 @@ package manuals
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -251,4 +254,282 @@ func nullIfEmpty(v string) sql.NullString {
 // letterale che un errore.
 func escapeFTS(kw string) string {
 	return `"` + strings.ReplaceAll(kw, `"`, `""`) + `"`
+}
+
+// SourceHit è un chunk trovato dalla ricerca, nella forma che il modello
+// riceve come risultato del tool: i quattro campi del contratto (Task 6
+// della spec) più due cose che non escono nel JSON.
+//
+// MediaPath porta fino al chiamante (l'handler del Task 7) il
+// game_media.url_or_path della fonte, così com'è nella join che Search fa
+// già: quel chiamante deve costruire una mappa reference → percorso file
+// dalle hit che ha DAVVERO ricevuto, e non può ricavarla cercando un media
+// per titolo, perché la reference salvata dal Task 5 è disambiguata (puo'
+// differire da game_media.title quando due manuali dello stesso gioco
+// condividono il titolo). Senza questo campo il link di una citazione può
+// puntare al file sbagliato quando un gioco ha più manuali — esattamente
+// il bug che il Task 7 esiste per chiudere. Per una FAQ resta "": la
+// reference è già l'URL della discussione, non serve nessun file.
+type SourceHit struct {
+	ReferenceType   string   `json:"reference_type"`
+	Reference       string   `json:"reference"`
+	ReferenceDetail string   `json:"reference_detail"`
+	Text            string   `json:"text"`
+	FoundWith       []string `json:"-"` // diagnostica, non esce al modello
+	MediaPath       string   `json:"-"` // game_media.url_or_path, "" per una FAQ
+
+	// Non esportati: servono solo a trovare il chunk adiacente (seq ± 1
+	// dentro la stessa fonte) e non hanno senso per chi legge il risultato
+	// del tool. mediaID è sql.NullInt64 e non int64 perché una FAQ non ha
+	// un game_media_id: il tipo rende impossibile confondere "nessun
+	// media" con lo zero.
+	seq     int
+	mediaID sql.NullInt64
+}
+
+// scannedHit è una riga letta da searchOne prima della deduplicazione e
+// dell'ordinamento per lingua preferita. language vive qui e non su
+// SourceHit perché serve solo a decidere l'ordine dentro searchOne: il
+// contratto del tool non lo prevede fra i campi restituiti al modello.
+type scannedHit struct {
+	id       int64
+	language string
+	h        SourceHit
+}
+
+// Search esegue una query FTS5 per ogni parola chiave (al più maxKeywords)
+// e unisce i risultati. Restituisce le hit trovate e le parole chiave senza
+// nessun risultato: quella seconda lista non è un errore, è ciò che dice al
+// modello quali ipotesi lessicali sono cadute, così può riprovare con altre
+// parole.
+//
+// Una query per parola e non un unico OR: con l'OR una parola comune
+// sommerge una rara, mentre così ogni variante ha i suoi due posti
+// garantiti — ed è quello che rende utile passare i sinonimi tutti insieme.
+func (s *Store) Search(ctx context.Context, gameID int64, preferLang string, keywords []string) ([]SourceHit, []string, error) {
+	var missing []string
+	order := []int64{}
+	byID := map[int64]*SourceHit{}
+
+	if len(keywords) > maxKeywords {
+		keywords = keywords[:maxKeywords]
+	}
+	for _, raw := range keywords {
+		kw := strings.TrimSpace(raw)
+		if kw == "" {
+			continue
+		}
+		hits, err := s.searchOne(ctx, gameID, preferLang, kw)
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(hits) == 0 {
+			missing = append(missing, kw)
+			continue
+		}
+		for _, row := range hits {
+			if existing, ok := byID[row.id]; ok {
+				existing.FoundWith = append(existing.FoundWith, kw)
+				continue
+			}
+			copied := row.h
+			copied.FoundWith = []string{kw}
+			byID[row.id] = &copied
+			order = append(order, row.id)
+		}
+	}
+
+	hits := make([]SourceHit, 0, len(order))
+	for _, id := range order {
+		hits = append(hits, *byID[id])
+	}
+	if err := s.attachNeighbours(ctx, gameID, hits); err != nil {
+		return nil, nil, err
+	}
+	return hits, missing, nil
+}
+
+// searchOne cerca una sola parola chiave. Restituisce una SLICE ordinata e
+// non una mappa: l'ordine è il risultato del lavoro qui sotto (rilevanza
+// BM25, con la lingua preferita davanti) ed è quello che decide quale
+// risultato il modello legge per primo. Restituirlo in una mappa lo
+// buttava via — l'ordine di iterazione di una mappa in Go è deliberatamente
+// casuale, quindi con due risultati in due lingue la "lingua preferita"
+// vinceva a testa o croce. Il chiamante deduplica sull'id, che viaggia
+// nella slice insieme all'hit.
+//
+// L'ordinamento per lingua preferita avviene in Go, non in SQL, e senza
+// LIMIT nella query: si leggono tutte le righe ordinate per `rank`
+// (rilevanza BM25), poi uno stable sort le riordina mettendo prima la
+// lingua preferita — preservando l'ordine di rank dentro ciascun gruppo —
+// e solo allora si taglia a hitsPerKeyword. Un LIMIT in SQL prima di quel
+// riordino potrebbe scartare una riga nella lingua preferita che il motore
+// FTS5 classifica oltre la finestra, prima ancora che il riordino per
+// lingua abbia la possibilità di farla emergere.
+func (s *Store) searchOne(ctx context.Context, gameID int64, preferLang, keyword string) ([]scannedHit, error) {
+	query := func(match string) (*sql.Rows, error) {
+		return s.db.QueryContext(ctx,
+			`SELECT c.id, c.reference_type, c.reference, COALESCE(c.reference_detail, ''),
+			        c.text, c.seq, c.game_media_id, COALESCE(c.language_code, ''),
+			        COALESCE(m.url_or_path, '')
+			 FROM game_source_chunk_fts f
+			 JOIN game_source_chunk c ON c.id = f.rowid
+			 LEFT JOIN game_media m ON m.id = c.game_media_id
+			 WHERE game_source_chunk_fts MATCH ? AND c.game_id = ?
+			 ORDER BY rank`, match, gameID)
+	}
+
+	rows, err := query(keyword)
+	if err != nil {
+		// La sintassi FTS5 si rompe su un apostrofo o una virgoletta. Gli
+		// operatori però sono utili (pesc*, "frase esatta"), quindi non si
+		// filtrano a monte: si riprova con la parola neutralizzata solo
+		// quando la prima forma è illegale.
+		rows, err = query(escapeFTS(keyword))
+		if err != nil {
+			return nil, fmt.Errorf("fts search %q: %w", keyword, err)
+		}
+	}
+	defer rows.Close()
+
+	var all []scannedHit
+	for rows.Next() {
+		var id int64
+		var sh scannedHit
+		if err := rows.Scan(&id, &sh.h.ReferenceType, &sh.h.Reference, &sh.h.ReferenceDetail,
+			&sh.h.Text, &sh.h.seq, &sh.h.mediaID, &sh.language, &sh.h.MediaPath); err != nil {
+			return nil, err
+		}
+		sh.id = id
+		all = append(all, sh)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sortByPreferredLanguage(all, preferLang)
+
+	if len(all) > hitsPerKeyword {
+		all = all[:hitsPerKeyword]
+	}
+	return all, nil
+}
+
+// sortByPreferredLanguage mette il gruppo di preferLang davanti all'altro,
+// con uno stable sort: preserva l'ordine di rilevanza (rank) letto dalla
+// query dentro ciascun gruppo, sposta solo il gruppo giusto in testa.
+// Estratta a parte perché è la funzione che un test unitario deve poter
+// richiamare su dati costruiti a mano, senza passare da FTS5/BM25: è lì che
+// si è già rotto un riordino per lingua preferita infilato in una mappa
+// Go, la cui iterazione è casuale — un test che passasse dalla ricerca vera
+// non discriminerebbe con certezza quel bug da un pareggio di rank
+// benevolo.
+func sortByPreferredLanguage(all []scannedHit, preferLang string) {
+	sort.SliceStable(all, func(i, j int) bool {
+		iPref := all[i].language == preferLang
+		jPref := all[j].language == preferLang
+		return iPref && !jPref
+	})
+}
+
+// attachNeighbours allega al testo di una hit il chunk adiacente (seq ± 1)
+// della STESSA fonte, quando il match cade sul primo o sull'ultimo chunk
+// della fonte.
+//
+// Una fonte è un game_media_id per un documento, ma per una FAQ
+// game_media_id è NULL — e NULL per OGNI FAQ di OGNI gioco, non solo per
+// quella di questa hit. Filtrare solo su "game_media_id IS NULL" farebbe
+// combaciare seq con i chunk di FAQ di partite o giochi completamente
+// diversi: un vicino preso in prestito da un'altra conversazione. Per
+// questo, quando la hit non ha un media, il filtro aggiunge anche game_id e
+// reference (l'URL della discussione) — la stessa coppia che Summary usa
+// già come chiave per raggruppare le FAQ — che insieme a game_media_id IS
+// NULL individuano di nuovo una fonte sola.
+func (s *Store) attachNeighbours(ctx context.Context, gameID int64, hits []SourceHit) error {
+	for i := range hits {
+		h := &hits[i]
+
+		var maxSeq int
+		var err error
+		if h.mediaID.Valid {
+			err = s.db.QueryRowContext(ctx,
+				`SELECT COALESCE(MAX(seq), 0) FROM game_source_chunk WHERE game_media_id = ?`,
+				h.mediaID.Int64).Scan(&maxSeq)
+		} else {
+			err = s.db.QueryRowContext(ctx,
+				`SELECT COALESCE(MAX(seq), 0) FROM game_source_chunk
+				 WHERE game_id = ? AND game_media_id IS NULL AND reference = ?`,
+				gameID, h.Reference).Scan(&maxSeq)
+		}
+		if err != nil {
+			return fmt.Errorf("max seq: %w", err)
+		}
+		if maxSeq == 0 {
+			continue // fonte di un chunk solo: non c'è nessun vicino
+		}
+
+		neighbour := -1
+		after := false
+		switch {
+		case h.seq == 0:
+			neighbour, after = 1, true
+		case h.seq == maxSeq:
+			neighbour, after = h.seq-1, false
+		default:
+			continue // non è un bordo: il chunk ha contesto da entrambi i lati
+		}
+
+		var text string
+		if h.mediaID.Valid {
+			err = s.db.QueryRowContext(ctx,
+				`SELECT text FROM game_source_chunk WHERE game_media_id = ? AND seq = ?`,
+				h.mediaID.Int64, neighbour).Scan(&text)
+		} else {
+			err = s.db.QueryRowContext(ctx,
+				`SELECT text FROM game_source_chunk
+				 WHERE game_id = ? AND game_media_id IS NULL AND reference = ? AND seq = ?`,
+				gameID, h.Reference, neighbour).Scan(&text)
+		}
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return fmt.Errorf("neighbour chunk: %w", err)
+		}
+		if after {
+			h.Text = h.Text + " " + text
+		} else {
+			h.Text = text + " " + h.Text
+		}
+	}
+	return nil
+}
+
+// searchPayload è la forma esatta del JSON che il modello legge come
+// risultato del tool: un oggetto e non un array nudo, perché deve portare
+// insieme alle hit anche le parole chiave senza risultato — la lista che
+// dice al modello quali ipotesi lessicali sono cadute, così può riprovare
+// con altre parole invece di concludere che il manuale non lo dice. Un
+// array nudo di risultati non avrebbe un posto per quella lista senza un
+// secondo valore di ritorno del tool, che i provider OpenAI-compatible non
+// supportano (un tool restituisce un contenuto solo).
+type searchPayload struct {
+	Results []SourceHit `json:"risultati"`
+	Missing []string    `json:"nessun_risultato_per,omitempty"`
+}
+
+// MarshalHits rende il payload JSON che il modello legge come risultato
+// del tool di ricerca.
+func MarshalHits(hits []SourceHit, missing []string) (string, error) {
+	payload := searchPayload{Results: hits, Missing: missing}
+	if payload.Results == nil {
+		// Mai null: un array assente costringerebbe il modello a gestire
+		// due forme diverse di "nessun risultato" (null contro []).
+		payload.Results = []SourceHit{}
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal search payload: %w", err)
+	}
+	return string(b), nil
 }

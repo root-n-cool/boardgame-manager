@@ -140,7 +140,7 @@ const answerOnly = `{"choices":[{"finish_reason":"stop","message":{"role":"assis
 // assistantMessage sparirebbe senza che nessun altro assert se ne accorga.
 func toolCallResponse(args string) string {
 	return `{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,"refusal":null,` +
-		`"tool_calls":[{"id":"call_1","type":"function","function":{"name":"cerca_nel_manuale","arguments":` +
+		`"tool_calls":[{"id":"call_1","type":"function","function":{"name":"cerca_nelle_fonti","arguments":` +
 		strconv.Quote(args) + `}}]}}]}`
 }
 
@@ -157,7 +157,6 @@ func TestAsk_CallsTheToolThenAnswers(t *testing.T) {
 	out, err := client.Ask(context.Background(), ai.AskRequest{
 		GameName:    "Wingspan",
 		Turns:       []ai.Turn{{Role: "user", Text: "finite le carte che si fa?"}},
-		CorpusChars: 90000, // sopra soglia: il tool serve
 		CorpusIndex: "Fase di Upkeep p.4 · Fine partita p.7",
 		Search: func(ctx context.Context, kw []string) (string, error) {
 			gotKeywords = kw
@@ -178,11 +177,11 @@ func TestAsk_CallsTheToolThenAnswers(t *testing.T) {
 	}
 
 	// Prima richiesta: il tool va dichiarato e l'indice va nel prompt.
-	if !strings.Contains(srv.requests[0], "cerca_nel_manuale") {
+	if !strings.Contains(srv.requests[0], "cerca_nelle_fonti") {
 		t.Fatalf("il tool non è dichiarato nella prima richiesta:\n%s", srv.requests[0])
 	}
 	if !strings.Contains(srv.requests[0], "Fine partita p.7") {
-		t.Fatalf("l'indice del manuale non è nel prompt:\n%s", srv.requests[0])
+		t.Fatalf("l'indice delle fonti non è nel prompt:\n%s", srv.requests[0])
 	}
 	// Seconda richiesta: deve contenere il messaggio assistant con i
 	// tool_calls E il risultato con il suo tool_call_id, altrimenti il
@@ -206,38 +205,23 @@ func TestAsk_CallsTheToolThenAnswers(t *testing.T) {
 	}
 }
 
-func TestAsk_ShortManualGoesInlineWithNoTool(t *testing.T) {
+func TestAsk_AlwaysDeclaresTheTool(t *testing.T) {
+	// Il ramo inline non esiste più: anche un corpus minuscolo deve vedere
+	// il tool dichiarato, altrimenti un manuale corto non è interrogabile.
 	srv := &askServer{t: t, responses: []string{answerOnly}}
 	ts := httptest.NewServer(srv.handler())
 	defer ts.Close()
 
-	searched := false
-	client := ai.NewHTTPClient(ts.URL, "sk-test", "deepseek-v4-flash")
-	_, err := client.Ask(context.Background(), ai.AskRequest{
-		GameName:    "Wingspan",
-		Turns:       []ai.Turn{{Role: "user", Text: "come finisce?"}},
-		CorpusChars: 4000, // sotto InlineCorpusMaxChars
-		CorpusText:  "=== Regolamento base (it) ===\n\n--- pag. 7 ---\nLa partita termina subito.",
-		CorpusIndex: "Fine partita p.7",
-		Search: func(ctx context.Context, kw []string) (string, error) {
-			searched = true
-			return "", nil
-		},
-	})
-	if err != nil {
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		GameName: "Wingspan",
+		Turns:    []ai.Turn{{Role: "user", Text: "come finisce?"}},
+		Search:   func(ctx context.Context, kw []string) (string, error) { return "[]", nil },
+	}); err != nil {
 		t.Fatalf("ask: %v", err)
 	}
-	if searched {
-		t.Fatal("con un manuale corto la ricerca non va nemmeno sfiorata")
-	}
-	if len(srv.requests) != 1 {
-		t.Fatalf("attesa 1 sola richiesta, fatte %d", len(srv.requests))
-	}
-	if strings.Contains(srv.requests[0], "cerca_nel_manuale") {
-		t.Fatalf("il tool NON va dichiarato quando il manuale è inline:\n%s", srv.requests[0])
-	}
-	if !strings.Contains(srv.requests[0], "La partita termina subito") {
-		t.Fatalf("il testo del manuale non è nel prompt:\n%s", srv.requests[0])
+	if !strings.Contains(srv.requests[0], `"tools":`) {
+		t.Fatalf("il tool deve essere dichiarato sempre:\n%s", srv.requests[0])
 	}
 }
 
@@ -248,9 +232,7 @@ func TestAsk_SendsTheConversationHistory(t *testing.T) {
 
 	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
 	_, err := client.Ask(context.Background(), ai.AskRequest{
-		GameName:    "Wingspan",
-		CorpusChars: 100,
-		CorpusText:  "manuale",
+		GameName: "Wingspan",
 		Turns: []ai.Turn{
 			{Role: "user", Text: "come si contano i punti?"},
 			{Role: "assistant", Text: "Ogni edificio vale i punti stampati."},
@@ -284,9 +266,8 @@ func TestAsk_StopsAStuckModelAndStillAnswers(t *testing.T) {
 	calls := 0
 	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
 	out, err := client.Ask(context.Background(), ai.AskRequest{
-		GameName:    "Wingspan",
-		Turns:       []ai.Turn{{Role: "user", Text: "?"}},
-		CorpusChars: 90000,
+		GameName: "Wingspan",
+		Turns:    []ai.Turn{{Role: "user", Text: "?"}},
 		Search: func(ctx context.Context, kw []string) (string, error) {
 			calls++
 			return "niente", nil
@@ -304,7 +285,7 @@ func TestAsk_StopsAStuckModelAndStillAnswers(t *testing.T) {
 	// L'ultima richiesta è quella senza tool: è così che si forza la
 	// risposta invece di lasciare il modello a girare.
 	//
-	// Non si può cercare la sottostringa "cerca_nel_manuale" nell'intera
+	// Non si può cercare la sottostringa "cerca_nelle_fonti" nell'intera
 	// richiesta: lo storico dei messaggi contiene le tool_calls
 	// precedenti, che DEVONO riportare quel nome verbatim (è così che il
 	// provider le riconosce), quindi comparirebbe comunque anche quando i
@@ -331,9 +312,8 @@ func TestAsk_AcceptsKeywordsSentAsAString(t *testing.T) {
 	var got []string
 	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
 	if _, err := client.Ask(context.Background(), ai.AskRequest{
-		GameName:    "Wingspan",
-		Turns:       []ai.Turn{{Role: "user", Text: "?"}},
-		CorpusChars: 90000,
+		GameName: "Wingspan",
+		Turns:    []ai.Turn{{Role: "user", Text: "?"}},
 		Search: func(ctx context.Context, kw []string) (string, error) {
 			got = kw
 			return "ok", nil

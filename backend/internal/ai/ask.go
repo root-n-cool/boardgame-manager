@@ -173,15 +173,6 @@ func (c *HTTPClient) postChat(ctx context.Context, payload []byte, timeout time.
 	return parsed.Choices[0].Message.Content, nil
 }
 
-// InlineCorpusMaxChars è la soglia sotto la quale il manuale entra intero
-// nel contesto e il tool non viene nemmeno dichiarato. ~6.000 token,
-// stimati a 3 caratteri per token (conservativo per l'italiano).
-//
-// È la leva più efficace per ridurre le chiamate al tool: non offrirlo. Un
-// manuale di 4 pagine (il regolamento vero di questo progetto) sta
-// largamente sotto.
-const InlineCorpusMaxChars = 18000
-
 // MaxToolIterations ferma un modello che si incarta a richiamare lo stesso
 // tool in ciclo. Non è un limite sull'utente: è protezione da un bug del
 // modello, e quando scatta si forza una risposta togliendo il tool invece
@@ -201,10 +192,11 @@ type Turn struct {
 	Text string
 }
 
-// SearchFunc cerca nel manuale e restituisce il payload già formattato per
-// il modello, come stringa. È una funzione e non un'interfaccia sui tipi di
-// manuals: così questo pacchetto non conosce SQLite né manuals.Hit, e il
-// loop si testa con una closure di due righe.
+// SearchFunc cerca nelle fonti del gioco (manuali, FAQ) e restituisce il
+// payload già formattato per il modello, come stringa. È una funzione e
+// non un'interfaccia sui tipi di manuals: così questo pacchetto non
+// conosce SQLite né manuals.SourceHit, e il loop si testa con una closure
+// di due righe.
 type SearchFunc func(ctx context.Context, keywords []string) (string, error)
 
 // Asker è l'astrazione che serve all'handler pubblico. HTTPClient la
@@ -216,16 +208,20 @@ type Asker interface {
 type AskRequest struct {
 	GameName string
 	Turns    []Turn
-	// CorpusChars decide inline vs tool; CorpusText è il manuale intero
-	// (serve solo sotto soglia); CorpusIndex è l'indice dei titoli (serve
-	// sempre quando c'è, ed è quel che evita la chiamata esplorativa).
+	// CorpusIndex è l'indice dei titoli di sezione delle fonti (serve
+	// sempre quando c'è, ed è quel che evita al modello la chiamata
+	// esplorativa al tool). CorpusChars non decide più niente qui: il tool
+	// si dichiara sempre quando c'è Search, non esiste più una soglia
+	// sotto la quale un corpus piccolo lo rende superfluo.
 	CorpusChars int
-	CorpusText  string
 	CorpusIndex string
 	Search      SearchFunc
 }
 
-const searchToolName = "cerca_nel_manuale"
+// SearchToolName è esportato perché l'handler pubblico (Task 7) deve
+// riconoscere nella cronologia dei tool_calls rimandata indietro quale
+// chiamata è la ricerca nelle fonti.
+const SearchToolName = "cerca_nelle_fonti"
 
 // searchToolSchema è dove sta il lavoro di "far fare al modello una sola
 // chiamata": la descrizione del parametro chiede le varianti tutte insieme,
@@ -298,10 +294,13 @@ type toolResultMessage struct {
 	Content    string `json:"content"`
 }
 
-// Ask risponde a una domanda sulle regole di un gioco. Se il manuale sta
-// sotto InlineCorpusMaxChars entra intero nel prompt e il giro è uno solo;
-// altrimenti il modello riceve il tool di ricerca e l'indice del manuale,
-// e il loop prosegue finché non risponde o non scatta MaxToolIterations.
+// Ask risponde a una domanda sulle regole di un gioco. Il tool di ricerca
+// si dichiara SEMPRE quando c'è una funzione di ricerca (req.Search !=
+// nil): non esiste più una soglia sotto la quale un corpus piccolo lo
+// giudica superfluo — un manuale corto (il caso vero di questo progetto: 4
+// pagine) deve restare interrogabile tanto quanto uno lungo. Il modello
+// riceve anche l'indice delle fonti quando c'è, e il loop prosegue finché
+// non risponde o non scatta MaxToolIterations.
 func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 	if !c.configured() {
 		return "", ErrNotConfigured
@@ -310,18 +309,13 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, askTimeout)
 	defer cancel()
 
-	inline := req.CorpusChars > 0 && req.CorpusChars <= InlineCorpusMaxChars
 	// toolsDeclared è la sola condizione che decide se il tool compare
 	// nella richiesta E se il prompt promette di poterlo usare: calcolata
 	// una volta, usata da entrambi, così le due cose non possono
-	// disallinearsi. Senza questo, un manuale sopra soglia ma senza
-	// Search (req.Search == nil — non dovrebbe succedere nell'uso reale,
-	// ma è difensivo) produrrebbe un prompt che dice "usa lo strumento di
-	// ricerca" mentre la richiesta non dichiara nessun tool: il modello
-	// annasperebbe dietro un'istruzione impossibile da eseguire.
-	toolsDeclared := !inline && req.Search != nil
+	// disallinearsi.
+	toolsDeclared := req.Search != nil
 
-	system, err := json.Marshal(chatMessage{Role: "system", Content: askSystemPrompt(req, inline, toolsDeclared)})
+	system, err := json.Marshal(chatMessage{Role: "system", Content: askSystemPrompt(req, toolsDeclared)})
 	if err != nil {
 		return "", err
 	}
@@ -343,10 +337,10 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 		tools = append(tools, toolDef{
 			Type: "function",
 			Function: toolFunctionDef{
-				Name: searchToolName,
-				Description: "Cerca nel regolamento del gioco. Passa in un'unica chiamata " +
-					"tutte le varianti lessicali plausibili: la ricerca è lessicale, " +
-					"quindi più varianti trovano più cose.",
+				Name: SearchToolName,
+				Description: "Cerca nelle fonti del gioco (manuali, FAQ). Passa in un'unica " +
+					"chiamata tutte le varianti lessicali plausibili: la ricerca è " +
+					"lessicale, quindi più varianti trovano più cose.",
 				Parameters: json.RawMessage(searchToolSchema),
 			},
 		})
@@ -412,7 +406,7 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 
 		for _, call := range msg.ToolCalls {
 			result := "Tool sconosciuto."
-			if call.Function.Name == searchToolName && req.Search != nil {
+			if call.Function.Name == SearchToolName && req.Search != nil {
 				keywords := parseKeywords(call.Function.Arguments)
 				out, err := req.Search(ctx, keywords)
 				if err != nil {
@@ -432,7 +426,7 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 		}
 
 		if iteration+1 >= MaxToolIterations {
-			log.Printf("ask: il modello ha chiamato %s %d volte: forzo la risposta senza tool", searchToolName, iteration+1)
+			log.Printf("ask: il modello ha chiamato %s %d volte: forzo la risposta senza tool", SearchToolName, iteration+1)
 		}
 	}
 }
@@ -467,39 +461,39 @@ func trimAll(in []string) []string {
 	return out
 }
 
-// askSystemPrompt costruisce le istruzioni. La regola che conta è la terza:
-// al tavolo una regola inventata fa più danno di un "non lo dice".
+// askSystemPrompt costruisce le istruzioni. Due regole contano più delle
+// altre: non inventare quando le fonti non dicono niente, e citare
+// reference/reference_detail esattamente come arrivano dal risultato del
+// tool — è su quella stringa che il server costruisce il link della
+// citazione (Task 7), e un riferimento alterato lo rompe.
 //
 // toolsDeclared governa se si promette lo strumento di ricerca: deve
 // essere la stessa condizione che decide se il tool compare nella
 // richiesta (vedi Ask), altrimenti il prompt può promettere uno strumento
 // che il modello non ha davvero a disposizione.
-func askSystemPrompt(req AskRequest, inline, toolsDeclared bool) string {
+func askSystemPrompt(req AskRequest, toolsDeclared bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Sei l'assistente regole di %q per un'associazione di giochi da tavolo. ", req.GameName)
 	b.WriteString("Chi ti scrive è in piedi a un tavolo, con le carte in mano: rispondi in italiano, breve, come si parla. ")
-	b.WriteString("Rispondi SOLO con quello che c'è nel regolamento. ")
-	b.WriteString("Se il regolamento non lo dice, dillo chiaramente invece di dedurre: al tavolo una regola inventata fa danno. ")
-	b.WriteString("Cita sempre la pagina da cui viene la risposta, nella forma \"Regolamento base, pag. 7\". ")
+	b.WriteString("Rispondi SOLO con quello che c'è nelle fonti del gioco (manuali, FAQ). ")
+	b.WriteString("Se le fonti non lo dicono, dillo chiaramente invece di dedurre: al tavolo una regola inventata fa danno. ")
+	b.WriteString("Quando citi una fonte, riporta ESATTAMENTE i valori \"reference\" e \"reference_detail\" così come li hai ricevuti dal risultato della ricerca, uniti da una virgola (esempio: reference \"Regolamento base\" e reference_detail \"pagina 7\" diventano \"Regolamento base, pagina 7\"). ")
+	b.WriteString("Non abbreviarli, non tradurli e non inventarli: è su quella stringa esatta che si costruisce il link alla fonte, e un riferimento alterato punta a un file sbagliato o a nessun file. ")
 	b.WriteString("Non inventare nomi di carte, valori o numeri che non hai letto.\n\n")
 
 	if req.CorpusIndex != "" {
-		fmt.Fprintf(&b, "Indice del regolamento: %s\n\n", req.CorpusIndex)
+		fmt.Fprintf(&b, "Indice delle fonti: %s\n\n", req.CorpusIndex)
 	}
-	switch {
-	case inline:
-		b.WriteString("Il regolamento completo:\n\n")
-		b.WriteString(req.CorpusText)
-	case toolsDeclared:
-		b.WriteString("Per leggere il regolamento usa lo strumento di ricerca. ")
-		b.WriteString("Se una ricerca non trova nulla, riprova con altre parole prima di dire che il manuale non lo dice.")
-	default:
-		// Non dovrebbe succedere nell'uso reale (Task 9 passa sempre
-		// Search sopra soglia), ma se capitasse non si deve promettere
-		// uno strumento che non è stato dichiarato: meglio dire al
-		// modello di limitarsi all'indice piuttosto che fargli credere
-		// di poter cercare quando non può.
-		b.WriteString("Non hai a disposizione né il testo completo né uno strumento di ricerca: rispondi solo se l'indice qui sopra basta, altrimenti di' che non puoi controllare il regolamento in questo momento.")
+	if toolsDeclared {
+		b.WriteString("Per leggere le fonti usa lo strumento di ricerca. ")
+		b.WriteString("Se una ricerca non trova nulla, riprova con altre parole prima di dire che le fonti non lo dicono.")
+	} else {
+		// Non dovrebbe succedere nell'uso reale (il chiamante passa
+		// sempre Search), ma se capitasse non si deve promettere uno
+		// strumento che non è stato dichiarato: meglio dire al modello
+		// di limitarsi all'indice piuttosto che fargli credere di poter
+		// cercare quando non può.
+		b.WriteString("Non hai a disposizione nessuno strumento di ricerca: rispondi solo se l'indice qui sopra basta, altrimenti di' che non puoi controllare le fonti in questo momento.")
 	}
 	return b.String()
 }
