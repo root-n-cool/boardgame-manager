@@ -22,8 +22,8 @@ import { computed, nextTick, onMounted, ref } from 'vue'
 const props = defineProps<{
   gameId: number
   gameName: string
-  /** I titoli di sezione del manuale, per le domande suggerite. */
-  headings: string[]
+  /** Le tre domande suggerite, già formulate dal modello. Vuota = si usano le fisse. */
+  suggestedQuestions: string[]
   /** Nel dialog mobile la testata porta anche la ×; nella sidebar no. */
   closable?: boolean
 }>()
@@ -93,32 +93,23 @@ function newConversation() {
   nextTick(() => fakeInput.value?.focus())
 }
 
-// Le domande suggerite: dai titoli del manuale quando ce ne sono almeno
-// tre, altrimenti tre domande fisse. Una chat vuota su un telefono non
-// suggerisce cosa farne.
+// Le domande suggerite: tre domande fisse. Una chat vuota su un telefono
+// non suggerisce cosa farne.
 const fallbackQuestions = [
   'Come finisce la partita?',
   'In quanti si gioca?',
   'Come si contano i punti?',
 ]
 
-/** Rende un titolo di sezione come domanda. Tabella fissa, niente magia. */
-const headingToQuestion: Record<string, string> = {
-  'fine partita': 'Come finisce la partita?',
-  'fine della partita': 'Come finisce la partita?',
-  preparazione: 'Come si prepara il gioco?',
-  punteggio: 'Come si contano i punti?',
-  conteggio: 'Come si contano i punti?',
-  turno: 'Cosa posso fare nel mio turno?',
-  'turno del giocatore': 'Cosa posso fare nel mio turno?',
-}
-
-const suggestions = computed<string[]>(() => {
-  const fromHeadings = props.headings
-    .map((h) => headingToQuestion[h.trim().toLowerCase()] ?? `Cosa dice il manuale su "${h}"?`)
-    .filter((q, i, all) => all.indexOf(q) === i)
-  return fromHeadings.length >= 3 ? fromHeadings.slice(0, 3) : fallbackQuestions
-})
+// Le domande suggerite arrivano già formulate dal server, generate dal
+// modello sui titoli del manuale vero. Prima si costruivano qui da quei
+// titoli con una tabella fissa, e su un manuale reale il risultato era
+// «Cosa dice il manuale su "di Klaus-Jürgen Wrede"?»: il template non
+// poteva fare di meglio, perché una domanda non è un titolo di sezione con
+// un giro di frase intorno.
+const suggestions = computed<string[]>(() =>
+  props.suggestedQuestions.length >= 3 ? props.suggestedQuestions.slice(0, 3) : fallbackQuestions,
+)
 
 /**
  * deep-chat è un web component, non un componente Vue:
@@ -448,14 +439,33 @@ const auxiliaryStyle = `
     -->
     <div class="manual-chat-body">
       <div v-if="!started && !failed" class="manual-chat-rest">
-        <p class="manual-chat-intro">
-          Chiedi una regola di <strong>{{ gameName }}</strong> a parole tue.
-        </p>
-        <ul class="manual-chat-suggestions">
-          <li v-for="q in suggestions" :key="q">
-            <button type="button" @click="start(q)">{{ q }}</button>
-          </li>
-        </ul>
+        <!--
+          Invito e domande scorrono, il finto campo no: le domande ora sono
+          frasi di lunghezza variabile e su una finestra bassa (telefono in
+          orizzontale) il blocco non ci sta. Prima veniva tagliato
+          dall'`overflow: hidden` del corpo, e la prima cosa a sparire era
+          l'invito a scrivere in fondo.
+        -->
+        <div class="manual-chat-rest-scroll">
+          <p class="manual-chat-intro">
+            Chiedi una regola di <strong>{{ gameName }}</strong> a parole tue.
+          </p>
+          <!--
+            `role="list"` come ogni altra lista spogliata del progetto: con
+            `list-style: none` Safari/VoiceOver le toglie la semantica di
+            lista, e queste tre ora sono domande vere, non tre righe della
+            stessa forma da scorrere con l'occhio.
+
+            La chiave è l'indice e non il testo: le domande le scrive un
+            modello e due uguali sono possibili — con `:key="q"` sarebbero
+            chiavi duplicate.
+          -->
+          <ul role="list" class="manual-chat-suggestions">
+            <li v-for="(q, i) in suggestions" :key="i">
+              <button type="button" @click="start(q)">{{ q }}</button>
+            </li>
+          </ul>
+        </div>
         <button ref="fakeInput" type="button" class="manual-chat-fakeinput" @click="start()">
           Chiedi una regola…
         </button>

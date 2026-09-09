@@ -2,6 +2,8 @@ package httpapi
 
 import (
 	"context"
+	"log"
+	"strings"
 
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/manuals"
@@ -37,9 +39,6 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 	// una fonte indicizzata. In UI non esiste il pulsante disabilitato con
 	// la spiegazione: se è falso, la chat non c'è.
 	//
-	// sourceHeadings esce dalla STESSA lettura: sono i titoli di sezione
-	// distinti di tutte le fonti del gioco, da cui la chat costruisce le
-	// domande suggerite ("Cosa dice il manuale su «Fase di Upkeep»?").
 	// PerMedia alimenta indexedChunks di ogni media, per il pannello admin.
 	// Chiederli con una seconda query costerebbe un giro in più alla
 	// pagina che ogni partecipante apre.
@@ -68,11 +67,31 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 	detail := toGameSummary(g)
 	detail["languages"] = langOut
 	detail["canAsk"] = summary.HasChunks && s.aiConfigured(ctx)
-	// Sempre un array, mai null: il frontend lo tratta come lista.
-	headings := summary.Headings
-	if headings == nil {
-		headings = []string{}
+	// Le tre domande suggerite, già formulate. Prima qui uscivano i titoli
+	// di sezione (`sourceHeadings`) e il frontend li trasformava in domande
+	// con una tabella fissa: quella catena produceva "Cosa dice il manuale
+	// su di Klaus-Jürgen Wrede?" su un manuale reale, perché prendeva i
+	// primi titoli in ordine di pagina — copertina e contenuto della
+	// scatola — e ripiegava su un template per tutto ciò che la tabella non
+	// conosceva.
+	//
+	// Solo le domande NON vuote: il pannello pubblico ripiega sulle sue tre
+	// domande fisse quando la lista è vuota, e tre stringhe vuote non sono
+	// una lista vuota. Sempre un array, mai null.
+	questions := []string{}
+	if s.Manuals != nil {
+		if qs, err := s.Manuals.SuggestedQuestions(ctx, g.ID); err != nil {
+			// Un errore qui non deve costare la scheda del gioco: senza
+			// domande suggerite il frontend usa le sue tre fisse.
+			log.Printf("game detail: suggested questions for game %d: %v", g.ID, err)
+		} else {
+			for _, q := range qs {
+				if strings.TrimSpace(q.Text) != "" {
+					questions = append(questions, q.Text)
+				}
+			}
+		}
 	}
-	detail["sourceHeadings"] = headings
+	detail["suggestedQuestions"] = questions
 	return detail, nil
 }

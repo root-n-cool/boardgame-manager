@@ -38,12 +38,13 @@ export interface GameDetail {
   /** Vero quando il gioco ha un manuale indicizzato e il provider AI è configurato. */
   canAsk: boolean
   /**
-   * I primi titoli di sezione delle fonti indicizzate, in ordine. Sono la
-   * materia delle domande suggerite della chat; l'API ne manda pochi
-   * (bastano tre domande) e la lista è vuota quando nessuna fonte è
-   * preparata o non ha titoli riconosciuti.
+   * Le tre domande suggerite della chat, scritte dal modello a partire dal
+   * manuale indicizzato. L'admin può correggerle a mano nella scheda di
+   * modifica. Vuota quando il gioco non ne ha (indicizzato prima di questa
+   * funzione, o generazione mai riuscita): in quel caso il pannello usa le
+   * sue domande fisse.
    */
-  sourceHeadings: string[]
+  suggestedQuestions: string[]
   languages: GameLanguageInfo[]
 }
 

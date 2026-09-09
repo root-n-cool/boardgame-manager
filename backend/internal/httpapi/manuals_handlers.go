@@ -796,6 +796,23 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Le tre domande suggerite si rigenerano qui, best-effort: un errore si
+	// logga e si ignora. Aggiungere qualche secondo a un'operazione che su
+	// un manuale scansionato ne dura più di cento non si nota, ma
+	// trasformare un'indicizzazione riuscita in un errore per una domanda
+	// suggerita sarebbe fuori scala rispetto al valore della feature.
+	//
+	// Le posizioni che l'admin ha riscritto a mano non si toccano (all =
+	// false), e se sono tutte e tre a mano la chiamata al modello non parte
+	// nemmeno.
+	if existing, qErr := s.Manuals.SuggestedQuestions(r.Context(), gameID); qErr != nil {
+		log.Printf("index: read suggested questions for game %d: %v", gameID, qErr)
+	} else if !allQuestionsEdited(existing) {
+		if qErr := s.regenerateQuestions(r.Context(), gameID, false); qErr != nil {
+			log.Printf("index: suggested questions for game %d: %v", gameID, qErr)
+		}
+	}
+
 	// "chunks"/"reference" bastano per un'indicizzazione piena. Ma quando
 	// pageStats dice che alcune pagine di un PDF scansionato sono state
 	// saltate per un errore di trascrizione, un successo pieno e uno

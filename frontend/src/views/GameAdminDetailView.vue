@@ -7,6 +7,7 @@ import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import BggFilesPicker, { type BggFile } from '../components/BggFilesPicker.vue'
 import ManualPrepPanel from '../components/ManualPrepPanel.vue'
+import SuggestedQuestionsPanel from '../components/SuggestedQuestionsPanel.vue'
 import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
 
 const route = useRoute()
@@ -80,6 +81,20 @@ const indexableMedia = computed(() =>
   ),
 )
 
+// `load()` non azzera mai `game`, quindi il blocco `v-if="game"` resta
+// montato tra una chiamata e l'altra: `SuggestedQuestionsPanel` non viene
+// mai ricreato e il suo `onMounted(load)` non rileggerebbe le domande
+// appena generate da un'indicizzazione. Questo contatore, passato come
+// `:key`, forza Vue a ricreare il pannello così da farlo rileggere —
+// senza un watcher che scatterebbe a ogni mutazione di `game`.
+// Il bump vive solo nel percorso di indicizzazione (vedi
+// `onIndexChanged`): gli altri `load()` sparsi in questa pagina (salvare
+// lingue/seat, aggiungere media, tradurre la descrizione, ...) non
+// possono aver cambiato le domande sul server, e ricreare il pannello lì
+// butterebbe via il testo non salvato che l'admin sta scrivendo nei tre
+// campi.
+const suggestedQuestionsKey = ref(0)
+
 async function load() {
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
   editSeats.value = game.value.seats
@@ -89,6 +104,14 @@ async function load() {
   } catch {
     aiConfigured.value = false
   }
+}
+
+// Indicizzare un manuale (o rimuoverne l'indice) è l'unico evento che può
+// aver cambiato le domande suggerite sul server: solo qui ha senso
+// ricreare il pannello per farlo rileggere.
+async function onIndexChanged() {
+  await load()
+  suggestedQuestionsKey.value++
 }
 
 function selectLanguage(code: string) {
@@ -548,7 +571,7 @@ onMounted(async () => {
                click — una volta sola, non per ogni riga. -->
           <p v-if="aiConfigured" class="field-hint">
             Per un file di testo dura pochi secondi; per una scansione lunga può
-            richiedere alcuni minuti, una pagina alla volta — resta su questa
+            richiedere alcuni minuti, poche pagine alla volta — resta su questa
             pagina finché non finisce.
           </p>
           <!-- Senza provider il motivo è pratico, non tecnico: qui non c'è
@@ -568,7 +591,7 @@ onMounted(async () => {
                 :media-url="media.url"
                 :indexed-chunks="media.indexedChunks"
                 :ai-configured="aiConfigured"
-                @changed="load"
+                @changed="onIndexChanged"
               />
             </li>
           </ul>
@@ -577,6 +600,12 @@ onMounted(async () => {
           Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
           sezione Media qui sopra.
         </p>
+
+        <SuggestedQuestionsPanel
+          :key="suggestedQuestionsKey"
+          :game-id="game.id"
+          :ai-configured="aiConfigured"
+        />
       </section>
     </template>
 

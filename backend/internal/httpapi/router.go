@@ -58,6 +58,10 @@ type Server struct {
 	// test iniettano un finto, in produzione cambiare modello non
 	// richiede un riavvio.
 	Segmenter ai.Segmenter
+	// Suggester, quando è valorizzato, è il generatore delle tre domande
+	// suggerite. Nil = costruito per richiesta dalle impostazioni, stesso
+	// schema di AI/Vision/Asker/Segmenter.
+	Suggester ai.QuestionSuggester
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -136,6 +140,9 @@ func NewRouter(s *Server) http.Handler {
 		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}", s.deleteMediaHandler)
 		protected.Post("/api/games/{id}/languages/{lang}/media/{mediaId}/index", s.indexMediaHandler)
 		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}/index", s.deleteMediaIndexHandler)
+		protected.Get("/api/games/{id}/suggested-questions", s.getSuggestedQuestionsHandler)
+		protected.Put("/api/games/{id}/suggested-questions", s.putSuggestedQuestionsHandler)
+		protected.Post("/api/games/{id}/suggested-questions/regenerate", s.regenerateSuggestedQuestionsHandler)
 		protected.Post("/api/events", s.createEventHandler)
 		protected.Put("/api/events/{id}", s.updateEventHandler)
 		protected.Post("/api/events/{id}/image", s.uploadEventImageHandler)

@@ -28,8 +28,8 @@ const props = defineProps<{
   aiConfigured: boolean
 }>()
 
-// indexedChunks, sourceHeadings e canAsk vivono sul gioco intero: dopo ogni
-// indicizzazione o rimozione il genitore li ricarica per tutte le fonti.
+// indexedChunks, suggestedQuestions e canAsk vivono sul gioco intero: dopo
+// ogni indicizzazione o rimozione il genitore li ricarica per tutte le fonti.
 const emit = defineEmits<{ changed: [] }>()
 
 const busyAction = ref<'prepare' | 'remove' | null>(null)
