@@ -113,3 +113,105 @@ func TestChunkSections_OffsetAdvancesWithEachChunkInsideASection(t *testing.T) {
 		prevOffset = c.Offset
 	}
 }
+
+func TestChunkSections_OffsetPointsExactlyAtTheChunkTextEvenWithRepeatedSentences(t *testing.T) {
+	// La stessa frase ripetuta identica è comune in un regolamento ("Ogni
+	// giocatore pesca una carta." può comparire più volte). Se l'Offset
+	// venisse recuperato cercando il testo del chunk nel documento con
+	// strings.Index, la ripetizione rende il corpo periodico: qualunque
+	// posizione allineata al periodo contiene un testo byte-identico al
+	// chunk, quindi il solo controllo "md[Offset:Offset+len(Text)] ==
+	// Text" non basta a scoprire un offset sbagliato — è vero per
+	// costruzione anche nel punto sbagliato. La prova che lo scopre è che
+	// con strings.Index(s.Body[cursor:], text) il cursore avanza di
+	// idx+1 (pochi byte) invece che della lunghezza del chunk: gli offset
+	// restano quindi ammassati vicino all'inizio invece di avanzare di
+	// circa (len(chunk) - ChunkOverlapChars) a ogni passo, come deve fare
+	// un offset tracciato per costruzione.
+	//
+	// Verificato: con strings.Index(s.Body[cursor:], part) al posto del
+	// tracciamento per costruzione, questo test torna rosso (2 chunk su 3
+	// avanzano di ~55 byte invece degli ~889 attesi — vedi il report per
+	// l'output completo). Con l'implementazione corretta è verde.
+	sentence := "Ogni giocatore pesca una carta e la mostra agli altri. "
+	md := "## Pesca\n" + strings.Repeat(sentence, 40)
+
+	sections := manuals.ParseSections(md)
+	chunks := manuals.ChunkSections(sections)
+	if len(chunks) < 3 {
+		t.Fatalf("fixture sbagliata: attesi almeno 3 chunk, ottenuti %d", len(chunks))
+	}
+
+	prevOffset := -1
+	prevLen := 0
+	for i, c := range chunks {
+		if c.Offset < 0 || c.Offset+len(c.Text) > len(md) {
+			t.Fatalf("chunk %d: Offset %d fuori dai limiti del documento (lungo %d)", i, c.Offset, len(md))
+		}
+		if got := md[c.Offset : c.Offset+len(c.Text)]; got != c.Text {
+			t.Fatalf("chunk %d: md[Offset:Offset+len(Text)] = %q, atteso testo del chunk %q", i, got, c.Text)
+		}
+		if i > 0 {
+			// La sovrapposizione (ChunkOverlapChars) è l'unico motivo per
+			// cui un chunk può cominciare prima della fine "netta" del
+			// precedente: un margine di sicurezza di 300 byte assorbe la
+			// variazione dovuta al riallineamento sul confine di frase,
+			// molto meno dei ~55 byte di avanzamento che produce la
+			// versione rotta.
+			minAdvance := prevLen - manuals.ChunkOverlapChars - 300
+			advance := c.Offset - prevOffset
+			if advance < minAdvance {
+				t.Fatalf("chunk %d: Offset avanza solo di %d byte dal precedente (atteso almeno %d): "+
+					"un offset ricercato a posteriori su testo ripetuto resta ammassato vicino all'inizio "+
+					"invece di avanzare col chunk", i, advance, minAdvance)
+			}
+		}
+		prevOffset = c.Offset
+		prevLen = len(c.Text)
+	}
+}
+
+func TestParseSections_IgnoresHeadingLookalikesInsideFencedCodeBlocks(t *testing.T) {
+	// Un "#" dentro un blocco di codice recintato non è un titolo: è
+	// contenuto del blocco. Senza tener conto del fence, ParseSections
+	// spezzerebbe la sezione nel punto sbagliato, in mezzo a un blocco che
+	// l'autore intendeva come testo letterale.
+	md := "## Titolo vero\n" +
+		"Testo introduttivo.\n\n" +
+		"```\n# non è un titolo\naltro testo nel blocco\n```\n\n" +
+		"## Altro titolo vero\nCorpo.\n"
+
+	got := manuals.ParseSections(md)
+	var headings []string
+	for _, s := range got {
+		if s.Heading != "" {
+			headings = append(headings, s.Heading)
+		}
+	}
+	if len(headings) != 2 || headings[0] != "Titolo vero" || headings[1] != "Altro titolo vero" {
+		t.Fatalf("titoli attesi [Titolo vero, Altro titolo vero], ottenuti %v", headings)
+	}
+	// La riga dentro il fence resta testo della prima sezione, non un
+	// titolo proprio, e non sparisce.
+	if !strings.Contains(got[0].Body, "# non è un titolo") {
+		t.Fatalf("il contenuto del blocco recintato è andato perso: %+v", got[0])
+	}
+}
+
+func TestParseSections_KeepsAHashThatIsPartOfTheTitle(t *testing.T) {
+	// La chiusura ATX ("## Titolo ##") va tolta, ma un "#" che fa parte del
+	// testo del titolo stesso (come in "C#") no: la differenza è lo spazio
+	// che precede la sequenza di chiusura, che nella sintassi ATX è
+	// obbligatorio.
+	md := "## C#\nTesto del linguaggio.\n\n## Un altro titolo ##\nAltro corpo.\n"
+	got := manuals.ParseSections(md)
+	if len(got) != 2 {
+		t.Fatalf("attese 2 sezioni, ottenute %d: %+v", len(got), got)
+	}
+	if got[0].Heading != "C#" {
+		t.Fatalf("il titolo con # incorporato è stato mangiato: %q", got[0].Heading)
+	}
+	if got[1].Heading != "Un altro titolo" {
+		t.Fatalf("la chiusura ATX doveva sparire: %q", got[1].Heading)
+	}
+}
