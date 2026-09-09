@@ -63,6 +63,30 @@ func (p *pageTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int)
 	return p.byPage[page], nil
 }
 
+// fakeSuggester sta al posto del provider per SuggestQuestions: conta le
+// chiamate (serve al test che verifica che NON venga chiamato) e cattura i
+// titoli ricevuti.
+type fakeSuggester struct {
+	calls       atomic.Int64
+	lastGame    string
+	lastHeading []string
+	out         []string
+	err         error
+}
+
+func (f *fakeSuggester) SuggestQuestions(ctx context.Context, gameName string, headings []string) ([]string, error) {
+	f.calls.Add(1)
+	f.lastGame = gameName
+	f.lastHeading = headings
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.out != nil {
+		return f.out, nil
+	}
+	return []string{"Generata 1?", "Generata 2?", "Generata 3?"}, nil
+}
+
 // loginAsAdmin esegue il bootstrap del primo admin e restituisce il
 // cookie di sessione: gli handler di questo file sono tutti protetti.
 func loginAsAdmin(t *testing.T, router http.Handler) *http.Cookie {
@@ -1163,5 +1187,100 @@ func TestIndexMedia_ScannedPDFWithoutVisionModelStopsEarly(t *testing.T) {
 	}
 	if calls := vis.calls.Load(); calls >= pages {
 		t.Fatalf("un modello vision non configurato va scoperto una volta, non %d: tentate %d pagine su %d", pages, calls, pages)
+	}
+}
+
+func TestIndexMedia_GeneratesSuggestedQuestions(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	sug := &fakeSuggester{}
+	server.Suggester = sug
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server,
+		[]byte("## Preparazione\n\nMescola il mazzo di carte e dai tre carte a ciascun giocatore."),
+		"regole.md", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if sug.calls.Load() != 1 {
+		t.Fatalf("attesa 1 chiamata a SuggestQuestions, fatte %d", sug.calls.Load())
+	}
+
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	if err != nil {
+		t.Fatalf("suggested questions: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("attese 3 domande salvate, ottenute %d: %v", len(got), got)
+	}
+	if got[0].Text != "Generata 1?" {
+		t.Fatalf("prima domanda inattesa: %q", got[0].Text)
+	}
+}
+
+// TestIndexMedia_SuggestionFailureStillIndexes: la generazione è
+// best-effort. Trasformare un'indicizzazione riuscita in un errore per una
+// domanda suggerita sarebbe fuori scala rispetto al valore della feature.
+func TestIndexMedia_SuggestionFailureStillIndexes(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	server.Suggester = &fakeSuggester{err: ai.ErrSuggestionsRejected}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server,
+		[]byte("## Preparazione\n\nMescola il mazzo di carte e dai tre carte a ciascun giocatore."),
+		"regole.md", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("una generazione fallita non deve far fallire l'indicizzazione: %d %s",
+			rec.Code, rec.Body.String())
+	}
+	// I chunk devono esserci comunque.
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"mazzo"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("i chunk devono essere stati indicizzati anche senza domande suggerite")
+	}
+}
+
+// TestIndexMedia_SkipsSuggestionWhenAllThreeAreEdited: se non c'è niente da
+// riscrivere non c'è motivo di pagare la chiamata.
+func TestIndexMedia_SkipsSuggestionWhenAllThreeAreEdited(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	sug := &fakeSuggester{}
+	server.Suggester = sug
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server,
+		[]byte("## Preparazione\n\nMescola il mazzo di carte e dai tre carte a ciascun giocatore."),
+		"regole.md", "")
+
+	// Tutte tre scritte a mano prima dell'indicizzazione.
+	if err := server.Manuals.SaveEditedQuestions(context.Background(), gameID,
+		[]string{"Mia 1?", "Mia 2?", "Mia 3?"}); err != nil {
+		t.Fatalf("save edited: %v", err)
+	}
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if sug.calls.Load() != 0 {
+		t.Fatalf("con tutte tre edited non c'è niente da generare: fatte %d chiamate", sug.calls.Load())
+	}
+
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	if err != nil {
+		t.Fatalf("suggested questions: %v", err)
+	}
+	if got[0].Text != "Mia 1?" {
+		t.Fatalf("le domande scritte a mano devono essere intatte: %v", got)
 	}
 }

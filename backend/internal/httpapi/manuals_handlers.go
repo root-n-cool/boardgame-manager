@@ -806,6 +806,23 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 	// camelCase, aggiunti SOLO quando c'è davvero qualcosa da segnalare:
 	// il resto del formato risposta (e il frontend che lo legge) resta
 	// invariato per ogni altro caso.
+	// Le tre domande suggerite si rigenerano qui, best-effort: un errore si
+	// logga e si ignora. Aggiungere qualche secondo a un'operazione che su
+	// un manuale scansionato ne dura più di cento non si nota, ma
+	// trasformare un'indicizzazione riuscita in un errore per una domanda
+	// suggerita sarebbe fuori scala rispetto al valore della feature.
+	//
+	// Le posizioni che l'admin ha riscritto a mano non si toccano (all =
+	// false), e se sono tutte e tre a mano la chiamata al modello non parte
+	// nemmeno.
+	if existing, qErr := s.Manuals.SuggestedQuestions(r.Context(), gameID); qErr != nil {
+		log.Printf("index: read suggested questions for game %d: %v", gameID, qErr)
+	} else if !allQuestionsEdited(existing) {
+		if qErr := s.regenerateQuestions(r.Context(), gameID, false); qErr != nil {
+			log.Printf("index: suggested questions for game %d: %v", gameID, qErr)
+		}
+	}
+
 	resp := map[string]any{"reference": reference, "chunks": len(sourceChunks)}
 	if pageStats.skippedPages > 0 {
 		resp["pagesIndexed"] = pageStats.indexedPages

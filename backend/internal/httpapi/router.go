@@ -58,6 +58,10 @@ type Server struct {
 	// test iniettano un finto, in produzione cambiare modello non
 	// richiede un riavvio.
 	Segmenter ai.Segmenter
+	// Suggester, quando è valorizzato, è il generatore delle tre domande
+	// suggerite. Nil = costruito per richiesta dalle impostazioni, stesso
+	// schema di AI/Vision/Asker/Segmenter.
+	Suggester ai.QuestionSuggester
 }
 
 func NewRouter(s *Server) http.Handler {
