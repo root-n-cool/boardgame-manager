@@ -333,38 +333,61 @@ che risponde a domande sul regolamento a parole proprie, citando la pagina.
 sta dentro — la stessa divisione di `GameFacts`/`GameMediaList` altrove in
 questa scheda.
 
-- **Due forme, una soglia sola.** Da 1100px in su è una sidebar destra
-  sticky **a tutta altezza**, sempre aperta (`.manual-chat-aside`, 22rem,
-  dentro `.game-detail-layout.has-chat` in griglia); sotto, un bottone
+- **Due forme, una soglia sola.** Da 1100px in su è una barra destra **a
+  tutta altezza, ancorata al bordo del viewport** (`.manual-chat-aside`,
+  22rem, `position: fixed; right: 0`), sempre aperta; sotto, un bottone
   tondo in basso al centro (`.manual-chat-fab`) che apre un `<dialog>`
   nativo a tutto schermo (`.manual-chat-dialog`). **Perché 1100 e non
-  900**: `.app-page` è larga 56rem (896px). Una sidebar da 22rem dentro
+  900**: `.app-page` è larga 56rem (896px). Una barra da 22rem dentro
   quello spazio lascerebbe alla colonna di testo
   `56rem − 22rem − gap(1.5rem) ≈ 32.5rem` — sotto la misura leggibile
   (60–75 caratteri, che qui vale circa 34rem). Il breakpoint non è la
   larghezza di `.app-page` stessa: è quella più il margine che serve
   perché la pagina non tocchi i bordi del viewport, da cui i ~1100px
-  effettivi invece dei 896px nudi. **22rem resta la larghezza** anche ora
-  che la colonna è a tutta altezza: l'altezza non cambia quel calcolo, e a
-  22rem deep-chat mostra già bolle e campo leggibili — allargarla
-  toglierebbe spazio al testo senza un beneficio misurato.
-- **La sidebar è una colonna, non più una card nel flusso.** Prima
-  `.manual-chat-aside` aveva `max-height` e nessun figlio con `flex-grow`:
-  si fermava all'altezza del suo contenuto (~455px misurati su un
-  viewport di 900px), con metà colonna destra vuota sotto — lo stesso
-  difetto che rende una sidebar "inguardabile" quando quella di sinistra
-  (`.app-sidebar`) è invece a tutta altezza. Ora `.manual-chat-aside` porta
-  `position: sticky; top: 3.25rem; height: calc(100dvh - 3.25rem)` — la
-  stessa formula di `.app-sidebar` — con `margin-top: -2.25rem` per
-  annullare il padding-top di `.app-page` e partire esattamente sotto la
-  topbar; `.manual-chat-aside-body` porta `flex: 1` perché il pannello
-  dentro si espanda a riempirla invece di restare alto quanto il suo
-  contenuto. **Sopra il breakpoint non collassa più**: il toggle
-  (`.manual-chat-toggle`) e lo stato `is-collapsed` sono stati rimossi,
-  scelta esplicita — la sidebar di sinistra non si nasconde da desktop, e
-  un bottone che facesse sparire quella di destra sarebbe un'incoerenza in
-  più da spiegare senza un risparmio di spazio che serve davvero. Sotto il
-  breakpoint non cambia niente: bottone tondo e dialog a tutto schermo.
+  effettivi invece dei 896px nudi — la somma resta la ragione del
+  breakpoint anche ora che i 22rem non sono più una colonna di griglia ma
+  uno spazio riservato altrove (vedi sotto). **22rem resta la larghezza**:
+  l'ancoraggio al bordo non cambia quel calcolo, e a 22rem deep-chat
+  mostra già bolle e campo leggibili — allargarla toglierebbe spazio al
+  testo senza un beneficio misurato.
+- **La barra tocca il bordo del viewport, non il bordo di `.app-page`.**
+  Una prima resa (a tutta altezza ma ancora dentro la griglia di
+  `.game-detail-layout`, quindi dentro la scatola centrata di `.app-page`,
+  `max-width: 56rem; margin: 0 auto`) lasciava un margine vuoto fra il
+  bordo destro della barra e il bordo della finestra — non toccava mai il
+  bordo come `.app-sidebar` tocca il suo a sinistra, ed è quel confronto
+  che la rendeva "non tutta a destra" (segnalato dall'utente). Ora
+  `.manual-chat-aside` è `position: fixed; top: 3.25rem; right: 0; bottom:
+  0`: esce dal flusso di `.app-page` e si ancora al viewport, non a una
+  scatola centrata al suo interno. **Bordo e angoli solo sul lato che
+  guarda il contenuto** (`border-left`, `border-top-left-radius`,
+  `border-bottom-left-radius`): un angolo arrotondato sul lato incollato
+  al bordo del viewport si legge come una card mal posizionata, non come
+  una barra.
+- **Lo spazio si riserva su `.app-main`, non su `.app-page`.** Uscita dal
+  flusso, la barra non spinge più via nessuno: senza una riserva
+  esplicita il contenuto le passerebbe sotto. La riserva **non** può stare
+  su `.app-page` (`padding-right` lì sposterebbe il suo stesso centro,
+  perché porta `margin: 0 auto` — la colonna di testo resterebbe
+  schiacciata a sinistra invece di ricentrarsi in quel che resta) né su
+  `.game-detail-layout` (stesso problema, un livello sotto). Sta un
+  livello sopra, su `.app-main` (`AppShell.vue`): `.app-main:has(.manual-
+  chat-aside) { padding-right: 22rem }` restringe la scatola dentro cui
+  `.app-page` si centra, e `.app-page` si ricentra da sé nello spazio che
+  resta — lo stesso meccanismo con cui si centra oggi rispetto ad
+  `.app-sidebar` a sinistra. `:has()` limita la riserva alle pagine che
+  montano davvero la barra: senza, ogni pagina admin/pubblica perderebbe
+  22rem a destra per niente.
+- **`.manual-chat-aside-body` porta `flex: 1`**: senza, un figlio senza
+  `flex-grow` dentro una colonna flex resta alto quanto il suo contenuto
+  — il difetto misurato in una fase precedente, la barra si fermava a
+  ~455px con spazio vuoto sotto anche ad altezza piena. **Sopra il
+  breakpoint non collassa più**: il toggle (`.manual-chat-toggle`) e lo
+  stato `is-collapsed` sono stati rimossi, scelta esplicita — la sidebar
+  di sinistra non si nasconde da desktop, e un bottone che facesse
+  sparire quella di destra sarebbe un'incoerenza in più da spiegare senza
+  un risparmio di spazio che serve davvero. Sotto il breakpoint non
+  cambia niente: bottone tondo e dialog a tutto schermo.
 - **Il bottone tondo**: `position: fixed`, centrato con
   `left: 50%; transform: translateX(-50%)`, `bottom: calc(1rem +
   env(safe-area-inset-bottom))` — il termine `env()` lo tiene sopra la home

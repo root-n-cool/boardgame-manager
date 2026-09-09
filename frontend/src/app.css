@@ -3861,59 +3861,76 @@ tbody tr:nth-child(3) .rank-medal {
 
 /* ---------- Chiedi al manuale ---------- */
 
-/* Una colonna sola per default: la sidebar entra solo dove c'è spazio
-   davvero. 1100px = 56rem di colonna leggibile + 22rem di chat + i
-   margini di .app-page.
+/* Una colonna sola per default: la barra della chat entra solo dove c'è
+   spazio davvero. 1100px = 56rem di colonna leggibile + 22rem di barra +
+   i margini che tengono `.app-page` staccata dai bordi del viewport —
+   la stessa somma di prima, ma i 22rem non sono più una colonna di
+   griglia dentro `.app-page`: sono uno spazio riservato sul contenitore
+   della shell (vedi `.app-main:has(.manual-chat-aside)` sotto), perché la
+   barra ora è ancorata al bordo del viewport e non più dentro quella
+   scatola centrata.
 
-   22rem resta la larghezza anche ora che la colonna è a tutta altezza:
-   l'altezza non cambia il calcolo (56rem di testo + 22rem di chat + gap
-   devono stare dentro il viewport), e a 22rem deep-chat mostra già bolle e
-   campo leggibili — allargarla toglierebbe spazio al testo senza un
-   beneficio misurato. */
+   22rem resta la larghezza della barra: l'altezza piena non cambia quel
+   calcolo, e a 22rem deep-chat mostra già bolle e campo leggibili —
+   allargarla toglierebbe spazio al testo senza un beneficio misurato. */
 .game-detail-layout {
   display: block;
 }
 
 @media (min-width: 1100px) {
-  .game-detail-layout.has-chat {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 22rem;
-    gap: 1.5rem;
-    align-items: start;
-  }
-
-  .game-detail-layout.has-chat .game-detail-main {
-    min-width: 0;
-  }
-
-  /* Colonna a tutta altezza come `.app-sidebar` a sinistra, non più una
-     card alta quanto il suo contenuto: prima `max-height` lasciava che il
-     riquadro si fermasse a ~455px su un viewport di 900, con metà colonna
-     vuota sotto (misurato in browser). `margin-top` annulla il
-     padding-top di `.app-page` (2.25rem) così la colonna parte esattamente
-     sotto la topbar — lo stesso punto in cui `top` la aggancia — e
-     `height` (non più `max-height`) la riempie fino al fondo del
-     viewport invece di limitarla. Sticky, con lo scroll interno: la
-     colonna di sinistra scorre e la chat resta ferma. */
+  /* Ancorata al viewport (`position: fixed`), non più una colonna della
+     griglia di `.game-detail-layout`: dentro quella griglia la barra
+     viveva comunque nella scatola centrata di `.app-page`
+     (`max-width: 56rem; margin: 0 auto`), quindi fra il suo bordo destro
+     e il bordo della finestra restava il margine della pagina — non
+     toccava mai il bordo come `.app-sidebar` tocca il suo a sinistra
+     (difetto segnalato dall'utente dopo la prima resa "a tutta altezza").
+     `position: fixed` la stacca da quella scatola: `right: 0` la ancora
+     al bordo del viewport, `top`/`bottom` la tengono a tutta altezza
+     sotto la topbar, a prescindere da dove `.app-page` si centra. */
   .manual-chat-aside {
-    position: sticky;
+    position: fixed;
     top: 3.25rem;
-    margin-top: -2.25rem;
+    right: 0;
+    bottom: 0;
+    z-index: 25;
     display: flex;
     flex-direction: column;
-    height: calc(100dvh - 3.25rem);
+    width: 22rem;
     overflow: hidden;
     background: var(--card);
-    border: 1px solid var(--card-line);
-    border-radius: var(--radius);
+    /* Bordo e angoli solo sul lato che guarda il contenuto: una barra
+       incollata al bordo del viewport con un angolo arrotondato a destra
+       si legge come una card mal posizionata, non come una barra — è
+       il difetto che l'ha portata qui. */
+    border-left: 1px solid var(--card-line);
+    border-top-left-radius: var(--radius);
+    border-bottom-left-radius: var(--radius);
     box-shadow: var(--shadow-card);
+  }
+
+  /* La riserva vive su `.app-main` (in `AppShell.vue`), non su
+     `.game-detail-layout` né su `.app-page`: `.app-page` porta
+     `max-width: 56rem; margin: 0 auto`, quindi un `padding-right` messo
+     lì sposterebbe il suo stesso centro invece di liberare spazio, e la
+     colonna di testo resterebbe schiacciata a sinistra invece di
+     ricentrarsi in quel che resta. Riservando lo spazio un livello sopra,
+     su `.app-main`, `.app-page` si ricentra da sé nello spazio residuo
+     (larghezza di `.app-main` meno questi 22rem) — lo stesso meccanismo
+     con cui si centra oggi rispetto ad `.app-sidebar` a sinistra.
+     `:has()` limita la riserva alle pagine che montano davvero la barra:
+     senza, ogni altra pagina admin/pubblica perderebbe 22rem a destra per
+     niente. Dove `:has()` non è supportato la riserva non scatta e il
+     contenuto scorre sotto la barra — fallback grazioso, non un errore,
+     come già per `:has()` altrove in questo foglio. */
+  .app-main:has(.manual-chat-aside) {
+    padding-right: 22rem;
   }
 
   /* Il corpo (non l'aside) porta `flex: 1`: senza, un figlio senza grow
      dentro una colonna flex resta alto quanto il suo contenuto, ed è
-     esattamente il difetto misurato — la card si fermava a ~455px con
-     spazio vuoto sotto anche a `.manual-chat-aside` alto quanto lo
-     schermo. */
+     esattamente il difetto misurato in una fase precedente — la barra si
+     fermava a ~455px con spazio vuoto sotto anche ad altezza piena. */
   .manual-chat-aside-body {
     display: flex;
     flex: 1;
