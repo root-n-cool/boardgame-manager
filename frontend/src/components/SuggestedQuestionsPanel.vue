@@ -30,6 +30,12 @@ const regenerating = ref(false)
 const error = ref('')
 const saved = ref(false)
 
+// Salva e Rigenera scrivono lo stesso stato: se partono insieme, le due
+// risposte arrivano in ordine imprevedibile e l'ultima sovrascrive
+// `questions.value` dell'altra in silenzio. Ogni bottone si spegne quindi
+// finché una qualunque delle due richieste è in volo, non solo la propria.
+const busy = computed(() => saving.value || regenerating.value)
+
 const path = computed(() => `/games/${props.gameId}/suggested-questions`)
 
 async function load() {
@@ -104,14 +110,19 @@ onMounted(load)
         </li>
       </ol>
 
+      <p class="field-hint">
+        Rigenera è l'eccezione alla regola qui sopra: riscrive tutte e tre le domande, comprese
+        quelle scritte a mano.
+      </p>
+
       <div class="suggested-questions-actions">
-        <button type="button" :disabled="saving" @click="save">
+        <button type="button" :disabled="busy" @click="save">
           {{ saving ? 'Salvataggio…' : 'Salva' }}
         </button>
         <button
           type="button"
           class="btn-secondary"
-          :disabled="regenerating || !props.aiConfigured"
+          :disabled="busy || !props.aiConfigured"
           @click="regenerate"
         >
           {{ regenerating ? 'Rigenerazione…' : 'Rigenera' }}
