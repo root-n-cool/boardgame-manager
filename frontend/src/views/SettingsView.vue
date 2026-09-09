@@ -9,6 +9,7 @@ interface SettingsResponse {
   bggApiTokenMasked?: string
   aiBaseUrl: string
   aiModel: string
+  aiVisionModel: string
   aiApiKeySet: boolean
   aiApiKeyMasked?: string
   aiConfigured: boolean
@@ -29,6 +30,7 @@ const bggApiToken = ref('')
 const bggApiTokenMasked = ref('')
 const aiBaseUrl = ref('')
 const aiModel = ref('')
+const aiVisionModel = ref('')
 const aiApiKey = ref('')
 const aiApiKeyMasked = ref('')
 const message = ref('')
@@ -55,6 +57,7 @@ async function load() {
   bggApiTokenMasked.value = s.bggApiTokenMasked || ''
   aiBaseUrl.value = s.aiBaseUrl || ''
   aiModel.value = s.aiModel || ''
+  aiVisionModel.value = s.aiVisionModel || ''
   aiApiKeyMasked.value = s.aiApiKeyMasked || ''
   smtpHost.value = s.smtpHost || ''
   smtpPort.value = s.smtpPort || 587
@@ -77,6 +80,7 @@ async function save() {
       aiBaseUrl: aiBaseUrl.value,
       aiApiKey: aiApiKey.value,
       aiModel: aiModel.value,
+      aiVisionModel: aiVisionModel.value,
       smtpHost: smtpHost.value,
       // v-model.number su un <input type="number"> svuotato torna la stringa
       // vuota, non NaN (looseToNumber la lascia com'è quando parseFloat
@@ -210,6 +214,18 @@ onMounted(async () => {
           Per tradurre basta un modello economico e veloce. Esempi:
           <code>gemini-flash-lite-latest</code>, <code>gpt-4.1-mini</code>,
           <code>llama3.1</code>.
+        </p>
+
+        <label>
+          Modello per i manuali scansionati (opzionale)
+          <input v-model="aiVisionModel" placeholder="deepseek-v4-flash-vision-exp" />
+        </label>
+        <p class="field-hint">
+          Serve un modello che sappia leggere le immagini. Il modello di chat qui
+          sopra spesso non ne è capace: per esempio <code>deepseek-v4-flash</code> è
+          solo testo, la sua variante <code>deepseek-v4-flash-vision-exp</code> legge
+          anche le pagine. Lasciandolo vuoto i manuali scansionati si trascrivono a
+          mano.
         </p>
       </div>
 

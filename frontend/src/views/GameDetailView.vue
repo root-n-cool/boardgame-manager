@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
+import ManualChat from '../components/ManualChat.vue'
 import type { GameDetail, GameLanguageInfo } from '../utils/game'
 
 const route = useRoute()
@@ -15,6 +16,12 @@ const gameId = route.params.id as string
 const game = ref<GameDetail | null>(null)
 const error = ref('')
 const activeLangCode = ref('')
+
+// I titoli di sezione del manuale alimentano le domande suggerite. Non c'è
+// un endpoint dedicato: arrivano sulla scheda del gioco, ricavati dalla
+// stessa lettura che decide canAsk. Se non ce ne sono almeno tre il
+// pannello usa le sue domande fisse.
+const manualHeadings = ref<string[]>([])
 
 function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
@@ -34,6 +41,7 @@ function goBack() {
 onMounted(async () => {
   try {
     game.value = await api.get<GameDetail>(`/games/${gameId}`)
+    manualHeadings.value = game.value.manualHeadings ?? []
     if (game.value.languages.length > 0) {
       activeLangCode.value = game.value.languages[0].code
     }
@@ -48,97 +56,106 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="game">
-    <button type="button" class="back-link" @click="goBack">&larr; Indietro</button>
+  <div v-if="game" class="game-detail-layout" :class="{ 'has-chat': game.canAsk }">
+    <div class="game-detail-main">
+      <button type="button" class="back-link" @click="goBack">&larr; Indietro</button>
 
-    <h1>{{ game.name }}</h1>
-    <p class="page-meta">
-      <template v-if="game.owner">Proprietario: {{ game.owner }} · </template>
-      <router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link>
-      <!-- Questa pagina non ha un'azione principale: chi la guarda legge.
-           La scorciatoia alla scheda di modifica vale solo per l'admin già
-           loggato, quindi sta tra i metadati come gli altri rimandi, non in
-           testa dove sarebbe la chiamata all'azione di tutti. -->
-      <template v-if="auth.user">
-        ·
-        <router-link :to="{ name: 'admin-game-detail', params: { id: game.id } }">
-          Modifica
-        </router-link>
-      </template>
-    </p>
+      <h1>{{ game.name }}</h1>
+      <p class="page-meta">
+        <template v-if="game.owner">Proprietario: {{ game.owner }} · </template>
+        <router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link>
+        <!-- Questa pagina non ha un'azione principale: chi la guarda legge.
+             La scorciatoia alla scheda di modifica vale solo per l'admin già
+             loggato, quindi sta tra i metadati come gli altri rimandi, non in
+             testa dove sarebbe la chiamata all'azione di tutti. -->
+        <template v-if="auth.user">
+          ·
+          <router-link :to="{ name: 'admin-game-detail', params: { id: game.id } }">
+            Modifica
+          </router-link>
+        </template>
+      </p>
 
-    <div class="game-cover-card">
-      <img
-        v-if="game.coverPath"
-        :src="`/api/uploads/${game.coverPath}`"
-        :alt="`Copertina di ${game.name}`"
-        class="cover"
-        width="170"
-        height="227"
-        decoding="async"
-      />
-      <div v-else class="cover cover-empty" aria-hidden="true">
-        <svg viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />
-          <circle cx="8.3" cy="8.3" r="1.3" fill="currentColor" />
-          <circle cx="15.7" cy="8.3" r="1.3" fill="currentColor" />
-          <circle cx="12" cy="12" r="1.3" fill="currentColor" />
-          <circle cx="8.3" cy="15.7" r="1.3" fill="currentColor" />
-          <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
-        </svg>
+      <div class="game-cover-card">
+        <img
+          v-if="game.coverPath"
+          :src="`/api/uploads/${game.coverPath}`"
+          :alt="`Copertina di ${game.name}`"
+          class="cover"
+          width="170"
+          height="227"
+          decoding="async"
+        />
+        <div v-else class="cover cover-empty" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none">
+            <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />
+            <circle cx="8.3" cy="8.3" r="1.3" fill="currentColor" />
+            <circle cx="15.7" cy="8.3" r="1.3" fill="currentColor" />
+            <circle cx="12" cy="12" r="1.3" fill="currentColor" />
+            <circle cx="8.3" cy="15.7" r="1.3" fill="currentColor" />
+            <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
+          </svg>
+        </div>
+
+        <div class="game-cover-info">
+          <GameFacts :game="game" />
+          <p v-if="game.seats > 1" class="row-meta">
+            Tavolo da {{ game.seats }} posti prenotabili.
+          </p>
+        </div>
       </div>
 
-      <div class="game-cover-info">
-        <GameFacts :game="game" />
-        <p v-if="game.seats > 1" class="row-meta">
-          Tavolo da {{ game.seats }} posti prenotabili.
-        </p>
-      </div>
+      <nav class="tab-bar language-tabs">
+        <button
+          v-for="l in game.languages"
+          :key="l.code"
+          type="button"
+          :class="{ active: l.code === activeLangCode }"
+          @click="activeLangCode = l.code"
+        >
+          {{ l.code }}
+          <svg
+            v-if="l.isBaseLanguage"
+            class="base-language-badge"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-label="Lingua base"
+          >
+            <path
+              d="M12 3.5l2.47 5.77 6.24.56-4.73 4.16 1.42 6.1L12 16.9l-5.4 3.2 1.42-6.1-4.73-4.16 6.24-.56L12 3.5Z"
+              fill="currentColor"
+            />
+          </svg>
+        </button>
+      </nav>
+
+      <section class="panel-card">
+        <div class="section-head">
+          <h2>Scheda</h2>
+          <span class="lang-chip">{{ activeLangCode }}</span>
+        </div>
+        <h3 class="language-name">{{ activeLanguage()?.name }}</h3>
+        <p v-if="activeLanguage()?.description">{{ activeLanguage()?.description }}</p>
+        <p v-else class="empty-note">Nessuna descrizione per questa lingua.</p>
+      </section>
+
+      <section class="panel-card">
+        <div class="section-head">
+          <h2>Media</h2>
+          <span class="lang-chip">{{ activeLangCode }}</span>
+        </div>
+        <GameMediaList :media="activeLanguage()?.media || []" />
+      </section>
+
+      <p v-if="error" class="error">{{ error }}</p>
     </div>
 
-    <nav class="tab-bar language-tabs">
-      <button
-        v-for="l in game.languages"
-        :key="l.code"
-        type="button"
-        :class="{ active: l.code === activeLangCode }"
-        @click="activeLangCode = l.code"
-      >
-        {{ l.code }}
-        <svg
-          v-if="l.isBaseLanguage"
-          class="base-language-badge"
-          viewBox="0 0 24 24"
-          fill="none"
-          aria-label="Lingua base"
-        >
-          <path
-            d="M12 3.5l2.47 5.77 6.24.56-4.73 4.16 1.42 6.1L12 16.9l-5.4 3.2 1.42-6.1-4.73-4.16 6.24-.56L12 3.5Z"
-            fill="currentColor"
-          />
-        </svg>
-      </button>
-    </nav>
-
-    <section class="panel-card">
-      <div class="section-head">
-        <h2>Scheda</h2>
-        <span class="lang-chip">{{ activeLangCode }}</span>
-      </div>
-      <h3 class="language-name">{{ activeLanguage()?.name }}</h3>
-      <p v-if="activeLanguage()?.description">{{ activeLanguage()?.description }}</p>
-      <p v-else class="empty-note">Nessuna descrizione per questa lingua.</p>
-    </section>
-
-    <section class="panel-card">
-      <div class="section-head">
-        <h2>Media</h2>
-        <span class="lang-chip">{{ activeLangCode }}</span>
-      </div>
-      <GameMediaList :media="activeLanguage()?.media || []" />
-    </section>
-
-    <p v-if="error" class="error">{{ error }}</p>
+    <ManualChat
+      v-if="game.canAsk"
+      :game-id="game.id"
+      :game-name="game.name"
+      :headings="manualHeadings"
+    />
   </div>
   <div v-else-if="error">
     <button type="button" class="back-link" @click="goBack">&larr; Indietro</button>

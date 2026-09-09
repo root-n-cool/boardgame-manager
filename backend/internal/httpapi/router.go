@@ -15,6 +15,7 @@ import (
 	"boardgames-manager/internal/geocode"
 	"boardgames-manager/internal/leaderboard"
 	"boardgames-manager/internal/mailer"
+	"boardgames-manager/internal/manuals"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
@@ -28,6 +29,7 @@ type Server struct {
 	Events      *events.Store
 	Leaderboard *leaderboard.Store
 	Storage     *storage.Store
+	Manuals     *manuals.Store
 	BGG         bgg.Client
 	Geocode     geocode.Client
 	// AI, quando è valorizzato, è il traduttore da usare. Lasciato a nil il
@@ -35,6 +37,11 @@ type Server struct {
 	// cambiare provider non richiede un riavvio, e i test possono iniettare
 	// un finto.
 	AI ai.Translator
+	// Vision, quando è valorizzato, è il trascrittore da usare. Lasciato a
+	// nil il server ne costruisce uno per richiesta dalle impostazioni,
+	// come per AI: cambiare modello non richiede un riavvio e i test
+	// possono iniettare un finto.
+	Vision ai.Transcriber
 	// Mail, quando è valorizzato, è il sender da usare. Lasciato a nil il
 	// server ne costruisce uno per richiesta dalle impostazioni: come per
 	// AI, cambiare provider non richiede un riavvio e i test possono
@@ -42,6 +49,9 @@ type Server struct {
 	// dal punto di vista di chi usa l'app: nessuna mail, tutto il resto
 	// invariato.
 	Mail mailer.Sender
+	// Asker, quando è valorizzato, è l'agente da usare per le domande sui
+	// manuali. Nil = costruito per richiesta dalle impostazioni.
+	Asker ai.Asker
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -69,6 +79,12 @@ func NewRouter(s *Server) http.Handler {
 	// un gruppo che prenota insieme a inizio serata — e comunque limitano
 	// l'abuso.
 	bookingLimiter := newRateLimiter(30, time.Minute)
+	// Una domanda costa una o più chiamate a pagamento al provider. Il
+	// limiter chiave su r.RemoteAddr, che dietro NAT è l'IP del wifi del
+	// circolo: tutti a un tavolo condividono lo stesso bucket. Venti al
+	// minuto stanno molto sopra l'uso reale — nessuno fa venti domande di
+	// regole in un minuto — e limitano l'abuso.
+	askLimiter := newRateLimiter(20, time.Minute)
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
@@ -80,6 +96,7 @@ func NewRouter(s *Server) http.Handler {
 	r.With(inviteLimiter.middleware).Post("/api/invites/{token}", s.acceptInviteHandler)
 	r.Get("/api/games", s.listGamesHandler)
 	r.Get("/api/games/{id}", s.getGameHandler)
+	r.With(askLimiter.middleware).Post("/api/games/{id}/ask", s.askHandler)
 	r.Get("/api/uploads/{filename}", s.getUploadHandler)
 	r.Get("/api/events", s.listEventsHandler)
 	r.Get("/api/events/{id}", s.getEventHandler)
@@ -111,6 +128,10 @@ func NewRouter(s *Server) http.Handler {
 		protected.Post("/api/games/{id}/languages/{lang}/translate", s.translateLanguageHandler)
 		protected.Post("/api/games/{id}/languages/{lang}/media", s.createMediaHandler)
 		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}", s.deleteMediaHandler)
+		protected.Post("/api/games/{id}/languages/{lang}/media/{mediaId}/extract", s.extractManualHandler)
+		protected.Get("/api/games/{id}/languages/{lang}/media/{mediaId}/pages", s.listManualPagesHandler)
+		protected.Put("/api/games/{id}/languages/{lang}/media/{mediaId}/pages", s.putManualPagesHandler)
+		protected.Delete("/api/games/{id}/languages/{lang}/media/{mediaId}/pages", s.deleteManualPagesHandler)
 		protected.Post("/api/events", s.createEventHandler)
 		protected.Put("/api/events/{id}", s.updateEventHandler)
 		protected.Post("/api/events/{id}/image", s.uploadEventImageHandler)

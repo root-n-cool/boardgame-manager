@@ -33,6 +33,15 @@ export interface GameDetail {
   seats: number
   /** Vero quando esiste una descrizione BGG originale da cui ritradurre. */
   canTranslate: boolean
+  /** Vero quando il gioco ha un manuale indicizzato e il provider AI è configurato. */
+  canAsk: boolean
+  /**
+   * I primi titoli di sezione del manuale, in ordine di pagina. Sono la
+   * materia delle domande suggerite della chat; l'API ne manda pochi
+   * (bastano tre domande) e la lista è vuota quando il manuale non è
+   * preparato o non ha titoli riconosciuti.
+   */
+  manualHeadings: string[]
   languages: GameLanguageInfo[]
 }
 

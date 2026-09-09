@@ -24,7 +24,18 @@ function keepEmbedPlaceholder(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), keepEmbedPlaceholder()],
+  plugins: [
+    vue({
+      // deep-chat è un web component: senza questo Vue prova a risolverlo
+      // come componente Vue e avvisa che non lo conosce.
+      template: {
+        compilerOptions: {
+          isCustomElement: (tag) => tag === 'deep-chat',
+        },
+      },
+    }),
+    keepEmbedPlaceholder(),
+  ],
   build: {
     outDir,
     emptyOutDir: true,

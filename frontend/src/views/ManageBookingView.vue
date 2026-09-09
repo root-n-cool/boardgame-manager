@@ -31,12 +31,20 @@ interface BookingResult {
   eventTitle: string
   eventDate: string
   startTime: string
+  gameId: number
   gameName: string
   copyIndex: number
   seats: number
   gameCopies: number
   /** Quante prenotazioni attive ci sono su questo tavolo, compresa la mia. */
   tableBookings: number
+  /**
+   * Vero quando il gioco ha un manuale preparato e il provider AI è
+   * configurato: è la stessa condizione che fa comparire la chat sulla
+   * scheda del gioco. Senza, il link "Chiedi al manuale" prometteva una
+   * pagina dove non succedeva niente.
+   */
+  canAsk: boolean
   matchResult: { players: PlayerScore[] } | null
 }
 
@@ -179,6 +187,11 @@ onMounted(async () => {
     <div v-if="booking">
       <div class="booking-summary">
         <h2>{{ gameLabel }}</h2>
+        <p v-if="booking.gameId && booking.canAsk" class="row-meta">
+          <router-link :to="{ path: `/games/${booking.gameId}`, query: { chat: '1' } }">
+            Dubbi sulle regole? Chiedi al manuale
+          </router-link>
+        </p>
         <p class="booking-summary-meta">
           {{ booking.eventTitle }} · {{ booking.eventDate }} · {{ booking.startTime }}
         </p>

@@ -11,6 +11,7 @@ import (
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
 	"boardgames-manager/internal/leaderboard"
+	"boardgames-manager/internal/manuals"
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
@@ -47,6 +48,7 @@ func newTestServerWithDB(t *testing.T) (*httpapi.Server, *sql.DB) {
 		Events:      events.NewStore(conn),
 		Leaderboard: leaderboard.NewStore(conn),
 		Storage:     storage.NewStore(t.TempDir()),
+		Manuals:     manuals.NewStore(conn),
 		BGG:         &fakeBGGClient{},
 	}, conn
 }

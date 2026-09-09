@@ -64,6 +64,12 @@ esterno obbligatorio.
   Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio
   resta legato al codice di prenotazione: un gioco mai prenotabile non
   entra in classifica, anche se in prestito è passato di mano più volte.
+- **Domande sul manuale**: sulla scheda pubblica di un gioco con manuale
+  preparato compare una chat — a parole proprie, tipo "quando finisce la
+  partita?" — che risponde citando la pagina del PDF. Per prepararlo:
+  carica il PDF fra i media del gioco, premi «Prepara per le domande»
+  nella scheda di modifica, rivedi il testo estratto pagina per pagina
+  (corregge quel che il modello ha letto storto) e salva. Dettagli sotto.
 - **Amministrazione**: bootstrap del primo admin al primo avvio (come
   n8n); dopo, un admin ne invita un altro inserendo solo l'email — il
   sistema genera un link di invito che chi lo riceve apre per scegliere la
@@ -98,6 +104,11 @@ Al primo accesso viene richiesto di creare il primo account admin.
 
 I dati (database SQLite + upload) vivono nella cartella `./data`, montata
 come volume nel container — sopravvivono a rebuild e restart.
+
+> Se l'app resterà raggiungibile in LAN a un indirizzo come
+> `http://192.168.1.50:8080`, leggi in *Configurazione opzionale* la nota
+> «La dettatura richiede HTTPS»: il microfono del campo domanda della chat
+> non compare sui contesti non cifrati, e non è un guasto dell'app.
 
 Variabili d'ambiente (già impostate in `docker-compose.yml`):
 
@@ -214,9 +225,10 @@ Dalla pagina "Impostazioni" (da admin autenticato):
   dell'app: i giochi si inseriscono a mano.
 - **Provider AI**: traduce automaticamente le descrizioni di BGG (arrivano
   solo in inglese) nella lingua della scheda, sia importando un gioco sia
-  aggiungendo una lingua a uno esistente. Se assente, l'app funziona come
-  prima: descrizioni in inglese, e nella scheda del gioco non compare
-  nessun comando di traduzione. Dettagli sotto.
+  aggiungendo una lingua a uno esistente, e alimenta anche la chat "Chiedi
+  al manuale" sulla scheda pubblica di un gioco. Se assente, l'app
+  funziona come prima: descrizioni in inglese, nessun comando di
+  traduzione, nessuna chat sul manuale. Dettagli sotto.
 - **Email (SMTP)**: se configurato, l'app manda da sé l'invito di un
   amministratore, la conferma di una prenotazione e l'avviso di
   annullamento. Se assente, l'app funziona esattamente come prima: il
@@ -268,6 +280,57 @@ esiste l'invio via email anche il `booking_code` viaggia in un URL (i link
 per gestire la prenotazione o inserire il punteggio): può quindi comparire
 nei log di un reverse proxy e nella cronologia del telefono di chi
 prenota.
+
+### Domande sul manuale (opzionale)
+
+Usa lo stesso "Provider AI" configurato sopra (indirizzo, chiave, modello):
+niente da aggiungere per attivare la chat, se già configurato per le
+traduzioni. Per prepararlo, dalla scheda di modifica di un gioco: carica
+il PDF del regolamento fra i media, premi «Prepara per le domande», rivedi
+il testo estratto pagina per pagina — corregge quel che il modello ha
+letto storto, specie su uno scan — e salva. Senza un manuale preparato la
+scheda pubblica del gioco non mostra nessuna chat: nessun errore, solo
+l'assenza del comando.
+
+- **Modello per i manuali scansionati (`ai_vision_model`, opzionale)**:
+  quando il PDF caricato è la scansione di un libretto (niente testo
+  selezionabile, solo immagini di pagina), la preparazione ha bisogno di un
+  modello che legga le immagini per trascriverle. Il modello di chat
+  configurato sopra spesso non ne è capace: per esempio
+  `deepseek-v4-flash` è solo testo, mentre la sua variante
+  `deepseek-v4-flash-vision-exp` legge anche le pagine. Senza questo
+  campo, i manuali scansionati si trascrivono a mano nella stessa
+  schermata di revisione — tutto il resto (chat, citazioni di pagina)
+  funziona comunque una volta salvato il testo.
+
+  **Dietro un reverse proxy, alza il timeout di lettura su questa rotta.**
+  Preparare un manuale scansionato è **una sola richiesta HTTP** che dentro
+  fa una chiamata al modello **per ogni pagina**: su una scansione di 40
+  pagine la richiesta può restare aperta molti minuti. nginx chiude a 60
+  secondi di default (`proxy_read_timeout`), e la connessione tagliata
+  butta via un lavoro già pagato al provider — le pagine trascritte fino a
+  quel momento non sono ancora state salvate. Un valore generoso
+  (`proxy_read_timeout 1800s;`, o l'equivalente del tuo proxy) sulla rotta
+  `/api/games/{id}/languages/{lang}/media/{mediaId}/extract` evita il
+  problema.
+- **La dettatura richiede HTTPS.** Il campo domanda della chat offre un
+  microfono basato sulla Web Speech API del browser, che i browser
+  restringono ai *secure context*: funziona su `localhost` e dietro HTTPS
+  (un reverse proxy, Caddy, Tailscale), ma **non** su un indirizzo come
+  `http://192.168.1.50:8080` in LAN — il modo più diretto in cui un
+  circolo farebbe girare questa app in sede. Non è un difetto dell'app:
+  è una restrizione del browser sui contesti non cifrati. Senza HTTPS il
+  microfono semplicemente non c'è; la domanda si scrive a mano.
+- **Firefox non supporta la dettatura** (Chrome, Edge e Safari sì): su
+  Firefox il microfono non compare, e la tastiera resta l'unica strada —
+  di nuovo, nessun errore, solo un comando assente.
+- **L'audio della dettatura esce dal dispositivo**: dove disponibile,
+  l'implementazione del browser (per esempio quella di Chrome) manda
+  l'audio ai server del produttore per il riconoscimento vocale — non al
+  server di questa app, e solo nell'istante in cui l'utente tocca il
+  microfono. Il progetto promette "nessun servizio esterno obbligatorio",
+  ed è vero: la dettatura è un optional del browser, non dell'app, ma vale
+  la pena saperlo prima di attivarla, non scoprirlo dopo.
 
 ### Email (SMTP) (opzionale)
 

@@ -33,6 +33,18 @@
 }
 
 :root {
+  /* ATTENZIONE prima di cambiare uno di questi token — --felt, --felt-text,
+     --card-alt o --ink (nelle bolle della chat), oppure --danger o
+     --danger-bg (nella bolla di errore): questi valori sono RICOPIATI A
+     MANO, in esadecimale, dentro `messageStyles` di
+     src/components/ManualChatPanel.vue. deep-chat vive in uno shadow DOM,
+     dove le variabili CSS di questo file non arrivano, e i colori delle
+     bolle della chat vanno passati come valori letterali. Cambiarli qui e
+     non lì lascia la chat con la palette vecchia. (Lo stesso file ricopia
+     a mano anche --card, --card-line, --ink-muted e --accent per il campo
+     di input di deep-chat: ogni occorrenza lì è commentata col nome del
+     token.) */
+
   /* Ground / structural chrome — il feltro verde del tavolo. */
   --felt: #1f4d3a;
   --felt-deep: #143528;
@@ -2065,6 +2077,24 @@ ul.game-grid {
   color: var(--ink-muted);
 }
 
+/* "Dubbi sulle regole?" compare solo sulle schede con un manuale preparato,
+   quindi vive nel corpo della card e non fra le azioni: nella pila in fondo
+   sposterebbe il bottone "Prenota" solo su alcune schede, rompendo proprio
+   l'allineamento che `margin-top: auto` esiste per garantire. */
+.event-game-ask {
+  margin-top: 0.45rem;
+}
+
+.event-game-ask a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.event-game-ask a:hover {
+  text-decoration: underline;
+}
+
 /* Le azioni stanno in fondo alla card: `margin-top: auto` le spinge giù
    qualunque sia l'altezza del nome, così la fila resta allineata. */
 .event-game-actions {
@@ -2666,10 +2696,18 @@ tbody tr:nth-child(3) .rank-medal {
   margin: 0;
 }
 
+/* 44px di lato con l'icona ferma a 1rem: la × è l'unica uscita di una
+   modale su telefono (l'Esc lì non c'è) e la usano le pagine pubbliche —
+   prenotazione e chiedi al manuale. Il `margin-right` negativo compensa il
+   padding cresciuto, così la × resta otticamente a filo della testata come
+   quando era 28px. */
 .modal-close {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin-right: -0.4rem;
   margin-left: auto;
   padding: 0.35rem;
   background: transparent;
@@ -3819,4 +3857,437 @@ tbody tr:nth-child(3) .rank-medal {
   font-family: 'Body', system-ui, sans-serif;
   color: var(--ink-muted);
   overflow-wrap: anywhere;
+}
+
+/* ---------- Chiedi al manuale ---------- */
+
+/* Una colonna sola per default: la sidebar entra solo dove c'è spazio
+   davvero. 1100px = 56rem di colonna leggibile + 22rem di chat + i
+   margini di .app-page. */
+.game-detail-layout {
+  display: block;
+}
+
+@media (min-width: 1100px) {
+  .game-detail-layout.has-chat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 22rem;
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .game-detail-layout.has-chat .game-detail-main {
+    min-width: 0;
+  }
+
+  /* Sticky sotto la topbar (3.25rem), con il suo scroll interno: la
+     colonna di sinistra scorre e la chat resta ferma. */
+  .manual-chat-aside {
+    position: sticky;
+    top: calc(3.25rem + 1rem);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 3.25rem - 3rem);
+    overflow: hidden;
+    background: var(--card);
+    border: 1px solid var(--card-line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+  }
+
+  .manual-chat-aside.is-collapsed {
+    /* Collassata: una barra stretta col titolo ruotato. */
+    align-self: start;
+    max-height: none;
+  }
+
+  /* :has() non è supportato ovunque: sui motori senza, questa regola non
+     si applica e la colonna resta 22rem anche da collassata. Va bene
+     così — è un fallback grazioso, non un bug: il contenuto si nasconde
+     comunque via v-show, cambia solo quanto spazio vuoto resta a destra. */
+  .game-detail-layout.has-chat:has(.manual-chat-aside.is-collapsed) {
+    grid-template-columns: minmax(0, 1fr) 2.75rem;
+  }
+
+  /* Da collassata la barra è larga 44px: il titolo si gira e il chevron gli
+     va sopra invece che di fianco, dove non ci starebbero entrambi. */
+  .manual-chat-aside.is-collapsed .manual-chat-toggle {
+    flex-direction: column;
+    padding: 0.7rem 0.25rem;
+  }
+
+  .manual-chat-aside.is-collapsed .manual-chat-toggle-label {
+    writing-mode: vertical-rl;
+    padding: 0.75rem 0;
+  }
+
+  /* Il chevron punta verso il contenuto: fuori quando è aperta (si chiude a
+     destra), dentro quando è chiusa (si riapre a sinistra). */
+  .manual-chat-aside.is-collapsed .manual-chat-toggle-icon {
+    order: -1;
+    transform: rotate(180deg);
+  }
+
+  .manual-chat-aside-body {
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
+.manual-chat-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.7rem 0.85rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 0.95rem;
+  color: var(--felt-text);
+  background: var(--felt);
+  border: 0;
+  cursor: pointer;
+}
+
+.manual-chat-toggle-icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* La regola globale `button:hover` (0,1,1) batte una classe nuda (0,1,0):
+   senza questa riga il capo verde della chat diventava rosso accento al
+   passaggio del mouse. Stessa eredità che `.loan-row` ha già dovuto
+   rifiutare — chi aggiunge un bottone fuori dal rosso primario dichiara
+   anche il suo hover. */
+.manual-chat-toggle:hover {
+  background: var(--felt-deep);
+}
+
+/* Sul feltro il rosso seme dell'anello di focus sta a 1.3:1: la regola
+   generale vale già per topbar e sidebar, e ogni superficie verde nuova va
+   aggiunta a mano (qui e sulla testata del dialog, più sotto). In più
+   `.manual-chat-aside` ha `overflow: hidden`, quindi l'anello va portato
+   dentro o viene ritagliato. */
+.manual-chat-toggle:focus-visible {
+  outline-color: var(--felt-text);
+  outline-offset: -2px;
+}
+
+.manual-chat-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  padding: 0.85rem;
+}
+
+.manual-chat-note {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+/* `margin-top: auto` porta in fondo l'invito, le tre domande e il campo
+   come un blocco solo: nel dialog a tutto schermo l'intero stato di riposo
+   finisce nella zona che il pollice raggiunge, e lo spazio che resta sopra è
+   proprio quello dove compariranno le risposte — un filo di conversazione
+   ancora vuoto, non un buco. Nella sidebar desktop non c'è spazio libero da
+   distribuire e non cambia niente. */
+.manual-chat-intro {
+  margin: auto 0 0.75rem;
+}
+
+/* Lo stato di riposo occupa tutta l'altezza che ha: nel dialog a tutto
+   schermo questo porta il finto campo in fondo, dove atterrerà quello vero
+   di deep-chat e dove arriva il pollice di chi sta in piedi al tavolo.
+   Prima le tre domande e il campo stavano in cima e i due terzi bassi dello
+   schermo erano avorio vuoto, con l'invito a scrivere fuori portata.
+   Nella sidebar desktop non c'è spazio libero da occupare e nulla cambia. */
+.manual-chat-rest {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Spogliata come `.admin-list`: la regola globale `ul` la vestirebbe da
+   card (fondo, bordo, raggio, ombra, overflow) e `li` metterebbe padding e
+   filetto a ogni riga, incorniciando due volte tre bottoni che sono già
+   pastiglie. */
+.manual-chat-suggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0 0 0.85rem;
+  padding: 0;
+  overflow: visible;
+  list-style: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.manual-chat-suggestions li {
+  display: block;
+  padding: 0;
+  border: 0;
+}
+
+.manual-chat-suggestions button {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  color: var(--ink);
+  text-align: left;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+/* `li button:hover` (0,1,2) tingeva la domanda suggerita di `--danger-bg`
+   col bordo `--danger`: il colore di "Rimuovi" sul controllo più
+   accogliente della funzione. Al passaggio del mouse il bordo si chiude
+   sull'accento, come fa il tratteggio di `.add-card`: la pastiglia si fa
+   azione. */
+.manual-chat-suggestions button:hover {
+  background: var(--card-alt);
+  border-color: var(--accent);
+}
+
+/* Ha le misure del campo vero, così montare deep-chat non fa saltare il
+   layout. */
+.manual-chat-fakeinput {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  color: var(--ink-muted);
+  text-align: left;
+  background: var(--bg);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  cursor: text;
+}
+
+/* Anche qui il rosso di `button:hover` andava respinto: solo il bordo si
+   accende, il fondo resta quello di un campo a riposo. */
+.manual-chat-fakeinput:hover {
+  background: var(--bg);
+  border-color: var(--accent);
+}
+
+/* Bottone tondo, in basso al centro. env(safe-area-inset-bottom) lo tiene
+   sopra la barra home dell'iPhone. */
+.manual-chat-fab {
+  position: fixed;
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 25;
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  padding: 0.7rem 1.15rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 0.95rem;
+  color: var(--felt-text);
+  background: var(--felt);
+  border: 1px solid var(--felt-line);
+  border-radius: 999px;
+  box-shadow: var(--shadow-lift);
+  transform: translateX(-50%);
+  cursor: pointer;
+}
+
+/* Come `.manual-chat-toggle`: senza un hover proprio, `button:hover`
+   colorava di rosso accento il bottone verde. L'anello di focus qui invece
+   resta il rosso della regola generale, e va bene: `outline-offset: 2px` lo
+   disegna *fuori* dal bottone, sul cartoncino della pagina, dove sta a
+   6.4:1. */
+.manual-chat-fab:hover {
+  background: var(--felt-deep);
+}
+
+.manual-chat-fab svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+/* Il bottone non deve coprire l'ultimo contenuto della pagina. La riserva
+   include env(safe-area-inset-bottom) come lo fa il bottone stesso: senza,
+   su un iPhone con home indicator il margine cresce sotto al bottone ma
+   non sotto al contenuto, e il bottone torna a coprirlo. */
+@media (max-width: 1099px) {
+  .game-detail-layout.has-chat {
+    padding-bottom: calc(4rem + env(safe-area-inset-bottom));
+  }
+}
+
+/* Il dialog occupa il viewport: dvh e non vh, perché su iOS Safari vh
+   include la barra degli indirizzi e taglia l'input fuori schermo. */
+/* [open] e non solo .manual-chat-dialog: senza il selettore d'attributo
+   questa regola vince sempre sulla regola nativa `dialog:not([open]) {
+   display: none }` (gli stili dell'autore battono quelli dello user
+   agent a parità di tutto), e chiudere il dialog (che rimane montato fra
+   un'apertura e l'altra, vedi ManualChat.vue) smette di nasconderlo:
+   resta a piena pagina sotto il bottone tondo. Verificato in browser. */
+.manual-chat-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: 0;
+  padding-bottom: env(safe-area-inset-bottom);
+  color: var(--ink);
+  background: var(--card);
+  border: 0;
+}
+
+.manual-chat-dialog-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 0.85rem;
+  background: var(--felt);
+  border-bottom: 1px solid var(--felt-line);
+}
+
+.manual-chat-dialog-head h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--felt-text);
+}
+
+.manual-chat-dialog-head .modal-close {
+  color: var(--felt-text);
+}
+
+/* L'hover globale di `.modal-close` porta il fondo a `--card-alt`: su
+   feltro, con il testo rimasto `--felt-text`, la × spariva (1.05:1).
+   Sul verde il rilievo lo dà lo stesso bianco al 14% dei filetti. */
+.manual-chat-dialog-head .modal-close:hover {
+  color: var(--felt-text);
+  background: var(--felt-line);
+}
+
+.manual-chat-dialog-head .modal-close:focus-visible {
+  outline-color: var(--felt-text);
+}
+
+.manual-chat-widget {
+  flex: 1;
+  width: 100%;
+  min-height: 18rem;
+  border: 0;
+  background-color: transparent;
+}
+
+/* deep-chat non eredita l'altezza da `flex: 1`: il suo `#container` interno
+   resta al default di 350px e si incolla in cima, lasciando il campo di
+   testo a mezzo schermo con la metà bassa del dialog vuota (osservato in
+   browser, misurato: elemento 738px, container 350px). Con un'altezza
+   dichiarata il container la segue e il campo torna in fondo.
+   **Solo nel dialog**: nella sidebar la stessa riga fa il danno opposto,
+   il container scende a 171px dentro un elemento da 270 e resta una fascia
+   avorio morta sotto al campo (anche questo misurato, dopo averlo prima
+   dato per scontato). Lì deep-chat si dimensiona da sé e va bene così. */
+.manual-chat-dialog .manual-chat-widget {
+  height: 100%;
+}
+
+/* ---------- Preparazione manuale (admin) ---------- */
+
+.manual-prep {
+  margin-top: 0.85rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--card-line);
+}
+
+.manual-prep-title {
+  margin: 0 0 0.3rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.manual-prep-state {
+  margin: 0 0 0.5rem;
+  font-family: 'Data', ui-monospace, monospace;
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+}
+
+.manual-prep-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+/* Un manuale di quaranta pagine è quaranta caselle: un tetto in altezza con
+   scroll proprio tiene i bottoni di salvataggio raggiungibili senza dover
+   scorrere oltre l'intera trascrizione ogni volta. Il tetto è relativo alla
+   finestra, non fisso: si corregge una trascrizione confrontandola col PDF
+   accanto, e 32rem su un laptop lasciavano metà schermo inutilizzato mentre
+   la finestra di lettura restava una fessura. */
+.manual-prep-pages {
+  max-height: min(70vh, 48rem);
+  overflow-y: auto;
+  padding-right: 0.35rem;
+  margin: 0.75rem 0;
+}
+
+.manual-prep-page {
+  margin-bottom: 0.75rem;
+}
+
+/* L'etichetta resta appesa in cima mentre si scorre dentro una pagina
+   lunga: chi confronta la trascrizione col PDF deve sempre sapere quale
+   pagina sta guardando, e il numero altrimenti esce dalla finestra al primo
+   scroll. Il fondo pieno serve: il testo ci passa sotto. */
+.manual-prep-page label {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: block;
+  padding: 0.2rem 0;
+  margin-bottom: 0.2rem;
+  font-family: 'Data', ui-monospace, monospace;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+  background: var(--card);
+}
+
+/* Non `--danger`: una pagina vuota è la cosa attesa quando nessun modello di
+   visione è configurato (è la via dell'inserimento a mano) e quando una
+   pagina sola di uno scan non riesce. Non c'è niente di rotto da riparare,
+   c'è una casella da riempire — quindi l'oro dei distintivi, la stessa
+   scelta di `.loan-warning`, dove il rosso avrebbe detto "non puoi". */
+.manual-prep-page-empty {
+  color: var(--gold-text);
+  font-weight: 600;
+}
+
+.manual-prep-page textarea {
+  width: 100%;
+  font-family: 'Data', ui-monospace, monospace;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  /* Progressivo: dove è supportato (Chrome/Edge) la casella prende
+     l'altezza del testo che contiene entro questi limiti, invece di dare a
+     ogni pagina le stesse otto righe — troppe per una pagina di due righe,
+     una fessura con scroll interno per una da sessanta. Altrove decide
+     `rows="8"` come prima. */
+  field-sizing: content;
+  min-height: 6rem;
+  max-height: 26rem;
 }
