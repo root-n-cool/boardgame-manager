@@ -80,8 +80,17 @@ func TestReplaceSource_CascadesWhenTheMediaGoes(t *testing.T) {
 	var chunks, stillIndexed int
 	conn.QueryRow(`SELECT COUNT(*) FROM game_source_chunk`).Scan(&chunks)
 	conn.QueryRow(`SELECT COUNT(*) FROM game_source_chunk_fts`).Scan(&stillIndexed)
-	if chunks != 0 || stillIndexed != 0 {
-		t.Fatalf("la cascata ha lasciato %d chunk e %d righe indicizzate", chunks, stillIndexed)
+	// COUNT(*) da solo non basta: su una tabella FTS5 in external content,
+	// uno scan senza MATCH deve rileggere il testo dalla tabella di contenuto
+	// esterna via content_rowid, quindi salta da solo le righe il cui
+	// contenuto è sparito — anche se il trigger che tiene in pari l'indice
+	// non fosse mai scattato. Solo una query MATCH reale, che legge dalle
+	// strutture interne dell'indice, smaschera una voce fantasma lasciata da
+	// un trigger rotto.
+	var stillMatchable int
+	conn.QueryRow(`SELECT COUNT(*) FROM game_source_chunk_fts WHERE game_source_chunk_fts MATCH 'cinque'`).Scan(&stillMatchable)
+	if chunks != 0 || stillIndexed != 0 || stillMatchable != 0 {
+		t.Fatalf("la cascata ha lasciato %d chunk, %d righe indicizzate, %d ancora trovabili via MATCH", chunks, stillIndexed, stillMatchable)
 	}
 }
 
@@ -318,6 +327,50 @@ func TestSummary_GroupsHeadingsPerSourceForThePromptIndex(t *testing.T) {
 	}
 	if len(byRef["Errata"]) != 1 || byRef["Errata"][0] != "Correzione punteggio" {
 		t.Fatalf("titoli di 'Errata' = %v", byRef["Errata"])
+	}
+}
+
+func TestSummary_KeepsDistinctMediaSeparateWhenReferencesCollide(t *testing.T) {
+	// Regressione: raggruppare Sources per `reference` invece che per
+	// game_media_id fa collassare in una voce sola due media distinti che
+	// condividono la stessa reference — cosa che può succedere finché il
+	// Task 5 non le disambigua in scrittura. Una struttura di lettura non
+	// deve dipendere da quell'invariante mantenuto due task più in là.
+	conn := newTestDB(t)
+	store := manuals.NewStore(conn)
+	ctx := context.Background()
+	gameID, mediaA := seed(t, conn, "Wingspan", "it", "Regolamento")
+	_, mediaB := seed(t, conn, "Wingspan2", "it", "Regolamento")
+
+	if err := store.ReplaceSource(ctx, gameID, &mediaA, []manuals.SourceChunk{
+		{ReferenceType: "document", Reference: "Regolamento", Heading: "Preparazione", Seq: 0, Text: "T1"},
+	}); err != nil {
+		t.Fatalf("replace A: %v", err)
+	}
+	if err := store.ReplaceSource(ctx, gameID, &mediaB, []manuals.SourceChunk{
+		{ReferenceType: "document", Reference: "Regolamento", Heading: "Fase finale", Seq: 0, Text: "T2"},
+	}); err != nil {
+		t.Fatalf("replace B: %v", err)
+	}
+
+	sum, err := store.Summary(ctx, gameID)
+	if err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if len(sum.Sources) != 2 {
+		t.Fatalf("due media con la stessa reference sono collassati in %d fonte/i invece di 2: %+v", len(sum.Sources), sum.Sources)
+	}
+	var headings []string
+	for _, s := range sum.Sources {
+		headings = append(headings, s.Headings...)
+	}
+	hasPreparazione, hasFaseFinale := false, false
+	for _, h := range headings {
+		hasPreparazione = hasPreparazione || h == "Preparazione"
+		hasFaseFinale = hasFaseFinale || h == "Fase finale"
+	}
+	if !hasPreparazione || !hasFaseFinale {
+		t.Fatalf("titoli persi nel collasso: %v", headings)
 	}
 }
 

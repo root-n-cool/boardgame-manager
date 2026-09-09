@@ -142,7 +142,7 @@ func (s *Store) Summary(ctx context.Context, gameID int64) (SourceSummary, error
 		`SELECT reference, game_media_id, COALESCE(heading, '')
 		 FROM game_source_chunk
 		 WHERE game_id = ?
-		 ORDER BY reference, seq`, gameID)
+		 ORDER BY game_media_id, reference, seq`, gameID)
 	if err != nil {
 		return SourceSummary{}, fmt.Errorf("source summary: %w", err)
 	}
@@ -175,15 +175,30 @@ func (s *Store) Summary(ctx context.Context, gameID int64) (SourceSummary, error
 			out.Headings = append(out.Headings, heading)
 		}
 
-		i, ok := sourceIndex[reference]
+		// Il gruppo per l'indice del prompt è per game_media_id, non per
+		// reference: due media distinti possono condividere temporaneamente
+		// la stessa reference (la disambiguazione in scrittura è del Task
+		// 5, che non è ancora stato fatto quando questo codice gira), e una
+		// struttura di lettura non deve dipendere da un invariante
+		// mantenuto due task più in là — altrimenti due manuali senza
+		// titolo distinto collasserebbero in una voce sola. Una FAQ non ha
+		// game_media_id: per quella riga la reference (l'URL della
+		// conversazione) fa da chiave, perché è l'unico identificatore che
+		// possiede — da cui il criterio doppio.
+		sourceKey := "faq:" + reference
+		if mediaID.Valid {
+			sourceKey = fmt.Sprintf("media:%d", mediaID.Int64)
+		}
+
+		i, ok := sourceIndex[sourceKey]
 		if !ok {
 			out.Sources = append(out.Sources, SourceHeadings{Reference: reference})
 			i = len(out.Sources) - 1
-			sourceIndex[reference] = i
-			seenPerSource[reference] = map[string]bool{}
+			sourceIndex[sourceKey] = i
+			seenPerSource[sourceKey] = map[string]bool{}
 		}
-		if !seenPerSource[reference][key] {
-			seenPerSource[reference][key] = true
+		if !seenPerSource[sourceKey][key] {
+			seenPerSource[sourceKey][key] = true
 			out.Sources[i].Headings = append(out.Sources[i].Headings, heading)
 		}
 	}
