@@ -93,20 +93,32 @@ func (s *Store) SaveEditedQuestions(ctx context.Context, gameID int64, texts []s
 
 	for i, text := range texts {
 		// Il testo attuale, se c'è: serve a decidere se questo salvataggio
-		// è una modifica o un no-op.
+		// è una modifica o un no-op. exists distingue "nessuna riga" da
+		// "la riga esiste e vale stringa vuota" — confonderli è il bug del
+		// round 1: un testo in arrivo vuoto su una posizione senza riga
+		// veniva scambiato per "invariato" (current defaultava a ""), e
+		// l'UPDATE che ne seguiva non creava mai la riga mancante.
 		var current string
 		err := tx.QueryRowContext(ctx,
 			`SELECT text FROM game_suggested_question WHERE game_id = ? AND position = ?`,
 			gameID, i).Scan(&current)
+		exists := true
 		switch {
 		case err == sql.ErrNoRows:
-			current = "" // nessuna riga: qualunque testo è nuovo, quindi a mano
+			exists = false
 		case err != nil:
 			return fmt.Errorf("read current question %d: %w", i, err)
 		}
 
-		edited := 1
-		if text == current {
+		// edited = 1 solo per un testo NON VUOTO diverso da quanto
+		// salvato (o assente). Un testo vuoto non è mai "edited": marcare
+		// così uno slot vuoto lo congelerebbe per sempre, perché
+		// SaveGeneratedQuestions salta le righe già edited — nessuna
+		// rigenerazione lo riempirebbe più.
+		changed := !exists || text != current
+		edited := changed && text != ""
+
+		if exists && !changed {
 			// Rimandata invariata: conserva il flag che aveva, non
 			// promuoverla.
 			if _, err := tx.ExecContext(ctx,
@@ -119,7 +131,7 @@ func (s *Store) SaveEditedQuestions(ctx context.Context, gameID int64, texts []s
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO game_suggested_question (game_id, position, text, edited)
 			 VALUES (?, ?, ?, ?)
-			 ON CONFLICT(game_id, position) DO UPDATE SET text = excluded.text, edited = 1`,
+			 ON CONFLICT(game_id, position) DO UPDATE SET text = excluded.text, edited = excluded.edited`,
 			gameID, i, text, edited); err != nil {
 			return fmt.Errorf("upsert question %d: %w", i, err)
 		}

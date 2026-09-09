@@ -169,6 +169,42 @@ func TestSaveEditedQuestions_UpsertsOnAGameWithNoRows(t *testing.T) {
 	}
 }
 
+// TestSaveEditedQuestions_EmptyTextOnAGameWithNoRowsStillCreatesThreeRows è
+// il bug di round 1: su un gioco senza righe, un testo vuoto in arrivo
+// veniva confuso col "nessuna riga esiste" (current defaultava a ""), e
+// l'UPDATE che ne seguiva non toccava nessuna riga. Restavano solo due
+// domande invece di tre. La riga per la posizione vuota deve comunque
+// esistere, e non deve mai diventare edited: altrimenti una rigenerazione
+// non la riempirebbe mai più.
+func TestSaveEditedQuestions_EmptyTextOnAGameWithNoRowsStillCreatesThreeRows(t *testing.T) {
+	conn := newTestDB(t)
+	store := manuals.NewStore(conn)
+	ctx := context.Background()
+	gameID := seedGameForQuestions(t, conn)
+
+	if err := store.SaveEditedQuestions(ctx, gameID,
+		[]string{"", "Seconda?", "Terza?"}); err != nil {
+		t.Fatalf("save edited con testo vuoto: %v", err)
+	}
+
+	got, err := store.SuggestedQuestions(ctx, gameID)
+	if err != nil {
+		t.Fatalf("suggested questions: %v", err)
+	}
+	if len(got) != 3 {
+		t.Fatalf("attese 3 domande anche con un testo vuoto, ottenute %d: %v", len(got), got)
+	}
+	if got[0].Text != "" {
+		t.Fatalf("posizione 0: atteso testo vuoto, ottenuto %q", got[0].Text)
+	}
+	if got[0].Edited {
+		t.Fatal("posizione 0: un testo vuoto non deve mai diventare edited")
+	}
+	if !got[1].Edited || !got[2].Edited {
+		t.Fatalf("posizioni 1 e 2: testi non vuoti scritti a mano devono essere edited, ottenuto %v", got)
+	}
+}
+
 // TestSaveAllQuestions_OverwritesEditedToo: è il pulsante "rigenera", che
 // l'admin premette deliberatamente — quindi sovrascrive tutto e azzera i
 // flag.
