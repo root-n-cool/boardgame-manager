@@ -3,17 +3,27 @@ import { ref } from 'vue'
 import type { GameMediaInfo } from '../utils/game'
 
 /**
- * La griglia dei materiali di una lingua: manuali PDF, link e tutorial
- * YouTube. In sola lettura sulla scheda pubblica, con rimozione e tessera
- * "aggiungi" su quella di modifica.
+ * La griglia dei materiali di una lingua: manuali (PDF, txt, md o docx),
+ * link e tutorial YouTube. In sola lettura sulla scheda pubblica, con
+ * rimozione e tessera "aggiungi" su quella di modifica.
  */
 const props = defineProps<{ media: GameMediaInfo[]; editable?: boolean }>()
 const emit = defineEmits<{ add: []; remove: [id: number, title: string] }>()
 
 const mediaKindLabels: Record<string, string> = {
-  file: 'PDF',
   link: 'Link',
   youtube: 'YouTube',
+}
+
+// Un file può essere PDF, txt, md o docx: l'etichetta legge l'estensione
+// vera invece di dare per scontato "PDF" come quando l'unico formato
+// accettato era quello.
+function mediaKindLabel(m: GameMediaInfo): string {
+  if (m.type !== 'file') {
+    return mediaKindLabels[m.type] ?? m.type
+  }
+  const ext = m.url.split('.').pop()
+  return ext && ext.length <= 5 ? ext.toUpperCase() : 'File'
 }
 
 function mediaHref(m: GameMediaInfo): string {
@@ -110,7 +120,7 @@ function onThumbError(m: GameMediaInfo) {
             </svg>
           </span>
           <h3>{{ mediaTitle(m) }}</h3>
-          <p class="media-kind">{{ mediaKindLabels[m.type] ?? m.type }}</p>
+          <p class="media-kind">{{ mediaKindLabel(m) }}</p>
         </a>
         <button
           v-if="editable"

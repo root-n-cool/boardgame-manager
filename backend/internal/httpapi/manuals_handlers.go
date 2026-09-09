@@ -532,18 +532,19 @@ func indexErrorResponse(err error) (int, string) {
 				`Configuralo nel campo "Modello per i manuali scansionati" nelle impostazioni.`
 	case errors.Is(err, errPDFNoContent):
 		return http.StatusUnprocessableEntity,
-			"Questo PDF non ha né testo né immagini leggibili: prova a convertirlo in un altro formato (per esempio in .docx o .txt)."
+			"Questo PDF non ha né testo né immagini leggibili: se hai il documento originale, prova a convertirlo in .docx o .txt invece che in PDF."
 	case errors.Is(err, ai.ErrSegmentationRejected):
 		return http.StatusUnprocessableEntity,
-			"La lettura di questo file non è affidabile: il modello sembra aver riscritto il testo invece di limitarsi a segmentarlo. Riprova."
+			"La lettura di questo file non è affidabile: il risultato non corrisponde al testo originale del documento, come se il modello lo avesse riassunto invece di limitarsi ad aggiungere titoli. Riprova; se continua a succedere, prova un file più semplice o in un altro formato."
 	case errors.Is(err, manuals.ErrDocumentXMLTooLarge):
 		return http.StatusUnprocessableEntity,
 			"Questo file .docx è troppo grande per essere letto: prova a semplificarlo o a esportarlo in un altro formato."
 	case errors.Is(err, manuals.ErrDocxNoText):
 		return http.StatusUnprocessableEntity,
-			"Questo file .docx non contiene testo: verifica che il documento abbia davvero del contenuto scritto."
+			"Questo file .docx non contiene testo: se sono pagine scansionate o immagini incollate nel documento, salvalo come PDF invece di .docx — quel formato legge anche le immagini."
 	default:
-		return http.StatusUnprocessableEntity, "Non è stato possibile leggere questo file."
+		return http.StatusUnprocessableEntity,
+			"Non è stato possibile leggere questo file: riprova, oppure prova a salvarlo in un altro formato tra quelli supportati (PDF, txt, md, docx)."
 	}
 }
 

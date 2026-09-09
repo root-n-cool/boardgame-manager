@@ -233,7 +233,7 @@ function openMediaModal() {
 }
 
 /** Il file scelto sull'indice BGG si scarica dal browser dell'admin, non da
- *  qui: al ritorno nel modale il titolo è già scritto e resta solo il PDF da
+ *  qui: al ritorno nel modale il titolo è già scritto e resta solo il file da
  *  allegare. */
 function onBggFilePicked(file: BggFile) {
   fileTitle.value = file.title
@@ -246,7 +246,7 @@ async function submitMedia() {
   try {
     if (mediaKind.value === 'file') {
       if (!uploadFile.value) {
-        mediaError.value = 'Seleziona un file PDF'
+        mediaError.value = 'Seleziona un file'
         return
       }
       const formData = new FormData()
@@ -595,7 +595,7 @@ onMounted(async () => {
         <div class="segmented" role="radiogroup" aria-label="Tipo di materiale">
           <label :class="{ active: mediaKind === 'file' }">
             <input v-model="mediaKind" type="radio" value="file" />
-            File PDF
+            File
           </label>
           <label :class="{ active: mediaKind === 'link' }">
             <input v-model="mediaKind" type="radio" value="link" />
