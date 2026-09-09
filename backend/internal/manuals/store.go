@@ -28,15 +28,6 @@ const hitsPerKeyword = 2
 // qualunque chiamante, oggi e domani.
 const maxKeywords = 12
 
-// maxSuggestionHeadings è quanti titoli di sezione escono verso la scheda
-// pubblica. La chat ne usa tre per costruire le domande suggerite: un
-// manuale di quaranta pagine non ha nessun motivo di mandarne quaranta al
-// telefono di chi sta al tavolo. Se ne mandano qualcuno in più di tre
-// perché il pannello scarta i doppioni (due sezioni con lo stesso titolo, o
-// due titoli che la sua tabella mappa sulla stessa domanda) e con
-// esattamente tre ripiegherebbe sulle domande fisse al primo doppione.
-const maxSuggestionHeadings = 8
-
 type Store struct {
 	db *sql.DB
 }
@@ -69,12 +60,12 @@ type SourceHeadings struct {
 
 // SourceSummary è quel che la scheda gioco e il prompt devono sapere delle
 // fonti di un gioco: se ce n'è almena una (governa, col provider
-// configurato, la comparsa della chat), i titoli distinti per la scheda
-// pubblica, lo stesso raggruppato per fonte per l'indice nel prompt, e
-// quanti chunk ha ciascun media per il pannello admin.
+// configurato, la comparsa della chat), i titoli distinti per generare le
+// domande suggerite, lo stesso raggruppato per fonte per l'indice nel
+// prompt, e quanti chunk ha ciascun media per il pannello admin.
 type SourceSummary struct {
 	HasChunks bool
-	Headings  []string         // distinti, in ordine di seq — per il JSON del frontend
+	Headings  []string         // distinti, in ordine di seq — input di ai.SuggestQuestions
 	Sources   []SourceHeadings // per l'indice del prompt, raggruppato per fonte
 	PerMedia  map[int64]int    // game_media_id → numero di chunk, per il pannello admin
 }
@@ -173,7 +164,7 @@ func (s *Store) Summary(ctx context.Context, gameID int64) (SourceSummary, error
 		}
 
 		key := strings.ToLower(heading)
-		if !seenHeadings[key] && len(out.Headings) < maxSuggestionHeadings {
+		if !seenHeadings[key] {
 			seenHeadings[key] = true
 			out.Headings = append(out.Headings, heading)
 		}

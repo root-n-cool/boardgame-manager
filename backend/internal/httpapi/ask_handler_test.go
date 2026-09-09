@@ -594,74 +594,63 @@ func TestGameDetail_ExposesCanAsk(t *testing.T) {
 	}
 }
 
-func TestGameDetail_ExposesTheManualHeadings(t *testing.T) {
-	// I titoli di sezione alimentano le domande suggerite della chat
-	// ("Cosa dice il manuale su «Fase di Upkeep»?"). Senza questo campo il
-	// pannello ripiegava per sempre sulle tre domande fisse, mentre
-	// DESIGN.md descriveva un comportamento che non poteva accadere.
-	server, conn := newTestServerWithDB(t)
+// TestGameDetail_ExposesSuggestedQuestionsNotHeadings: la scheda pubblica
+// manda le domande già formulate, non i titoli di sezione da cui il
+// frontend le costruiva con una tabella fissa. Solo le domande NON vuote
+// escono: il frontend ripiega sulle domande fisse quando la lista è vuota,
+// e tre stringhe vuote non sono una lista vuota.
+func TestGameDetail_ExposesSuggestedQuestionsNotHeadings(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
 	router := httpapi.NewRouter(server)
-	gameID := seedGameWithPreparedManual(t, conn)
+	gameID := seedBareGame(t, server)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/games/"+strconv.FormatInt(gameID, 10), nil)
+	if err := server.Manuals.SaveGeneratedQuestions(context.Background(), gameID,
+		[]string{"Come si piazza una tessera?", "Quando finisce?", "Quanti punti?"}); err != nil {
+		t.Fatalf("save generated: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d", gameID), nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Fatalf("GET game: %d %s", rec.Code, rec.Body.String())
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
-	var body struct {
-		SourceHeadings []string `json:"sourceHeadings"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("risposta non JSON: %v", err)
 	}
-	if len(body.SourceHeadings) != 2 {
-		t.Fatalf("attesi i 2 titoli del manuale, ottenuti %v", body.SourceHeadings)
+	if _, ok := resp["sourceHeadings"]; ok {
+		t.Fatal("sourceHeadings non deve più esistere nella risposta")
 	}
-	if body.SourceHeadings[0] != "Fase di Upkeep" || body.SourceHeadings[1] != "Fine partita" {
-		t.Fatalf("titoli sbagliati o fuori ordine di pagina: %v", body.SourceHeadings)
+	qs, ok := resp["suggestedQuestions"].([]any)
+	if !ok {
+		t.Fatalf("suggestedQuestions manca o non è una lista: %s", rec.Body.String())
+	}
+	if len(qs) != 3 || qs[0] != "Come si piazza una tessera?" {
+		t.Fatalf("domande inattese: %v", qs)
 	}
 }
 
-func TestGameDetail_CapsTheManualHeadings(t *testing.T) {
-	// Un manuale di quaranta pagine non deve mandare quaranta titoli al
-	// telefono di chi sta al tavolo per costruirne tre domande.
-	server, conn := newTestServerWithDB(t)
+func TestGameDetail_SuggestedQuestionsIsAlwaysAnArray(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
 	router := httpapi.NewRouter(server)
-	gameID := seedGameWithPreparedManual(t, conn)
+	gameID := seedBareGame(t, server)
 
-	// Si riscrive il manuale con quaranta pagine, ognuna col suo titolo.
-	var mediaID int64
-	if err := conn.QueryRow(`SELECT id FROM game_media LIMIT 1`).Scan(&mediaID); err != nil {
-		t.Fatalf("media: %v", err)
-	}
-	chunks := make([]manuals.SourceChunk, 0, 40)
-	for i := 1; i <= 40; i++ {
-		chunks = append(chunks, manuals.SourceChunk{
-			ReferenceType: "document", Reference: "Regolamento base",
-			ReferenceDetail: fmt.Sprintf("pagina %d", i),
-			Heading:         fmt.Sprintf("Sezione %d", i),
-			LanguageCode:    "it", Seq: i - 1,
-			Text: fmt.Sprintf("Testo della sezione numero %d.", i),
-		})
-	}
-	if err := manuals.NewStore(conn).ReplaceSource(
-		context.Background(), gameID, &mediaID, chunks); err != nil {
-		t.Fatalf("replace: %v", err)
-	}
-
-	req := httptest.NewRequest(http.MethodGet, "/api/games/"+strconv.FormatInt(gameID, 10), nil)
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d", gameID), nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
-	var body struct {
-		SourceHeadings []string `json:"sourceHeadings"`
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("risposta non JSON: %v", err)
 	}
-	json.Unmarshal(rec.Body.Bytes(), &body)
-	if len(body.SourceHeadings) == 0 {
-		t.Fatal("nessun titolo: la scheda non ha di che costruire le domande")
+	qs, ok := resp["suggestedQuestions"].([]any)
+	if !ok {
+		t.Fatalf("un gioco senza domande deve mandare una lista vuota, non null: %s", rec.Body.String())
 	}
-	if len(body.SourceHeadings) > 8 {
-		t.Fatalf("%d titoli mandati alla scheda pubblica: nessun tetto", len(body.SourceHeadings))
+	if len(qs) != 0 {
+		t.Fatalf("attesa lista vuota, ottenuta %v", qs)
 	}
 }
 
