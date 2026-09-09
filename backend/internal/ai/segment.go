@@ -8,13 +8,20 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
-// SegmentWindowMaxChars è il tetto di caratteri per finestra mandata al
-// modello. Un file senza struttura (.txt, o un PDF con layer testo) può
-// essere grande quanto tutto il manuale: oltre questa soglia il testo si
-// spezza in più finestre (vedi splitIntoWindows), ciascuna segmentata con
-// una propria chiamata.
+// SegmentWindowMaxChars è il tetto per finestra mandata al modello,
+// misurato in BYTE (len() su una stringa Go conta byte, non rune): su
+// testo accentato — cioè su qualunque regolamento italiano — la finestra
+// effettiva copre quindi meno di 60.000 caratteri veri. È innocuo (più
+// conservativo, mai il contrario) e deliberato: contare le rune per
+// tenere il tetto esatto non vale la complessità in più, dato che il
+// margine perso è minimo rispetto al tetto stesso. Un file senza
+// struttura (.txt, o un PDF con layer testo) può essere grande quanto
+// tutto il manuale: oltre questa soglia il testo si spezza in più
+// finestre (vedi splitIntoWindows), ciascuna segmentata con una propria
+// chiamata.
 const SegmentWindowMaxChars = 60000
 
 // segmentTimeout è generoso quanto transcribeTimeout: una finestra da
@@ -219,6 +226,20 @@ func splitIntoWindows(text string, maxChars int) []string {
 		}
 		if cut < 0 {
 			cut = maxChars
+			// Il taglio di fallback cade a un offset di byte qualunque:
+			// su testo accentato può capitare in mezzo ai byte che
+			// compongono una rune multi-byte (una "à", una "è", ...).
+			// Una stringa Go tagliata così contiene UTF-8 non valido, e
+			// json.Marshal la sana in silenzio sostituendo i byte
+			// incriminati con U+FFFD — la parola a cavallo del taglio
+			// arriverebbe mutilata al modello senza nessun errore
+			// visibile: esattamente la corruzione silenziosa che questo
+			// task esiste per prevenire, presa da un altro canale.
+			// Si arretra quindi fino al confine di rune valido più
+			// vicino, mai oltre l'inizio della finestra.
+			for cut > 0 && cut < len(remaining) && !utf8.RuneStart(remaining[cut]) {
+				cut--
+			}
 		}
 		windows = append(windows, remaining[:cut])
 		remaining = strings.TrimLeft(remaining[cut:], "\n")
