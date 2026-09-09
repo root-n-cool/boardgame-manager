@@ -4265,3 +4265,57 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--ink);
 }
 
+/* Le tre domande di riposo della chat, sotto la lista dei documenti nello
+   stesso `.panel-card`: un filetto in alto le separa come farebbe un
+   secondo foglio, senza raddoppiare bordo e ombra. */
+.suggested-questions {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--card-line);
+}
+
+.suggested-questions h3 {
+  margin: 0 0 0.3rem;
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.suggested-questions-list {
+  list-style: none;
+  margin: 0.75rem 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.suggested-questions-list li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.suggested-questions-list input {
+  flex: 1 1 16rem;
+}
+
+/* Stessa pastiglia neutra di `.lang-chip`: non è un allarme, dice solo da
+   dove viene la domanda — perché un reindex non l'ha cambiata. */
+.suggested-questions-badge {
+  flex: none;
+  font-family: 'Data', monospace;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--ink-muted);
+  background: var(--card-alt);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+}
+
+.suggested-questions-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+

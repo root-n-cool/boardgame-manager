@@ -7,6 +7,7 @@ import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import BggFilesPicker, { type BggFile } from '../components/BggFilesPicker.vue'
 import ManualPrepPanel from '../components/ManualPrepPanel.vue'
+import SuggestedQuestionsPanel from '../components/SuggestedQuestionsPanel.vue'
 import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
 
 const route = useRoute()
@@ -548,7 +549,7 @@ onMounted(async () => {
                click — una volta sola, non per ogni riga. -->
           <p v-if="aiConfigured" class="field-hint">
             Per un file di testo dura pochi secondi; per una scansione lunga può
-            richiedere alcuni minuti, una pagina alla volta — resta su questa
+            richiedere alcuni minuti, poche pagine alla volta — resta su questa
             pagina finché non finisce.
           </p>
           <!-- Senza provider il motivo è pratico, non tecnico: qui non c'è
@@ -577,6 +578,8 @@ onMounted(async () => {
           Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
           sezione Media qui sopra.
         </p>
+
+        <SuggestedQuestionsPanel :game-id="game.id" :ai-configured="aiConfigured" />
       </section>
     </template>
 
