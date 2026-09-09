@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -86,7 +87,7 @@ func (c *HTTPClient) Transcribe(ctx context.Context, jpeg []byte, pageNumber int
 		return "", err
 	}
 
-	out, err := c.postChat(ctx, payload, transcribeTimeout)
+	out, err := c.postChatRetrying(ctx, payload, transcribeTimeout)
 	if err != nil {
 		return "", err
 	}
@@ -101,6 +102,72 @@ func (c *HTTPClient) Transcribe(ctx context.Context, jpeg []byte, pageNumber int
 		return "", fmt.Errorf("il modello non ha restituito testo per la pagina %d", pageNumber)
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// transcribeBackoff è l'attesa fra i tentativi di trascrizione di UNA
+// pagina, quando il provider non dice lui quanto aspettare. La sua
+// lunghezza è anche il numero di tentativi in più oltre il primo: tre
+// tentativi in tutto, cioè al più 3 secondi d'attesa aggiunti a una
+// pagina, contro i 120 di transcribeTimeout.
+//
+// Due retry e non di più perché la parallelizzazione li rende frequenti,
+// non rari: se cinque pagine insieme prendono un 429, riprovarle a
+// scaglioni distanziati risolve; se il provider è davvero in ginocchio,
+// insistere non lo rimette in piedi e l'admin deve vedere l'errore.
+var transcribeBackoff = [...]time.Duration{1 * time.Second, 2 * time.Second}
+
+// maxRetryAfter limita quanto si onora un Retry-After. È un numero che
+// arriva dalla rete: un provider confuso che chiede un'ora terrebbe
+// occupata la request HTTP dell'admin fino al timeout, con
+// l'indicizzazione ferma e nessuna spiegazione a schermo.
+const maxRetryAfter = 20 * time.Second
+
+// retryDelay è quanto aspettare dopo il tentativo numero attempt (0-based)
+// fallito con err. È una funzione pura, separata dal ciclo che dorme,
+// così la politica si verifica senza aspettare i secondi veri.
+//
+// Il Retry-After del provider vince sull'attesa di base in ENTRAMBE le
+// direzioni: se lui sa dire quando riprovare, ne sa più di noi.
+func retryDelay(attempt int, err *StatusError) time.Duration {
+	delay := transcribeBackoff[attempt]
+	if err.RetryAfter > 0 {
+		delay = err.RetryAfter
+		if delay > maxRetryAfter {
+			delay = maxRetryAfter
+		}
+	}
+	return delay
+}
+
+// postChatRetrying riprova una richiesta di trascrizione sugli errori
+// transitori del provider. È usata SOLO da
+// Transcribe, e deliberatamente: è la sola chiamata che si fa N volte per
+// un unico documento, quindi la sola in cui un 429 è un esito atteso
+// invece di un'eccezione. Segment si chiama una volta per documento, e Ask
+// sta su una rotta pubblica dove tre tentativi in serie sarebbero tre
+// volte l'attesa di chi è al tavolo con la domanda in sospeso.
+func (c *HTTPClient) postChatRetrying(ctx context.Context, payload []byte, timeout time.Duration) (string, error) {
+	for attempt := 0; ; attempt++ {
+		out, err := c.postChat(ctx, payload, timeout)
+		if err == nil {
+			return out, nil
+		}
+
+		var status *StatusError
+		if !errors.As(err, &status) || !status.Temporary() || attempt >= len(transcribeBackoff) {
+			return "", err
+		}
+
+		// Un'attesa non deve sopravvivere all'annullamento del contesto:
+		// se l'admin ha chiuso la pagina, o se un'altra pagina ha già
+		// scoperto che il modello vision non è configurato, dormire qui
+		// terrebbe in vita una richiesta che non interessa più a nessuno.
+		select {
+		case <-time.After(retryDelay(attempt, status)):
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
 }
 
 // postRaw manda una richiesta già serializzata a /chat/completions e
@@ -147,9 +214,58 @@ func (c *HTTPClient) postRaw(ctx context.Context, payload []byte, timeout time.D
 		return nil, fmt.Errorf("read ai response: %w", err)
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("ai provider returned status %d: %s", resp.StatusCode, string(body))
+		return nil, &StatusError{
+			Status:     resp.StatusCode,
+			Body:       string(body),
+			RetryAfter: parseRetryAfter(resp.Header.Get("Retry-After")),
+		}
 	}
 	return body, nil
+}
+
+// StatusError è una risposta non-2xx del provider con lo status
+// CONSERVATO. Prima era un fmt.Errorf e lo status restava solo dentro il
+// messaggio: nessun chiamante poteva distinguere un guasto transitorio
+// (429, 5xx) da uno definitivo (400, 401), e con la trascrizione delle
+// pagine in parallelo quella distinzione è diventata necessaria — un 429
+// da rate limit è un esito normale quando si mandano cinque pagine
+// insieme, e senza riprovare diventa un buco silenzioso nell'indice.
+//
+// Il testo del messaggio è identico a quello di prima: finisce nel log
+// "index: transcribe page N: ..." che l'admin legge, e cambiarlo avrebbe
+// reso illeggibili i log già raccolti senza nessun guadagno.
+type StatusError struct {
+	Status int
+	Body   string
+	// RetryAfter è l'header omonimo tradotto in durata, 0 quando il
+	// provider non lo manda (o manda qualcosa che non è un numero di
+	// secondi).
+	RetryAfter time.Duration
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("ai provider returned status %d: %s", e.Status, e.Body)
+}
+
+// Temporary dice se ha senso riprovare la stessa richiesta. Un 429 è il
+// rate limit del provider e passa; un 5xx è un suo guasto e di solito
+// passa. Un 4xx no: una chiave sbagliata o una richiesta malformata danno
+// lo stesso esito quante volte le si riprovi, e su un manuale di trenta
+// pagine riprovarle triplica solo l'attesa prima dell'errore.
+func (e *StatusError) Temporary() bool {
+	return e.Status == http.StatusTooManyRequests || (e.Status >= 500 && e.Status <= 599)
+}
+
+// parseRetryAfter legge la forma a secondi dell'header Retry-After, la
+// sola che i provider OpenAI-compatibili usino in pratica. La forma a data
+// HTTP prevista dallo standard non è gestita: in sua assenza si ripiega
+// sull'attesa di base, che è un esito corretto e non un guasto.
+func parseRetryAfter(h string) time.Duration {
+	secs, err := strconv.Atoi(strings.TrimSpace(h))
+	if err != nil || secs <= 0 {
+		return 0
+	}
+	return time.Duration(secs) * time.Second
 }
 
 // postChat manda una richiesta già serializzata a /chat/completions e

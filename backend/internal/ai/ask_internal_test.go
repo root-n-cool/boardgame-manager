@@ -38,3 +38,81 @@ func TestPostRaw_TimeoutArgumentIsNotShortenedByTheSharedClient(t *testing.T) {
 		t.Fatalf("atteso successo (il timeout dell'argomento è largo), ottenuto errore: %v", err)
 	}
 }
+
+// TestRetryDelay verifica la politica di attesa fra due tentativi di
+// trascrizione senza dormire davvero: retryDelay è una funzione pura
+// proprio per questo — la scala dei tempi veri (secondi) renderebbe il
+// test della sola aritmetica lento senza aggiungere niente.
+func TestRetryDelay(t *testing.T) {
+	cases := []struct {
+		name    string
+		attempt int
+		err     *StatusError
+		want    time.Duration
+	}{
+		{
+			name:    "primo tentativo fallito: attesa di base",
+			attempt: 0,
+			err:     &StatusError{Status: http.StatusTooManyRequests},
+			want:    transcribeBackoff[0],
+		},
+		{
+			name:    "secondo tentativo fallito: attesa più lunga",
+			attempt: 1,
+			err:     &StatusError{Status: http.StatusServiceUnavailable},
+			want:    transcribeBackoff[1],
+		},
+		{
+			// Un provider che dice quanto aspettare ne sa più di noi: il
+			// suo valore vince sull'attesa di base, in entrambe le
+			// direzioni.
+			name:    "Retry-After più lungo dell'attesa di base vince",
+			attempt: 0,
+			err:     &StatusError{Status: http.StatusTooManyRequests, RetryAfter: 7 * time.Second},
+			want:    7 * time.Second,
+		},
+		{
+			name:    "Retry-After più corto dell'attesa di base vince ugualmente",
+			attempt: 1,
+			err:     &StatusError{Status: http.StatusTooManyRequests, RetryAfter: 200 * time.Millisecond},
+			want:    200 * time.Millisecond,
+		},
+		{
+			// Il tetto esiste perché Retry-After è un numero che arriva
+			// dalla rete: un provider confuso (o ostile) che chiede
+			// un'ora terrebbe occupata la request HTTP dell'admin fino al
+			// timeout, con l'indicizzazione ferma e nessuna spiegazione.
+			name:    "Retry-After assurdo è limitato dal tetto",
+			attempt: 0,
+			err:     &StatusError{Status: http.StatusTooManyRequests, RetryAfter: time.Hour},
+			want:    maxRetryAfter,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := retryDelay(tc.attempt, tc.err); got != tc.want {
+				t.Fatalf("retryDelay(%d, %+v) = %v, atteso %v", tc.attempt, tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestStatusErrorTemporary fissa quali status vale la pena riprovare. La
+// distinzione è il cuore del retry: riprovare un 401 (chiave sbagliata) o
+// un 400 (richiesta malformata) brucia tempo e token per ottenere
+// esattamente lo stesso esito, e su un manuale di trenta pagine lo fa
+// trenta volte.
+func TestStatusErrorTemporary(t *testing.T) {
+	temporary := []int{http.StatusTooManyRequests, 500, 502, 503, 504}
+	permanent := []int{400, 401, 403, 404, 422}
+	for _, status := range temporary {
+		if !(&StatusError{Status: status}).Temporary() {
+			t.Errorf("lo status %d è transitorio e va riprovato", status)
+		}
+	}
+	for _, status := range permanent {
+		if (&StatusError{Status: status}).Temporary() {
+			t.Errorf("lo status %d è definitivo: riprovarlo spreca token per lo stesso esito", status)
+		}
+	}
+}

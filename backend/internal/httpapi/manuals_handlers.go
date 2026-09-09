@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
@@ -33,6 +35,20 @@ import (
 // manuale (un paragrafo o più di regole) media sulle centinaia. 100 sta
 // comodamente sopra il tetto del rumore e comodamente sotto la prosa vera.
 const minAvgUsableCharsPerPage = 100
+
+// transcribeConcurrency è quante pagine di un manuale scansionato si
+// mandano al modello vision contemporaneamente. Un manuale di trenta
+// pagine trascritto in sequenza sono minuti d'attesa dentro una singola
+// request HTTP; cinque alla volta lo riducono di altrettanto.
+//
+// Il tetto esiste perché il costo di sbagliare in eccesso è alto: una
+// goroutine per pagina manderebbe trenta richieste vision insieme e
+// prenderebbe 429 da qualunque provider a tariffa gratuita. Cinque è
+// sotto il limite di concorrenza di tutti i provider che questo progetto
+// prevede, e comunque la trascrizione riprova sugli errori temporanei
+// (vedi il retry in ai/ask.go), quindi un 429 occasionale costa un ritardo,
+// non un buco nell'indice.
+const transcribeConcurrency = 5
 
 // pageAnchorChars è la lunghezza dell'ancora usata per ritrovare l'inizio
 // di una pagina dentro il testo segmentato (vedi pageStartsInSegmented):
@@ -347,27 +363,84 @@ func (s *Server) pdfTextChunks(ctx context.Context, pages []manuals.Page) ([]det
 func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage) ([]detailedChunk, pdfPageStats, error) {
 	vision := s.transcriber(ctx)
 
-	var texts []string
-	var numbers []int
-	failed := 0
-	for _, img := range images {
-		text, err := vision.Transcribe(ctx, img.JPEG, img.Number)
-		if err != nil {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// Un risultato per pagina, ciascuno al PROPRIO indice: ogni goroutine
+	// scrive solo results[i], quindi l'ordine del documento è garantito per
+	// costruzione e non serve nessun mutex. Accodare i risultati man mano
+	// che arrivano sarebbe la scelta ovvia e sarebbe sbagliata: con le
+	// pagine in volo insieme l'ordine di arrivo non è quello del documento,
+	// e il seq dei chunk uscirebbe rimescolato — rompendo in silenzio sia
+	// attachNeighbours (che cerca il chunk vicino come seq ± 1) sia
+	// l'elenco dei titoli "in ordine di seq" di Summary.
+	type pageResult struct {
+		text string
+		err  error
+	}
+	results := make([]pageResult, len(images))
+
+	// notConfigured è atomico perché più pagine possono scoprire insieme
+	// che il modello vision non c'è, prima che il cancel() della prima
+	// fermi le altre.
+	var notConfigured atomic.Bool
+
+	// sem limita le richieste in volo a transcribeConcurrency. Le goroutine
+	// si creano tutte subito e restano in attesa sul canale: una goroutine
+	// bloccata costa qualche KB di stack, molto meno della richiesta HTTP
+	// che rappresenta.
+	sem := make(chan struct{}, transcribeConcurrency)
+	var wg sync.WaitGroup
+	for i, img := range images {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			// Il contesto annullato qui è la pagina che non è mai partita:
+			// si registra come errore e non come pagina vuota, così i
+			// conteggi sotto non confondono "non tentata" con "senza testo".
+			if err := ctx.Err(); err != nil {
+				results[i] = pageResult{err: err}
+				return
+			}
+			text, err := vision.Transcribe(ctx, img.JPEG, img.Number)
 			if errors.Is(err, ai.ErrNotConfigured) {
 				// Un modello vision non configurato fallisce identicamente
 				// per ogni pagina: non ha senso provarle tutte per scoprirlo
-				// N volte, quindi si esce alla prima.
-				return nil, pdfPageStats{}, ai.ErrNotConfigured
+				// N volte, quindi la prima a scoprirlo annulla il contesto e
+				// le altre non partono nemmeno.
+				notConfigured.Store(true)
+				cancel()
+				return
 			}
-			log.Printf("index: transcribe page %d: %v", img.Number, err)
+			results[i] = pageResult{text: text, err: err}
+		}()
+	}
+	wg.Wait()
+
+	if notConfigured.Load() {
+		return nil, pdfPageStats{}, ai.ErrNotConfigured
+	}
+
+	// Da qui in giù è la stessa logica di prima della parallelizzazione,
+	// solo letta dai risultati invece che prodotta dentro il ciclo:
+	// isolamento guasti per pagina, pagine di sole illustrazioni saltate
+	// senza contarle come errore.
+	var texts []string
+	var numbers []int
+	failed := 0
+	for i, img := range images {
+		switch r := results[i]; {
+		case r.err != nil:
+			log.Printf("index: transcribe page %d: %v", img.Number, r.err)
 			failed++
-			continue // pagina saltata: le altre proseguono (isolamento guasti)
+		case strings.TrimSpace(r.text) == "":
+			// pagina di sole illustrazioni: niente da indicizzare
+		default:
+			texts = append(texts, r.text)
+			numbers = append(numbers, img.Number)
 		}
-		if strings.TrimSpace(text) == "" {
-			continue // pagina di sole illustrazioni: niente da indicizzare
-		}
-		texts = append(texts, text)
-		numbers = append(numbers, img.Number)
 	}
 	if len(texts) == 0 {
 		if failed > 0 && failed == len(images) {

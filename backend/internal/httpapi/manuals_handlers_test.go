@@ -8,7 +8,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"boardgames-manager/internal/ai"
 	"boardgames-manager/internal/games"
@@ -49,11 +52,14 @@ func (f *fakeSegmenter) Segment(ctx context.Context, text string) (string, error
 // due.
 type pageTranscriber struct {
 	byPage map[int]string
-	calls  int
+	// calls è atomico perché il percorso vision trascrive le pagine in
+	// parallelo (vedi transcribeConcurrency): un int normale qui sarebbe
+	// una corsa segnalata da -race.
+	calls atomic.Int64
 }
 
 func (p *pageTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
-	p.calls++
+	p.calls.Add(1)
 	return p.byPage[page], nil
 }
 
@@ -191,8 +197,8 @@ func TestIndexMedia_MarkdownDoesNotCallVisionOrSegmentation(t *testing.T) {
 	if seg.calls != 0 {
 		t.Fatalf("un .md non deve chiamare Segment, chiamato %d volte", seg.calls)
 	}
-	if vis.calls != 0 {
-		t.Fatalf("un .md non deve chiamare Transcribe, chiamato %d volte", vis.calls)
+	if vis.calls.Load() != 0 {
+		t.Fatalf("un .md non deve chiamare Transcribe, chiamato %d volte", vis.calls.Load())
 	}
 
 	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"pesca"})
@@ -336,11 +342,11 @@ func (e *erroringTranscriber) Transcribe(ctx context.Context, jpeg []byte, page 
 type partialFailTranscriber struct {
 	byPage    map[int]string
 	failPages map[int]bool
-	calls     int
+	calls     atomic.Int64 // atomico: vedi pageTranscriber.calls
 }
 
 func (p *partialFailTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
-	p.calls++
+	p.calls.Add(1)
 	if p.failPages[page] {
 		return "", fmt.Errorf("ai provider returned status 500: pagina %d", page)
 	}
@@ -755,8 +761,8 @@ func TestIndexMedia_TextLayerPDFCallsSegmentation(t *testing.T) {
 	if seg.calls != 1 {
 		t.Fatalf("un PDF con layer testo deve chiamare Segment esattamente una volta, chiamato %d volte", seg.calls)
 	}
-	if vis.calls != 0 {
-		t.Fatalf("un PDF con layer testo non deve chiamare Transcribe, chiamato %d volte", vis.calls)
+	if vis.calls.Load() != 0 {
+		t.Fatalf("un PDF con layer testo non deve chiamare Transcribe, chiamato %d volte", vis.calls.Load())
 	}
 
 	// "Regole" vive solo nel titolo che il segmentatore ha aggiunto: l'FTS5
@@ -843,8 +849,8 @@ func TestIndexMedia_TextLayerPDFChunkThatBeginsOnSecondPageGetsThatPage(t *testi
 	if rec.Code != http.StatusOK {
 		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
-	if v, ok := server.Vision.(*pageTranscriber); ok && v.calls != 0 {
-		t.Fatalf("un PDF con layer testo usabile non deve chiamare Transcribe, chiamato %d volte", v.calls)
+	if v, ok := server.Vision.(*pageTranscriber); ok && v.calls.Load() != 0 {
+		t.Fatalf("un PDF con layer testo usabile non deve chiamare Transcribe, chiamato %d volte", v.calls.Load())
 	}
 
 	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"scarta"})
@@ -950,5 +956,212 @@ func TestManualTarget_RejectsMediaFromAnotherGame(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("un media di un altro gioco è un \"non trovato\": atteso 404, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// expectedTranscribeConcurrency ripete il valore di transcribeConcurrency,
+// la costante del pool in manuals_handlers.go, che non è esportata. È
+// ripetuta e non letta di là di proposito: la soglia è ciò che questi due
+// test verificano, quindi cambiarla nel codice di produzione deve rompere
+// il test e costringere a una decisione, non adattarsi in silenzio.
+const expectedTranscribeConcurrency = 5
+
+// barrierTranscriber blocca ogni pagina finché non ne sono arrivate
+// `barrier` CONTEMPORANEAMENTE, poi le libera tutte insieme. È questa
+// forma, e non uno sleep, che rende deterministico il test sulla
+// concorrenza: con una trascrizione sequenziale la prima pagina aspetta
+// una compagna che non arriverà mai, quindi il select ha anche un timeout
+// che fa fallire il test in modo leggibile invece di appenderlo.
+//
+// peak registra il massimo di chiamate contemporanee osservate: è
+// l'osservabile su cui il test asserisce in ENTRAMBE le direzioni, perché
+// un pool troppo largo è un guasto quanto uno che non parallelizza.
+type barrierTranscriber struct {
+	barrier int
+	reached chan struct{}
+	once    sync.Once
+
+	mu       sync.Mutex
+	inFlight int
+	peak     int
+}
+
+func newBarrierTranscriber(barrier int) *barrierTranscriber {
+	return &barrierTranscriber{barrier: barrier, reached: make(chan struct{})}
+}
+
+func (b *barrierTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+	b.mu.Lock()
+	b.inFlight++
+	if b.inFlight > b.peak {
+		b.peak = b.inFlight
+	}
+	full := b.inFlight >= b.barrier
+	b.mu.Unlock()
+
+	if full {
+		b.once.Do(func() { close(b.reached) })
+	}
+	select {
+	case <-b.reached:
+	case <-time.After(2 * time.Second):
+	}
+
+	b.mu.Lock()
+	b.inFlight--
+	b.mu.Unlock()
+
+	return fmt.Sprintf(
+		"## Sezione %d\n\nTesto della pagina %d del regolamento, con la parola unica segnalibro%d per ritrovarlo.",
+		page, page, page), nil
+}
+
+func (b *barrierTranscriber) observedPeak() int {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.peak
+}
+
+// TestIndexMedia_ScannedPDFTranscribesPagesInParallel è la ragione di
+// questo intervento: un manuale scansionato di N pagine costava N chiamate
+// al modello IN SEQUENZA, cioè minuti d'attesa dentro una singola request
+// HTTP. Il pool ne tiene in volo transcribeConcurrency alla volta.
+//
+// Il PDF ha il doppio delle pagine della concorrenza attesa, così il pool
+// deve RIUSARE gli slot invece di limitarsi a far partire tutto in un
+// colpo: un'implementazione senza limite (una goroutine per pagina) fa
+// salire il picco a 10 e questo test la boccia, che è metà del suo scopo —
+// dieci richieste vision insieme prendono 429 da qualunque provider a
+// tariffa gratuita.
+func TestIndexMedia_ScannedPDFTranscribesPagesInParallel(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{} // gate: il provider di testo è configurato
+	vis := newBarrierTranscriber(expectedTranscribeConcurrency)
+	server.Vision = vis
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server,
+		manuals.NewScannedPDFPages(2*expectedTranscribeConcurrency), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if peak := vis.observedPeak(); peak != expectedTranscribeConcurrency {
+		t.Fatalf("chiamate contemporanee: atteso un picco di %d, osservato %d", expectedTranscribeConcurrency, peak)
+	}
+}
+
+// reverseOrderTranscriber fa finire le pagine nell'ordine ESATTAMENTE
+// opposto a quello del documento: la pagina 1 è la più lenta, l'ultima la
+// più rapida. Con il pool tutte partono insieme, quindi l'ordine di arrivo
+// dei risultati è quello inverso — che è la condizione in cui
+// un'implementazione che accoda i risultati nell'ordine in cui arrivano
+// (invece di scriverli al loro indice) sbaglia, e in cui una che li mette
+// al loro posto non può sbagliare.
+type reverseOrderTranscriber struct{ pages int }
+
+func (r *reverseOrderTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+	time.Sleep(time.Duration(r.pages-page+1) * 30 * time.Millisecond)
+	return fmt.Sprintf(
+		"## Sezione %d\n\nTesto della pagina %d del regolamento, con la parola unica segnalibro%d per ritrovarlo.",
+		page, page, page), nil
+}
+
+// TestIndexMedia_ScannedPDFKeepsPageOrderWhenTranscriptionsFinishOutOfOrder
+// è il rischio che la parallelizzazione introduce: con le pagine in volo
+// insieme, l'ordine in cui il modello risponde non è più l'ordine del
+// documento. Il seq dei chunk deve restare quello del documento comunque,
+// perché è ciò su cui si appoggiano due cose che non farebbero rumore
+// sbagliando: attachNeighbours, che allega "il chunk vicino" come seq ± 1,
+// e Summary, che elenca i titoli di sezione "in ordine di seq" per
+// l'indice iniettato nel prompt e per le domande suggerite.
+func TestIndexMedia_ScannedPDFKeepsPageOrderWhenTranscriptionsFinishOutOfOrder(t *testing.T) {
+	const pages = 5
+	server, conn := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	server.Vision = &reverseOrderTranscriber{pages: pages}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewScannedPDFPages(pages), "manuale.pdf", "")
+	_ = gameID
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+
+	rows, err := conn.QueryContext(context.Background(),
+		`SELECT reference_detail FROM game_source_chunk WHERE game_media_id = ? ORDER BY seq`, mediaID)
+	if err != nil {
+		t.Fatalf("query chunks: %v", err)
+	}
+	defer rows.Close()
+
+	var got []int
+	for rows.Next() {
+		var detail string
+		if err := rows.Scan(&detail); err != nil {
+			t.Fatalf("scan: %v", err)
+		}
+		var page int
+		if _, err := fmt.Sscanf(detail, "pagina %d", &page); err != nil {
+			t.Fatalf("reference_detail inatteso %q: %v", detail, err)
+		}
+		got = append(got, page)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if len(got) != pages {
+		t.Fatalf("atteso un chunk per pagina (%d), ottenuti %d: %v", pages, len(got), got)
+	}
+	for i, page := range got {
+		if page != i+1 {
+			t.Fatalf("i chunk in ordine di seq devono seguire l'ordine del documento: atteso pagina %d in posizione %d, ottenuto %v", i+1, i, got)
+		}
+	}
+}
+
+// countingErroringTranscriber è erroringTranscriber che conta i tentativi:
+// serve al test dell'uscita anticipata, dove ciò che conta non è il
+// messaggio (già coperto altrove) ma QUANTE pagine sono state tentate.
+type countingErroringTranscriber struct {
+	err   error
+	calls atomic.Int64
+}
+
+func (c *countingErroringTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+	c.calls.Add(1)
+	return "", c.err
+}
+
+// TestIndexMedia_ScannedPDFWithoutVisionModelStopsEarly protegge una
+// proprietà che la parallelizzazione poteva far perdere in silenzio. Un
+// modello vision non configurato fallisce identicamente su ogni pagina:
+// prima del pool si uscìva alla prima, con un `return` dentro il ciclo,
+// e sostituendo quel ciclo con delle goroutine quel `return` non ferma
+// più niente da sé. La prima pagina che lo scopre deve annullare il
+// contesto, così le pagine ancora in coda non partono nemmeno.
+//
+// La soglia è "meno di una pagina per pagina del documento", non un
+// numero esatto: le pagine già in volo quando arriva il cancel() sono
+// legittimamente tentate, e quante siano dipende dallo scheduler.
+func TestIndexMedia_ScannedPDFWithoutVisionModelStopsEarly(t *testing.T) {
+	const pages = 4 * expectedTranscribeConcurrency
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	vis := &countingErroringTranscriber{err: ai.ErrNotConfigured}
+	server.Vision = vis
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewScannedPDFPages(pages), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if calls := vis.calls.Load(); calls >= pages {
+		t.Fatalf("un modello vision non configurato va scoperto una volta, non %d: tentate %d pagine su %d", pages, calls, pages)
 	}
 }

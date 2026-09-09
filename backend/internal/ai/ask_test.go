@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"boardgames-manager/internal/ai"
@@ -331,5 +332,110 @@ func TestAsk_WithoutAProviderIsNotConfigured(t *testing.T) {
 	_, err := client.Ask(context.Background(), ai.AskRequest{GameName: "Wingspan"})
 	if !errors.Is(err, ai.ErrNotConfigured) {
 		t.Fatalf("atteso ErrNotConfigured, ottenuto %v", err)
+	}
+}
+
+// TestTranscribe_RetriesARateLimitedPage è la ragione per cui il retry è
+// arrivato insieme alla parallelizzazione delle pagine: mandare più
+// pagine insieme rende il 429 un esito NORMALE, non un'eccezione, e senza
+// riprovare quella pagina resterebbe un buco permanente nell'indice —
+// silenzioso, perché l'isolamento guasti per pagina salta la pagina e
+// prosegue.
+func TestTranscribe_RetriesARateLimitedPage(t *testing.T) {
+	var attempts atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if attempts.Add(1) == 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			io.WriteString(w, `{"error":"rate limit exceeded"}`)
+			return
+		}
+		io.WriteString(w, `{"choices":[{"message":{"content":"## Preparazione\n\nMescola il mazzo."}}]}`)
+	}))
+	defer srv.Close()
+
+	client := ai.NewHTTPClientWithVision(srv.URL, "sk-test", "m", "mv")
+	out, err := client.Transcribe(context.Background(), []byte{0xFF, 0xD8}, 1)
+	if err != nil {
+		t.Fatalf("un 429 va riprovato, non restituito: %v", err)
+	}
+	if !strings.Contains(out, "Mescola") {
+		t.Fatalf("trascrizione inattesa: %q", out)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attesi 2 tentativi (il 429 più quello riuscito), fatti %d", got)
+	}
+}
+
+// TestTranscribe_DoesNotRetryAClientError fissa il confine opposto: un
+// 400 o un 401 danno lo stesso esito quante volte li si riprovi, e su un
+// manuale di trenta pagine riprovarli triplica il tempo d'attesa prima
+// dell'errore che l'admin deve vedere.
+func TestTranscribe_DoesNotRetryAClientError(t *testing.T) {
+	var attempts atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+		io.WriteString(w, `{"error":"invalid api key"}`)
+	}))
+	defer srv.Close()
+
+	client := ai.NewHTTPClientWithVision(srv.URL, "sk-test", "m", "mv")
+	if _, err := client.Transcribe(context.Background(), []byte{0xFF, 0xD8}, 1); err == nil {
+		t.Fatal("un 401 deve restare un errore")
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("un errore definitivo non va riprovato: fatti %d tentativi", got)
+	}
+}
+
+// TestTranscribe_GivesUpAfterTheRetryCap: il retry deve finire. Un
+// provider in ginocchio che risponde 429 per sempre non deve tenere
+// occupata la request HTTP dell'admin fino al timeout.
+func TestTranscribe_GivesUpAfterTheRetryCap(t *testing.T) {
+	var attempts atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		io.WriteString(w, `{"error":"rate limit exceeded"}`)
+	}))
+	defer srv.Close()
+
+	client := ai.NewHTTPClientWithVision(srv.URL, "sk-test", "m", "mv")
+	_, err := client.Transcribe(context.Background(), []byte{0xFF, 0xD8}, 1)
+	if err == nil {
+		t.Fatal("un 429 perpetuo deve finire in errore")
+	}
+	// Lo status deve restare leggibile nel messaggio: è quel che finisce
+	// nel log "index: transcribe page N: ..." che l'admin legge per
+	// capire se il problema è la sua chiave o il rate limit.
+	if !strings.Contains(err.Error(), "429") {
+		t.Fatalf("il messaggio deve nominare lo status: %v", err)
+	}
+	if got := attempts.Load(); got != 3 {
+		t.Fatalf("atteso il primo tentativo più 2 retry (3 in tutto), fatti %d", got)
+	}
+}
+
+// TestSegment_DoesNotRetry fissa il confine del retry: vive in
+// Transcribe, l'unica chiamata che si fa N volte per un solo documento e
+// la sola in cui un 429 è un esito atteso. Segment si chiama una volta
+// (poche, per un testo lunghissimo) e Ask sta su una rotta pubblica dove
+// tre tentativi in serie sarebbero tre volte l'attesa di chi ha fatto la
+// domanda.
+func TestSegment_DoesNotRetry(t *testing.T) {
+	var attempts atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusTooManyRequests)
+		io.WriteString(w, `{"error":"rate limit exceeded"}`)
+	}))
+	defer srv.Close()
+
+	client := ai.NewHTTPClient(srv.URL, "sk-test", "m")
+	if _, err := client.Segment(context.Background(), "Testo di regolamento senza titoli."); err == nil {
+		t.Fatal("un 429 su Segment deve restare un errore")
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("Segment non deve riprovare: fatti %d tentativi", got)
 	}
 }
