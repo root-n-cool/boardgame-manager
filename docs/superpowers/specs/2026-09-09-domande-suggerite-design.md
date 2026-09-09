@@ -62,8 +62,10 @@ vincoli, non come opzioni:
 
 - **`rigenera` sovrascrive anche le domande scritte a mano.** È un pulsante
   che l'admin premette: se lo premi, lo stai chiedendo. Nessuna conferma.
-- **`Summary.Headings` si cancella.** Diventerebbe codice morto: nell'API i
-  titoli distinti servono *solo* alle domande suggerite.
+- **`sourceHeadings` sparisce dall'API pubblica.** I titoli distinti non
+  servono più a nessun consumatore del frontend. `Summary.Headings` invece
+  **resta**, perché cambia mestiere: da campo di risposta diventa l'input
+  della generazione, letto lato server e mai spedito al browser.
 - **Esattamente tre domande, nessuna scorta.** Non se ne generano cinque per
   mostrarne tre: una domanda che non piace si riscrive, non si scarta.
 
@@ -116,6 +118,12 @@ Riceve il nome del gioco e i titoli di sezione distinti che `Summary` già
 calcola — circa 200 token, una sola chiamata al **modello di testo**
 (`c.Model`), non a quello vision. Il nome del gioco serve al modello per
 capire di che gioco si parla quando i titoli sono generici.
+
+I titoli arrivano **tutti**, non i primi otto: `maxSuggestionHeadings`
+esisteva per non mandare quaranta titoli al telefono di chi sta al tavolo,
+e ora la destinazione non è più il telefono ma il prompt, dove quaranta
+titoli sono qualche centinaio di token e più contesto significa domande
+migliori. Il cap si cancella.
 
 L'astrazione segue lo schema di `Segmenter` e `Transcriber`: un'interfaccia
 piccola nel package `ai`, implementata da `HTTPClient` e finta nei test.
@@ -215,13 +223,17 @@ formulata bene.
 ## 9. Cosa si cancella
 
 - `headingToQuestion` e la computed `suggestions` (`ManualChatPanel.vue`)
-- `maxSuggestionHeadings` (`manuals/store.go`)
-- `Summary.Headings` e il campo `sourceHeadings` (`games_responses.go`)
+- `maxSuggestionHeadings` (`manuals/store.go`): vedi §4.1, il cap non ha
+  più una ragione ora che i titoli vanno al prompt e non allo schermo
+- il campo `sourceHeadings` nella risposta di `/api/games/:id`
+  (`games_responses.go`)
 - la prop `headings` lungo la catena `GameDetailView` → `ManualChat` →
   `ManualChatPanel`
 
-Resta `Summary.Sources`, i titoli **raggruppati per fonte**: alimenta
-l'indice del prompt (`formatCorpusIndex`) ed è una cosa diversa.
+**Non** si cancella `Summary.Headings`: cambia mestiere, da campo spedito al
+browser a input della generazione (§4.1). E resta `Summary.Sources`, i
+titoli **raggruppati per fonte**, che alimenta l'indice del prompt
+(`formatCorpusIndex`) ed è una cosa diversa da entrambi.
 
 ## 10. Test
 
