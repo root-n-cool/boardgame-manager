@@ -525,24 +525,58 @@ onMounted(async () => {
           @remove="removeMedia"
         />
         <p v-if="mediaError && !mediaModalOpen" class="error">{{ mediaError }}</p>
+      </section>
 
-        <!--
-          La preparazione di una fonte è un'azione da admin: GameMediaList è
-          condiviso con la scheda pubblica, quindi il pannello vive qui e non
-          lì. Un pannello per ogni file indicizzabile della lingua attiva
-          (PDF, txt, md, docx — gli unici formati che l'indicizzazione accetta).
-        -->
-        <ManualPrepPanel
-          v-for="media in indexableMedia"
-          :key="media.id"
-          :game-id="game.id"
-          :lang="activeLangCode"
-          :media-id="media.id"
-          :media-title="media.title || 'Manuale'"
-          :indexed-chunks="media.indexedChunks"
-          :ai-configured="aiConfigured"
-          @changed="load"
-        />
+      <!--
+        La preparazione di una fonte è un'azione da admin: GameMediaList è
+        condiviso con la scheda pubblica, quindi la sezione vive qui e non
+        lì. Una riga per ogni file indicizzabile della lingua attiva (PDF,
+        txt, md, docx — gli unici formati che l'indicizzazione accetta),
+        non più un pannello alto per file: l'avviso sui tempi lunghi e il
+        motivo per cui manca il bottone senza provider AI stanno una volta
+        sola qui, non ripetuti a ogni riga.
+      -->
+      <section class="panel-card">
+        <div class="section-head">
+          <h2>Chatbot</h2>
+          <span class="lang-chip">{{ activeLangCode }}</span>
+        </div>
+
+        <template v-if="indexableMedia.length > 0">
+          <!-- Una scansione passa per un modello di visione, una pagina per
+               chiamata: la richiesta può durare minuti, va detto prima del
+               click — una volta sola, non per ogni riga. -->
+          <p v-if="aiConfigured" class="field-hint">
+            Per un file di testo dura pochi secondi; per una scansione lunga può
+            richiedere alcuni minuti, una pagina alla volta — resta su questa
+            pagina finché non finisce.
+          </p>
+          <!-- Senza provider il motivo è pratico, non tecnico: qui non c'è
+               ancora una chat con cui indicizzare avrebbe a che fare. -->
+          <p v-else class="empty-note">
+            Senza un provider AI configurato nelle impostazioni la chat con le domande non esiste:
+            indicizzare un documento ora non servirebbe a niente.
+          </p>
+
+          <ul role="list" class="admin-list">
+            <li v-for="media in indexableMedia" :key="media.id">
+              <ManualPrepPanel
+                :game-id="game.id"
+                :lang="activeLangCode"
+                :media-id="media.id"
+                :media-title="media.title || 'Manuale'"
+                :media-url="media.url"
+                :indexed-chunks="media.indexedChunks"
+                :ai-configured="aiConfigured"
+                @changed="load"
+              />
+            </li>
+          </ul>
+        </template>
+        <p v-else class="empty-note">
+          Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
+          sezione Media qui sopra.
+        </p>
       </section>
     </template>
 

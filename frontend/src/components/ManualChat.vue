@@ -1,16 +1,20 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import ManualChatPanel from './ManualChatPanel.vue'
 
 /**
  * Decide DOVE vive la chat, non cos'è.
  *
- * Da 1100px in su è una sidebar destra collassabile, sticky, col suo
- * scroll: la colonna di sinistra scorre e la chat resta ferma. La soglia è
- * 1100 e non 900 perché `.app-page` è larga 56rem: una sidebar da 22rem
- * dentro quello spazio lascerebbe al testo 34rem, sotto la misura
- * leggibile.
+ * Da 1100px in su è una sidebar destra sticky, sempre aperta, col suo
+ * scroll: la colonna di sinistra scorre e la chat resta ferma. Niente
+ * collasso — è una scelta esplicita, non una funzione mancata: la sidebar
+ * di navigazione a sinistra (`.app-sidebar`) non si nasconde da desktop, e
+ * un bottone che facesse sparire quella di destra sarebbe un'incoerenza in
+ * più da spiegare, non un risparmio di spazio che serve davvero (22rem su
+ * un desktop). La soglia è 1100 e non 900 perché `.app-page` è larga 56rem:
+ * una sidebar da 22rem dentro quello spazio lascerebbe al testo 34rem,
+ * sotto la misura leggibile.
  *
  * Sotto 1100px è un bottone tondo in basso al centro che apre un <dialog>
  * nativo a tutto schermo. Il <dialog> regala focus trap, Esc e sfondo
@@ -26,11 +30,9 @@ const props = defineProps<{
 }>()
 
 const SIDEBAR_MIN_WIDTH = '(min-width: 1100px)'
-const COLLAPSED_KEY = 'manual-chat-collapsed'
 
 const route = useRoute()
 const wide = ref(false)
-const collapsed = ref(false)
 const dialogMounted = ref(false)
 const dialog = ref<HTMLDialogElement | null>(null)
 
@@ -52,33 +54,16 @@ onMounted(() => {
   syncWide(media)
   media.addEventListener('change', syncWide)
 
-  // Lo stato collassato è una preferenza dell'utente, non del gioco.
-  try {
-    collapsed.value = window.localStorage.getItem(COLLAPSED_KEY) === '1'
-  } catch {
-    // Finestra privata o storage bloccato: si parte aperta, che è il
-    // default giusto per la scoperta.
-  }
-
   // ?chat=1 arriva dai rimandi della pagina prenotazione e della scheda
-  // evento: apre la chat senza far cercare all'utente dove sia.
-  if (chatQueryRequested()) {
-    collapsed.value = false
-    if (!wide.value) {
-      openDialog()
-    }
+  // evento: apre la chat senza far cercare all'utente dove sia. Da 1100px
+  // in su la sidebar è già aperta di suo; serve solo sotto, per aprire il
+  // dialog.
+  if (chatQueryRequested() && !wide.value) {
+    openDialog()
   }
 })
 
 onBeforeUnmount(() => media?.removeEventListener('change', syncWide))
-
-watch(collapsed, (value) => {
-  try {
-    window.localStorage.setItem(COLLAPSED_KEY, value ? '1' : '0')
-  } catch {
-    // Niente da fare: la preferenza vale solo per questa visita.
-  }
-})
 
 function openDialog() {
   dialogMounted.value = true
@@ -97,49 +82,15 @@ function closeDialog() {
 
 <template>
   <!--
-    Desktop: sidebar sticky, collassabile in una barra verticale.
+    Desktop: sidebar sticky, sempre aperta, a tutta altezza come
+    `.app-sidebar` a sinistra. Niente toggle: non collassa più.
 
     L'aria-label c'è perché un <aside> è una region di landmark: senza nome
     compare nell'elenco dei landmark di uno screen reader come
-    "complementary" e basta, e da lì la chat non si trova. Non è il caso di
-    WCAG 2.5.3 (Label in Name), che riguarda i controlli: il bottone dentro,
-    quello sì comandabile a voce, prende il nome dal suo testo visibile.
+    "complementary" e basta, e da lì la chat non si trova.
   -->
-  <aside
-    v-if="wide"
-    class="manual-chat-aside"
-    :class="{ 'is-collapsed': collapsed }"
-    aria-label="Chiedi al manuale"
-  >
-    <!--
-      Niente aria-label dinamico: il testo visibile è sempre "Chiedi al
-      manuale" e un nome accessibile diverso da quel testo viola il
-      criterio WCAG 2.5.3 (Label in Name — chi usa il controllo vocale
-      pronuncia quello che vede). aria-expanded basta a comunicare lo stato.
-    -->
-    <button
-      type="button"
-      class="manual-chat-toggle"
-      :aria-expanded="!collapsed"
-      aria-controls="manual-chat-aside-body"
-      @click="collapsed = !collapsed"
-    >
-      <span class="manual-chat-toggle-label">Chiedi al manuale</span>
-      <!--
-        Un chevron disegnato, non i caratteri ‹ › : il sistema visivo vieta
-        il carattere Unicode improvvisato al posto di un'icona, e in Display
-        quelle due virgolette angolari si leggevano come un refuso. Ruota
-        invece di cambiare glifo, così è un oggetto solo che si gira.
-      -->
-      <svg class="manual-chat-toggle-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M9 5l7 7-7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-      </svg>
-    </button>
-    <!--
-      v-show e non v-if: collassare non deve smontare il pannello,
-      altrimenti la conversazione in corso si perde a ogni clic.
-    -->
-    <div v-show="!collapsed" id="manual-chat-aside-body" class="manual-chat-aside-body">
+  <aside v-if="wide" class="manual-chat-aside" aria-label="Chiedi al manuale">
+    <div class="manual-chat-aside-body">
       <ManualChatPanel :game-id="gameId" :game-name="gameName" :headings="headings" />
     </div>
   </aside>

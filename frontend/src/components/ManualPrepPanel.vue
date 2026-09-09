@@ -1,18 +1,26 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { api } from '../api/client'
+import { fileExtensionLabel } from '../utils/game'
 
 /**
- * Indicizza (o rimuove l'indice di) una fonte per la chat pubblica: una
- * sola richiesta legge il file — PDF, txt, md o docx — lo spezza in sezioni
- * cercabili e le salva. Niente più bozza da correggere a mano: qui si vede
- * solo quanto è stato indicizzato, non il testo.
+ * Una riga della sezione «Chatbot» (admin): indicizza (o rimuove l'indice
+ * di) una fonte per la chat pubblica — una sola richiesta legge il file —
+ * PDF, txt, md o docx — lo spezza in sezioni cercabili e le salva. Niente
+ * più bozza da correggere a mano: qui si vede solo quanto è stato
+ * indicizzato, non il testo.
+ *
+ * L'avviso sui tempi lunghi e il motivo per cui manca il bottone senza
+ * provider AI stanno una volta sola a livello di sezione
+ * (`GameAdminDetailView.vue`), non qui: con più righe si ripetevano
+ * identici per ogni file.
  */
 const props = defineProps<{
   gameId: number
   lang: string
   mediaId: number
   mediaTitle: string
+  mediaUrl: string
   /** Chunk indicizzati adesso per questa fonte. 0 = non preparata. */
   indexedChunks: number
   /** Senza provider AI configurato la rotta di indicizzazione risponde 404:
@@ -28,6 +36,18 @@ const busyAction = ref<'prepare' | 'remove' | null>(null)
 const busy = computed(() => busyAction.value !== null)
 const error = ref('')
 const notice = ref('')
+// Vero solo per l'ultimo avviso di successo *parziale* (pagine saltate):
+// decide se `notice` prende il trattamento oro invece di quello neutro.
+const partial = ref(false)
+
+const formatLabel = computed(() => fileExtensionLabel(props.mediaUrl))
+const stateLabel = computed(() =>
+  props.indexedChunks > 0
+    ? props.indexedChunks === 1
+      ? '1 sezione indicizzata'
+      : `${props.indexedChunks} sezioni indicizzate`
+    : 'Non preparato',
+)
 
 const base = `/games/${props.gameId}/languages/${props.lang}/media/${props.mediaId}/index`
 
@@ -35,11 +55,33 @@ async function prepare() {
   busyAction.value = 'prepare'
   error.value = ''
   notice.value = ''
+  partial.value = false
   try {
-    const res = await api.post<{ reference: string; chunks: number }>(base)
-    notice.value =
-      `Manuale indicizzato: ${res.chunks} ${res.chunks === 1 ? 'sezione trovata' : 'sezioni trovate'}. ` +
-      'Le domande sulla scheda pubblica ora funzionano.'
+    const res = await api.post<{
+      reference: string
+      chunks: number
+      // Additivi e presenti solo quando qualche pagina di uno scansionato è
+      // stata saltata per un errore di trascrizione: un'indicizzazione
+      // riuscita ma incompleta non deve leggersi come una piena, altrimenti
+      // la chat risponde con sicurezza da un manuale a cui mancano pagine
+      // senza che nessuno lo sappia.
+      pagesIndexed?: number
+      pagesSkipped?: number
+    }>(base)
+    const chunkLabel = res.chunks === 1 ? 'sezione trovata' : 'sezioni trovate'
+    if (res.pagesSkipped) {
+      partial.value = true
+      const pageLabel = res.pagesIndexed === 1 ? 'pagina letta' : 'pagine lette'
+      const skipLabel = res.pagesSkipped === 1 ? 'pagina saltata' : 'pagine saltate'
+      notice.value =
+        `Indicizzazione parziale: ${res.chunks} ${chunkLabel} da ${res.pagesIndexed} ${pageLabel}, ` +
+        `${res.pagesSkipped} ${skipLabel} per un errore di lettura. Le domande funzionano già, ma il ` +
+        'manuale è incompleto: prepara di nuovo più tardi per recuperare le pagine mancanti.'
+    } else {
+      notice.value =
+        `Manuale indicizzato: ${res.chunks} ${chunkLabel}. ` +
+        'Le domande sulla scheda pubblica ora funzionano.'
+    }
     emit('changed')
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Preparazione non riuscita.'
@@ -61,6 +103,7 @@ async function remove() {
   busyAction.value = 'remove'
   error.value = ''
   notice.value = ''
+  partial.value = false
   try {
     await api.delete(base)
     notice.value = 'Indice rimosso: la chat non compare più per questo gioco.'
@@ -74,23 +117,12 @@ async function remove() {
 </script>
 
 <template>
-  <div class="manual-prep">
-    <h3 class="manual-prep-title">{{ mediaTitle }}</h3>
-    <p class="manual-prep-state">
-      <template v-if="indexedChunks > 0">
-        {{ indexedChunks === 1 ? '1 sezione indicizzata.' : `${indexedChunks} sezioni indicizzate.` }}
-      </template>
-      <template v-else>Non preparato per le domande.</template>
-    </p>
+  <div class="admin-row manual-doc-row">
+    <span class="manual-doc-title">{{ mediaTitle }}</span>
+    <span class="lang-chip">{{ formatLabel }}</span>
+    <span class="manual-doc-state">{{ stateLabel }}</span>
 
-    <!-- Senza provider il motivo è pratico, non tecnico: qui non c'è ancora
-         una chat con cui indicizzare avrebbe a che fare. -->
-    <p v-if="!aiConfigured" class="empty-note">
-      Senza un provider AI configurato nelle impostazioni la chat con le domande non esiste:
-      prepararla ora non servirebbe a niente.
-    </p>
-
-    <div class="manual-prep-actions">
+    <div class="admin-row-actions">
       <button
         v-if="aiConfigured"
         type="button"
@@ -111,17 +143,11 @@ async function remove() {
       </button>
     </div>
 
-    <!-- Una scansione passa per un modello di visione, una pagina per
-         chiamata: la richiesta può durare minuti, va detto prima del click. -->
-    <p v-if="aiConfigured" class="field-hint">
-      Per un file di testo dura pochi secondi; per una scansione lunga può
-      richiedere alcuni minuti, una pagina alla volta — resta su questa
-      pagina finché non finisce.
-    </p>
-
     <p class="visually-hidden" role="alert" aria-live="assertive">{{ error }}</p>
     <p class="visually-hidden" role="status" aria-live="polite">{{ notice }}</p>
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-if="notice" class="empty-note">{{ notice }}</p>
+    <p v-if="error" class="manual-doc-message error">{{ error }}</p>
+    <p v-else-if="notice" class="manual-doc-message" :class="partial ? 'manual-doc-partial' : 'empty-note'">
+      {{ notice }}
+    </p>
   </div>
 </template>

@@ -94,3 +94,16 @@ const languageNames: Record<string, string> = {
 export function languageName(code: string): string {
   return languageNames[code] || code
 }
+
+/**
+ * L'etichetta di formato di un file dalla sua estensione (PDF, TXT, MD,
+ * DOCX, …): stessa regola in `GameMediaList.vue` (griglia media) e nella
+ * sezione Chatbot della scheda di modifica (`GameAdminDetailView.vue`),
+ * perché è la stessa domanda — "che tipo di file è" — posta in due posti.
+ * Un'estensione anomala (assente o più lunga di 5 caratteri) torna "File"
+ * invece di un'etichetta illeggibile.
+ */
+export function fileExtensionLabel(url: string): string {
+  const ext = url.split('.').pop()
+  return ext && ext.length <= 5 ? ext.toUpperCase() : 'File'
+}

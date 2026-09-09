@@ -135,8 +135,22 @@ const requestBodyLimits = { maxMessages: 40 }
 // campo e taglia il microfono oltre il bordo dello schermo (provato e
 // osservato in browser). Chi scrive da telefono manda comunque la domanda
 // col tasto invio della tastiera, che è un bersaglio a misura piena.
+//
+// `top: 50%` + `translateY(-50%)` sul contenitore, non un valore fisso:
+// deep-chat ancora i due bottoni al fondo del campo con un margine
+// costante (`inset-block-end: .85em`, quindi indipendente dall'altezza
+// della riga), e la nostra riga è più alta del default — misurato in
+// browser: campo 36,5px, bottoni centrati a 513,4 invece che a 520,4 (il
+// centro vero), 7px troppo in alto. Il centraggio percentuale resta
+// corretto qualunque altezza prenda la riga in futuro, quel valore fisso
+// no. Il contenitore (`#text-input-container`) è `position: relative` nel
+// CSS di deep-chat: le percentuali di `top` sono relative alla sua
+// altezza, non a quella del bottone.
 const inputIconButton = {
-  container: { hover: { backgroundColor: '#f2ead4' } }, // --card-alt
+  container: {
+    default: { top: '50%', transform: 'translateY(-50%)' },
+    hover: { backgroundColor: '#f2ead4' }, // --card-alt
+  },
   svg: { styles: { default: { filter: 'brightness(0)', transform: 'scale(1.15)' } } },
 }
 

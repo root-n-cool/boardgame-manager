@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import type { GameMediaInfo } from '../utils/game'
+import { fileExtensionLabel, type GameMediaInfo } from '../utils/game'
 
 /**
  * La griglia dei materiali di una lingua: manuali (PDF, txt, md o docx),
@@ -17,13 +17,10 @@ const mediaKindLabels: Record<string, string> = {
 
 // Un file può essere PDF, txt, md o docx: l'etichetta legge l'estensione
 // vera invece di dare per scontato "PDF" come quando l'unico formato
-// accettato era quello.
+// accettato era quello. `fileExtensionLabel` è condivisa con la sezione
+// Chatbot della scheda di modifica: stessa domanda, stessa risposta.
 function mediaKindLabel(m: GameMediaInfo): string {
-  if (m.type !== 'file') {
-    return mediaKindLabels[m.type] ?? m.type
-  }
-  const ext = m.url.split('.').pop()
-  return ext && ext.length <= 5 ? ext.toUpperCase() : 'File'
+  return m.type !== 'file' ? mediaKindLabels[m.type] ?? m.type : fileExtensionLabel(m.url)
 }
 
 function mediaHref(m: GameMediaInfo): string {

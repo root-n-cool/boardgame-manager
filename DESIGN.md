@@ -334,16 +334,37 @@ sta dentro — la stessa divisione di `GameFacts`/`GameMediaList` altrove in
 questa scheda.
 
 - **Due forme, una soglia sola.** Da 1100px in su è una sidebar destra
-  sticky (`.manual-chat-aside`, 22rem, dentro `.game-detail-layout.has-chat`
-  in griglia); sotto, un bottone tondo in basso al centro
-  (`.manual-chat-fab`) che apre un `<dialog>` nativo a tutto schermo
-  (`.manual-chat-dialog`). **Perché 1100 e non 900**: `.app-page` è larga
-  56rem (896px). Una sidebar da 22rem dentro quello spazio lascerebbe alla
-  colonna di testo `56rem − 22rem − gap(1.5rem) ≈ 32.5rem` — sotto la
-  misura leggibile (60–75 caratteri, che qui vale circa 34rem). Il breakpoint
-  non è la larghezza di `.app-page` stessa: è quella più il margine che
-  serve perché la pagina non tocchi i bordi del viewport, da cui i ~1100px
-  effettivi invece dei 896px nudi.
+  sticky **a tutta altezza**, sempre aperta (`.manual-chat-aside`, 22rem,
+  dentro `.game-detail-layout.has-chat` in griglia); sotto, un bottone
+  tondo in basso al centro (`.manual-chat-fab`) che apre un `<dialog>`
+  nativo a tutto schermo (`.manual-chat-dialog`). **Perché 1100 e non
+  900**: `.app-page` è larga 56rem (896px). Una sidebar da 22rem dentro
+  quello spazio lascerebbe alla colonna di testo
+  `56rem − 22rem − gap(1.5rem) ≈ 32.5rem` — sotto la misura leggibile
+  (60–75 caratteri, che qui vale circa 34rem). Il breakpoint non è la
+  larghezza di `.app-page` stessa: è quella più il margine che serve
+  perché la pagina non tocchi i bordi del viewport, da cui i ~1100px
+  effettivi invece dei 896px nudi. **22rem resta la larghezza** anche ora
+  che la colonna è a tutta altezza: l'altezza non cambia quel calcolo, e a
+  22rem deep-chat mostra già bolle e campo leggibili — allargarla
+  toglierebbe spazio al testo senza un beneficio misurato.
+- **La sidebar è una colonna, non più una card nel flusso.** Prima
+  `.manual-chat-aside` aveva `max-height` e nessun figlio con `flex-grow`:
+  si fermava all'altezza del suo contenuto (~455px misurati su un
+  viewport di 900px), con metà colonna destra vuota sotto — lo stesso
+  difetto che rende una sidebar "inguardabile" quando quella di sinistra
+  (`.app-sidebar`) è invece a tutta altezza. Ora `.manual-chat-aside` porta
+  `position: sticky; top: 3.25rem; height: calc(100dvh - 3.25rem)` — la
+  stessa formula di `.app-sidebar` — con `margin-top: -2.25rem` per
+  annullare il padding-top di `.app-page` e partire esattamente sotto la
+  topbar; `.manual-chat-aside-body` porta `flex: 1` perché il pannello
+  dentro si espanda a riempirla invece di restare alto quanto il suo
+  contenuto. **Sopra il breakpoint non collassa più**: il toggle
+  (`.manual-chat-toggle`) e lo stato `is-collapsed` sono stati rimossi,
+  scelta esplicita — la sidebar di sinistra non si nasconde da desktop, e
+  un bottone che facesse sparire quella di destra sarebbe un'incoerenza in
+  più da spiegare senza un risparmio di spazio che serve davvero. Sotto il
+  breakpoint non cambia niente: bottone tondo e dialog a tutto schermo.
 - **Il bottone tondo**: `position: fixed`, centrato con
   `left: 50%; transform: translateX(-50%)`, `bottom: calc(1rem +
   env(safe-area-inset-bottom))` — il termine `env()` lo tiene sopra la home
@@ -361,13 +382,10 @@ questa scheda.
   È la stessa grammatica del segnaposto copertina (rettangolo tondo, pip
   pieni), non un'icona presa a prestito.
 - **Sul verde l'anello di focus passa al cartoncino anche qui.** La regola
-  generale (vedi Do) vale ora su tre superfici in feltro oltre a topbar e
-  sidebar: `.manual-chat-toggle`, la testata del dialog e la sua ×. Il
-  bottone tondo fa eccezione e tiene il rosso: `outline-offset: 2px` disegna
-  l'anello **fuori** dal bottone, sul cartoncino della pagina, dove sta a
-  6.4:1. E sul toggle l'anello va portato **dentro** (`outline-offset:
-  -2px`), perché `.manual-chat-aside` ha `overflow: hidden` e fuori
-  verrebbe ritagliato.
+  generale (vedi Do) vale ora su due superfici in feltro oltre a topbar e
+  sidebar: la testata del dialog e la sua ×. Il bottone tondo fa eccezione
+  e tiene il rosso: `outline-offset: 2px` disegna l'anello **fuori** dal
+  bottone, sul cartoncino della pagina, dove sta a 6.4:1.
 - **deep-chat vive in shadow DOM**: i token di `app.css` (`--felt`,
   `--felt-text`, `--card`, `--card-alt`, `--card-line`, `--ink`,
   `--ink-muted`, `--accent`, `--danger`, `--danger-bg`) non attraversano quel
@@ -399,13 +417,30 @@ questa scheda.
   'inside-start'`): con il campo largo quanto il pannello, il default
   `outside-end` cade oltre il bordo destro dello schermo e si vede a metà.
   Microfono a sinistra, invio a destra, uno per capo.
+- **I due bottoni si centrano da soli, non a un valore fisso.** deep-chat
+  li ancora al fondo del campo con un margine costante
+  (`inset-block-end: .85em`, indipendente dall'altezza della riga), e la
+  nostra riga (dal `padding` di `textInput.styles.text`) è più alta del
+  suo default: misurato in browser, campo alto 36,5px con centro a
+  520,4px, bottoni alti 22px circa centrati a 513,4px — 7px più in alto
+  del centro vero. La correzione sta in `inputIconButton.container.default`
+  (`ManualChatPanel.vue`): `top: '50%'` + `transform: 'translateY(-50%)'`
+  sull'elemento del bottone stesso (le classi `input-button`/`inside-start`/
+  `inside-end` sono tutte sullo stesso nodo). Un valore percentuale e non un
+  pixel fisso, perché resta corretto qualunque altezza prenda la riga in
+  futuro — un `top` fisso andrebbe ricalcolato a ogni cambio del padding del
+  campo. Dopo la correzione i due centri coincidono (misurato: campo e
+  bottoni entrambi a 442,7px in un altro punto della pagina), in sidebar,
+  nel dialog e sull'hover (che tocca solo `backgroundColor`, non
+  `top`/`transform`, perché `default` viene sempre riapplicato prima di
+  `hover`).
 - **I due bottoni dentro il campo restano bersagli da 22px** ed è un limite
   accettato, non una svista: sono `position: absolute` dentro contenitori a
   larghezza zero nello shadow DOM di deep-chat, e imporre 44px dalle
   proprietà documentate li sposta fuori dal campo (provato e osservato). Chi
   scrive da telefono manda comunque con il tasto invio della tastiera. Tutti
-  i bersagli che sono **nostri** — domande suggerite, finto campo, toggle,
-  bottone tondo, × del dialog — stanno a 44px.
+  i bersagli che sono **nostri** — domande suggerite, finto campo, bottone
+  tondo, × del dialog — stanno a 44px.
 - **Lo stato di riposo si ancora in fondo** (`.manual-chat-rest` è
   `flex: 1`, `.manual-chat-intro` porta `margin-top: auto`): introduzione,
   domande e finto campo scendono insieme come un blocco solo. Nel dialog a
@@ -527,27 +562,60 @@ questa scheda.
   nella cartella dei download, quindi va troncato lui, non la riga di
   metadati che gli sta accanto.
 
-#### Preparazione di una fonte (`ManualPrepPanel.vue`, `.manual-prep`)
-In coda alla sezione Media, oltre un filetto, un pannello per ogni fonte
-indicizzabile della lingua attiva (PDF, txt, md o docx): titolo, stato in
-mono ("3 sezioni indicizzate." / "Non preparato per le domande."), le
-azioni, e gli errori. Niente più bozza da correggere: il pannello dice
-quante sezioni cercabili esistono, non il testo che le compone — il testo
-estratto non si conserva da nessuna parte, per scelta.
+#### Sezione Chatbot (`ManualPrepPanel.vue`, sezione «Chatbot»)
+Una `.panel-card` propria, dopo "Media" e non più dentro — le due sezioni
+rispondono a domande diverse ("che materiali ha il gioco" contro "quali
+sono pronti per la chat") e mischiarle confondeva un pannello alto per
+file con la griglia dei media. Una riga per fonte indicizzabile della
+lingua attiva (PDF, txt, md o docx), riuso dello stesso scaffold di
+`.admin-list`/`.admin-row` delle righe amministratori (`/admin/users`):
+titolo (`.manual-doc-title`), pastiglia di formato (`.lang-chip`, la
+stessa dell'indice lingua "IT" — l'estensione letta da
+`fileExtensionLabel` in `utils/game.ts`, condivisa con `GameMediaList.vue`
+per non calcolarla due volte con criteri diversi), stato in mono
+(`.manual-doc-state`: "3 sezioni indicizzate" / "Non preparato") e azioni
+a destra (`.admin-row-actions`). Niente più bozza da correggere: la riga
+dice quante sezioni cercabili esistono, non il testo che le compone — il
+testo estratto non si conserva da nessuna parte, per scelta.
 
+- **Gli avvisi stanno a livello di sezione, detti una volta.** Un pannello
+  per file ripeteva identici, sotto ogni fonte, l'avviso sui tempi lunghi
+  e il motivo per cui manca "Prepara" senza provider AI — con più di un
+  documento diventava rumore ripetuto. Ora la sezione mostra uno dei due
+  avvisi una volta sola, sopra l'elenco: quello sui tempi (se un provider
+  c'è) o il motivo pratico (se manca). Nessun documento indicizzabile
+  lascia una riga sola in `.empty-note` che dice cosa caricare (PDF, txt,
+  md, docx), senza né avviso né elenco vuoto.
 - **Rosso pieno solo la prima volta.** "Prepara per le domande" è l'azione
-  della sezione finché un indice non c'è; su una fonte già indicizzata
+  di una riga finché un indice non c'è; su una fonte già indicizzata
   "Prepara di nuovo" passa a `.btn-secondary`: rifà una lettura lunga e
-  sostituisce quel che c'è, e da bottone più acceso della card pesava più
+  sostituisce quel che c'è, e da bottone più acceso della riga pesava più
   del "Salva" della scheda accanto.
-- **Senza provider AI il pannello non offre "Prepara".** La segmentazione
+- **Senza provider AI la riga non offre "Prepara".** La segmentazione
   di un txt/PDF testuale, la conversione di un docx e l'OCR di uno scan
   passano tutte dal modello configurato nelle impostazioni — anche il caso
   che tecnicamente non ne avrebbe bisogno, un `.md` già segmentato, per
   restare a una sola regola invece che un'eccezione per formato. Senza
-  provider la rotta di indicizzazione risponde 404 e il pannello mostra
+  provider la rotta di indicizzazione risponde 404 e la sezione mostra
   solo il motivo: senza chat non c'è niente da preparare, non un errore da
   correggere.
+- **Un'indicizzazione può riuscire ma restare incompleta.** Su un PDF
+  scansionato una pagina che il modello non riesce a leggere viene
+  saltata, non blocca le altre: la risposta resta un successo (200) ma
+  porta anche `pagesIndexed`/`pagesSkipped` quando qualche pagina è stata
+  persa. Un successo pieno e uno parziale sarebbero altrimenti
+  indistinguibili per l'admin — vedrebbe solo "17 sezioni indicizzate"
+  senza sapere che al manuale mancano tre pagine, e la chat risponderebbe
+  poi con sicurezza da un regolamento incompleto: il guasto peggiore per
+  questa funzione, perché una risposta sbagliata sembra identica a una
+  giusta. La riga lo dice con un avviso dedicato (`.manual-doc-partial`,
+  la stessa resa oro di `.loan-warning`: attenzione, non errore — il rosso
+  di `.error` direbbe "non ha funzionato", e ha funzionato) invece che con
+  la nota neutra `.empty-note` del successo pieno. È un avviso
+  **transitorio**, non uno stato persistito: quel dato arriva solo nella
+  risposta di questa chiamata, non nel dettaglio del gioco, quindi sparisce
+  al prossimo caricamento della pagina — coerente con la riga, che mostra
+  comunque sempre il conteggio corrente in `.manual-doc-state`.
 - **Perché non c'è più una bozza da correggere a mano.** Fino alla fase
   precedente il pannello mostrava una casella di testo per pagina — la
   trascrizione di uno scan, da rileggere contro il PDF e correggere prima
@@ -974,7 +1042,7 @@ prima di questa voce.
 - **Do** avvolgere ogni tabella larga in `.table-scroll` prima di
   aggiungere colonne: la pagina non scorre mai in orizzontale.
 - **Do** cambiare il colore dell'anello di focus sul feltro
-  (`.app-topbar`/`.app-sidebar`/`.manual-chat-toggle`/`.manual-chat-dialog-head`
+  (`.app-topbar`/`.app-sidebar`/`.manual-chat-dialog-head`
   → `outline-color: var(--felt-text)`): il rosso seme della regola globale
   sta a 1.3:1 contro il verde, l'anello esiste ma non si vede. Su cartoncino
   resta il rosso. **Ogni superficie verde nuova va aggiunta a quella lista**:
@@ -986,8 +1054,8 @@ prima di questa voce.
   classe nuda (0,1,0), e dentro una `<li>` batte pure `li button:hover`
   (0,1,2). Un bottone verde feltro senza hover proprio diventa rosso accento
   al passaggio del mouse, una pastiglia in lista diventa `--danger-bg` col
-  bordo di "Rimuovi". Bug reale trovato in audit su `.manual-chat-toggle`,
-  `.manual-chat-fab`, `.manual-chat-fakeinput` e sulle domande suggerite —
+  bordo di "Rimuovi". Bug reale trovato in audit su `.manual-chat-fab`,
+  `.manual-chat-fakeinput` e sulle domande suggerite —
   la stessa eredità che `.loan-row` aveva già dovuto rifiutare.
 - **Do** tenere ogni bersaglio delle pagine pubbliche a **44px** di lato
   minimo, la × delle modali compresa (`.modal-close`): su un telefono quella

@@ -3863,7 +3863,13 @@ tbody tr:nth-child(3) .rank-medal {
 
 /* Una colonna sola per default: la sidebar entra solo dove c'è spazio
    davvero. 1100px = 56rem di colonna leggibile + 22rem di chat + i
-   margini di .app-page. */
+   margini di .app-page.
+
+   22rem resta la larghezza anche ora che la colonna è a tutta altezza:
+   l'altezza non cambia il calcolo (56rem di testo + 22rem di chat + gap
+   devono stare dentro il viewport), e a 22rem deep-chat mostra già bolle e
+   campo leggibili — allargarla toglierebbe spazio al testo senza un
+   beneficio misurato. */
 .game-detail-layout {
   display: block;
 }
@@ -3880,14 +3886,22 @@ tbody tr:nth-child(3) .rank-medal {
     min-width: 0;
   }
 
-  /* Sticky sotto la topbar (3.25rem), con il suo scroll interno: la
+  /* Colonna a tutta altezza come `.app-sidebar` a sinistra, non più una
+     card alta quanto il suo contenuto: prima `max-height` lasciava che il
+     riquadro si fermasse a ~455px su un viewport di 900, con metà colonna
+     vuota sotto (misurato in browser). `margin-top` annulla il
+     padding-top di `.app-page` (2.25rem) così la colonna parte esattamente
+     sotto la topbar — lo stesso punto in cui `top` la aggancia — e
+     `height` (non più `max-height`) la riempie fino al fondo del
+     viewport invece di limitarla. Sticky, con lo scroll interno: la
      colonna di sinistra scorre e la chat resta ferma. */
   .manual-chat-aside {
     position: sticky;
-    top: calc(3.25rem + 1rem);
+    top: 3.25rem;
+    margin-top: -2.25rem;
     display: flex;
     flex-direction: column;
-    max-height: calc(100dvh - 3.25rem - 3rem);
+    height: calc(100dvh - 3.25rem);
     overflow: hidden;
     background: var(--card);
     border: 1px solid var(--card-line);
@@ -3895,84 +3909,18 @@ tbody tr:nth-child(3) .rank-medal {
     box-shadow: var(--shadow-card);
   }
 
-  .manual-chat-aside.is-collapsed {
-    /* Collassata: una barra stretta col titolo ruotato. */
-    align-self: start;
-    max-height: none;
-  }
-
-  /* :has() non è supportato ovunque: sui motori senza, questa regola non
-     si applica e la colonna resta 22rem anche da collassata. Va bene
-     così — è un fallback grazioso, non un bug: il contenuto si nasconde
-     comunque via v-show, cambia solo quanto spazio vuoto resta a destra. */
-  .game-detail-layout.has-chat:has(.manual-chat-aside.is-collapsed) {
-    grid-template-columns: minmax(0, 1fr) 2.75rem;
-  }
-
-  /* Da collassata la barra è larga 44px: il titolo si gira e il chevron gli
-     va sopra invece che di fianco, dove non ci starebbero entrambi. */
-  .manual-chat-aside.is-collapsed .manual-chat-toggle {
-    flex-direction: column;
-    padding: 0.7rem 0.25rem;
-  }
-
-  .manual-chat-aside.is-collapsed .manual-chat-toggle-label {
-    writing-mode: vertical-rl;
-    padding: 0.75rem 0;
-  }
-
-  /* Il chevron punta verso il contenuto: fuori quando è aperta (si chiude a
-     destra), dentro quando è chiusa (si riapre a sinistra). */
-  .manual-chat-aside.is-collapsed .manual-chat-toggle-icon {
-    order: -1;
-    transform: rotate(180deg);
-  }
-
+  /* Il corpo (non l'aside) porta `flex: 1`: senza, un figlio senza grow
+     dentro una colonna flex resta alto quanto il suo contenuto, ed è
+     esattamente il difetto misurato — la card si fermava a ~455px con
+     spazio vuoto sotto anche a `.manual-chat-aside` alto quanto lo
+     schermo. */
   .manual-chat-aside-body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
     min-height: 0;
     overflow-y: auto;
   }
-}
-
-.manual-chat-toggle {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  min-height: 44px;
-  padding: 0.7rem 0.85rem;
-  font-family: 'Display', system-ui, sans-serif;
-  font-size: 0.95rem;
-  color: var(--felt-text);
-  background: var(--felt);
-  border: 0;
-  cursor: pointer;
-}
-
-.manual-chat-toggle-icon {
-  flex: none;
-  width: 1rem;
-  height: 1rem;
-}
-
-/* La regola globale `button:hover` (0,1,1) batte una classe nuda (0,1,0):
-   senza questa riga il capo verde della chat diventava rosso accento al
-   passaggio del mouse. Stessa eredità che `.loan-row` ha già dovuto
-   rifiutare — chi aggiunge un bottone fuori dal rosso primario dichiara
-   anche il suo hover. */
-.manual-chat-toggle:hover {
-  background: var(--felt-deep);
-}
-
-/* Sul feltro il rosso seme dell'anello di focus sta a 1.3:1: la regola
-   generale vale già per topbar e sidebar, e ogni superficie verde nuova va
-   aggiunta a mano (qui e sulla testata del dialog, più sotto). In più
-   `.manual-chat-aside` ha `overflow: hidden`, quindi l'anello va portato
-   dentro o viene ritagliato. */
-.manual-chat-toggle:focus-visible {
-  outline-color: var(--felt-text);
-  outline-offset: -2px;
 }
 
 .manual-chat-panel {
@@ -4103,9 +4051,9 @@ tbody tr:nth-child(3) .rank-medal {
   cursor: pointer;
 }
 
-/* Come `.manual-chat-toggle`: senza un hover proprio, `button:hover`
-   colorava di rosso accento il bottone verde. L'anello di focus qui invece
-   resta il rosso della regola generale, e va bene: `outline-offset: 2px` lo
+/* Senza un hover proprio, la regola globale `button:hover` colorava di
+   rosso accento il bottone verde. L'anello di focus qui invece resta il
+   rosso della regola generale, e va bene: `outline-offset: 2px` lo
    disegna *fuori* dal bottone, sul cartoncino della pagina, dove sta a
    6.4:1. */
 .manual-chat-fab:hover {
@@ -4202,34 +4150,46 @@ tbody tr:nth-child(3) .rank-medal {
   height: 100%;
 }
 
-/* ---------- Preparazione manuale (admin) ---------- */
+/* ---------- Sezione Chatbot (admin) ---------- */
 
-.manual-prep {
-  margin-top: 0.85rem;
-  padding-top: 0.85rem;
-  border-top: 1px solid var(--card-line);
-}
-
-.manual-prep-title {
-  margin: 0 0 0.3rem;
-  font-family: 'Display', system-ui, sans-serif;
-  font-size: 1rem;
+/* Una riga per documento, non un pannello alto per file: stesso scaffold
+   di `.admin-list`/`.admin-row` (righe amministratori, /users) — titolo,
+   pastiglia di formato (`.lang-chip`, come "IT" sulla linguetta lingua),
+   stato e azioni in fila, che va a capo sotto i 500px circa invece di
+   spingere le azioni fuori schermo. */
+.manual-doc-title {
+  flex: 1 1 12rem;
+  min-width: 0;
   font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--ink);
+  overflow-wrap: anywhere;
 }
 
-.manual-prep-state {
-  margin: 0 0 0.5rem;
+.manual-doc-state {
   font-family: 'Data', ui-monospace, monospace;
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   color: var(--ink-muted);
 }
 
-.manual-prep-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0.5rem 0;
+/* Errore o avviso di una riga: va a capo sotto azioni e resto, largo
+   quanto tutta la riga — come `.admin-invite` sotto una riga admin. */
+.manual-doc-message {
+  flex: 1 1 100%;
+  margin: 0;
+}
+
+/* Un'indicizzazione parziale (pagine di uno scansionato saltate per un
+   errore di lettura) non è un errore — la chat funziona già — ma non può
+   leggersi come il successo pieno di `.empty-note`: l'admin deve sapere
+   che il manuale è incompleto. Stessa resa di `.loan-warning` (attenzione,
+   non allarme): fondo e bordo oro, testo in inchiostro pieno perché è
+   l'unica riga che può far tornare qualcuno a completare l'indice, e non
+   può leggersi come una postilla. La regola dell'oro non-testo resta:
+   l'oro è bordo e superficie, mai colore delle lettere. */
+.manual-doc-partial {
+  padding: 0.5rem 0.65rem;
+  border-radius: var(--radius-sm);
+  background: var(--gold-bg);
+  border: 1px solid var(--gold);
+  color: var(--ink);
 }
 
