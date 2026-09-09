@@ -569,7 +569,10 @@ Crea `backend/internal/ai/suggest_internal_test.go`:
 ```go
 package ai
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestParseSuggestions fissa cosa si accetta dal modello. La validazione è
 // meccanica e non un'esortazione nel prompt perché questo testo va sulla
@@ -618,10 +621,13 @@ func TestParseSuggestions(t *testing.T) {
 			ok:   false,
 		},
 		{
+			// La riga lunga si costruisce con strings.Repeat invece di
+			// scriverla a mano: una domanda "abbastanza lunga" contata a
+			// occhio può finire sotto il tetto e far passare il test per
+			// il motivo sbagliato.
 			name: "una domanda troppo lunga per un bottone",
-			in:   "Come si prepara?\n" + string(make([]byte, 0)) +
-				"Cosa devo fare esattamente quando arriva il mio turno e non ho più tessere da piazzare né segnalini disponibili sul tabellone?\nCome finisce?",
-			ok: false,
+			in:   "Come si prepara?\n" + strings.Repeat("x", MaxSuggestionChars+1) + "?\nCome finisce?",
+			ok:   false,
 		},
 		{name: "risposta vuota", in: "", ok: false},
 	}
@@ -650,8 +656,6 @@ func TestParseSuggestions(t *testing.T) {
 	}
 }
 ```
-
-Nota: la riga lunga nel penultimo caso è 122 caratteri, appena sopra il tetto di 120. Se la conti diversa, allungala: il test deve superare `maxSuggestionChars`, non starci per un pelo.
 
 - [ ] **Step 2: Lancia il test e verifica che fallisca**
 
@@ -684,10 +688,14 @@ import (
 // minuto non tornerà.
 const suggestTimeout = 30 * time.Second
 
-// maxSuggestionChars è il tetto per domanda. Le domande vivono in tre
+// MaxSuggestionChars è il tetto per domanda. Le domande vivono in tre
 // bottoni su uno schermo di telefono: una domanda di duecento caratteri
 // non è una domanda suggerita, è un paragrafo.
-const maxSuggestionChars = 120
+//
+// Esportata perché il tetto è UNO: una domanda scritta a mano dall'admin
+// vive negli stessi tre bottoni di una generata, e il validatore della
+// rotta PUT (httpapi) deve usare questo valore, non una sua copia.
+const MaxSuggestionChars = 120
 
 // ErrSuggestionsRejected dice che la risposta del modello non è tre
 // domande. È un errore distinto da un guasto di rete perché il chiamante
@@ -782,8 +790,8 @@ func parseSuggestions(raw string) ([]string, error) {
 		if !strings.HasSuffix(q, "?") {
 			return nil, fmt.Errorf("%w: la riga %d non è una domanda: %q", ErrSuggestionsRejected, i+1, q)
 		}
-		if len([]rune(q)) > maxSuggestionChars {
-			return nil, fmt.Errorf("%w: la riga %d supera %d caratteri", ErrSuggestionsRejected, i+1, maxSuggestionChars)
+		if len([]rune(q)) > MaxSuggestionChars {
+			return nil, fmt.Errorf("%w: la riga %d supera %d caratteri", ErrSuggestionsRejected, i+1, MaxSuggestionChars)
 		}
 	}
 	return out, nil
@@ -944,7 +952,7 @@ Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>"
   ```go
   // in httpapi
   func (s *Server) suggester(ctx context.Context) ai.QuestionSuggester
-  func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, gameName string, all bool) error
+  func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, all bool) error
   // Server gains: Suggester ai.QuestionSuggester
   ```
 
@@ -1141,7 +1149,15 @@ var errNoHeadings = errors.New("questions: il gioco non ha nessuna fonte indiciz
 // Non scrive niente sulla ResponseWriter: i due chiamanti raccontano
 // l'esito in modo diverso — l'indicizzazione lo ignora, il pulsante lo
 // riporta all'admin.
-func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, gameName string, all bool) error {
+func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, all bool) error {
+	// Il nome del gioco lo carica questa funzione, non il chiamante:
+	// indexMediaHandler ha in scope solo gameID, e farglielo caricare
+	// significherebbe scriverlo due volte per i due chiamanti.
+	game, err := s.Games.GetGame(ctx, gameID)
+	if err != nil {
+		return fmt.Errorf("questions: get game %d: %w", gameID, err)
+	}
+
 	summary, err := s.Manuals.Summary(ctx, gameID)
 	if err != nil {
 		return fmt.Errorf("questions: summary: %w", err)
@@ -1150,7 +1166,7 @@ func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, gameName
 		return errNoHeadings
 	}
 
-	texts, err := s.suggester(ctx).SuggestQuestions(ctx, gameName, summary.Headings)
+	texts, err := s.suggester(ctx).SuggestQuestions(ctx, game.Name, summary.Headings)
 	if err != nil {
 		return err
 	}
@@ -1199,13 +1215,13 @@ In `backend/internal/httpapi/manuals_handlers.go`, **subito prima** della costru
 	if existing, qErr := s.Manuals.SuggestedQuestions(r.Context(), gameID); qErr != nil {
 		log.Printf("index: read suggested questions for game %d: %v", gameID, qErr)
 	} else if !allQuestionsEdited(existing) {
-		if qErr := s.regenerateQuestions(r.Context(), gameID, game.Name, false); qErr != nil {
+		if qErr := s.regenerateQuestions(r.Context(), gameID, false); qErr != nil {
 			log.Printf("index: suggested questions for game %d: %v", gameID, qErr)
 		}
 	}
 ```
 
-**Verifica il nome della variabile del gioco**: se in `indexMediaHandler` il gioco non è già in scope come `game`, cercalo con `grep -n "game\b\|Games.Game" backend/internal/httpapi/manuals_handlers.go` dentro quella funzione e usa il nome giusto, oppure caricalo con lo store dei giochi. Non inventare un identificatore.
+Nota: `indexMediaHandler` ha in scope `gameID` ma **non** il gioco — verificato. Per questo `regenerateQuestions` carica il gioco da sé e prende solo l'id: nessun chiamante deve procurarsi il nome.
 
 - [ ] **Step 6: Lancia i test e verifica che passino**
 
@@ -1548,9 +1564,9 @@ func (s *Server) putSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Req
 			writeError(w, http.StatusBadRequest, "nessuna delle tre domande può essere vuota")
 			return
 		}
-		if len([]rune(texts[i])) > maxQuestionChars {
+		if len([]rune(texts[i])) > ai.MaxSuggestionChars {
 			writeError(w, http.StatusBadRequest, fmt.Sprintf(
-				"ogni domanda deve stare sotto i %d caratteri", maxQuestionChars))
+				"ogni domanda deve stare sotto i %d caratteri", ai.MaxSuggestionChars))
 			return
 		}
 	}
@@ -1570,26 +1586,23 @@ func (s *Server) putSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Req
 	writeJSON(w, http.StatusOK, suggestedQuestionsResponse(qs))
 }
 
-// maxQuestionChars ripete il tetto di ai.maxSuggestionChars, che non è
-// esportato: una domanda scritta a mano vive negli stessi tre bottoni di
-// una generata, quindi ha lo stesso limite.
-const maxQuestionChars = 120
-
 func (s *Server) regenerateSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Request) {
 	gameID, err := parseIDParam(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "id del gioco non valido")
 		return
 	}
-	game, err := s.Games.GetGame(r.Context(), gameID)
-	if err != nil {
+	// Il 404 su un gioco inesistente prima di qualunque lavoro:
+	// regenerateQuestions ricaricherà il gioco per il suo nome, ma un id
+	// inventato deve rispondere 404 e non un errore del provider.
+	if _, err := s.Games.GetGame(r.Context(), gameID); err != nil {
 		writeError(w, http.StatusNotFound, "gioco non trovato")
 		return
 	}
 
 	// A differenza dell'indicizzazione, qui l'esito si racconta: è un
 	// pulsante premuto a mano, e chi lo preme deve sapere se ha funzionato.
-	switch err := s.regenerateQuestions(r.Context(), gameID, game.Name, true); {
+	switch err := s.regenerateQuestions(r.Context(), gameID, true); {
 	case err == nil:
 	case errors.Is(err, errNoHeadings):
 		writeError(w, http.StatusUnprocessableEntity,
@@ -1998,7 +2011,7 @@ onMounted(load)
             :id="`suggested-question-${i}`"
             v-model="q.text"
             type="text"
-            maxlength="120"
+            :maxlength="120"
             placeholder="Nessuna domanda: indicizza un manuale o scrivila a mano"
           />
           <span v-if="q.edited" class="suggested-questions-badge">scritta a mano</span>
