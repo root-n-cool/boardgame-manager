@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -13,6 +14,36 @@ import (
 // documentXMLPart è il nome, fisso nello standard OOXML, della parte zip
 // che contiene il corpo del documento.
 const documentXMLPart = "word/document.xml"
+
+// maxDocumentXMLBytes limita quanti byte leggiamo da word/document.xml UNA
+// VOLTA DECOMPRESSO. Il limite di 20 MB sull'upload (storage.ManualCategory)
+// vale sul file zip compresso: un document.xml è XML ripetitivo (gli stessi
+// tag <w:p><w:r><w:t> migliaia di volte), che comprime moltissimo — un
+// archivio piccolo può nascondere un document.xml enorme (uno zip bomb).
+// Il limite si applica DURANTE la lettura (io.LimitReader), non confrontando
+// la dimensione dichiarata nell'header dello zip (UncompressedSize64): quel
+// numero è metadato scritto dall'archivio stesso e non garantisce nulla
+// finché non si arriva alla fine dello stream — un archivio costruito ad
+// arte potrebbe dichiarare poco e produrre in lettura molto di più. L'unico
+// limite affidabile è quello imposto mentre si legge.
+//
+// Il valore è generoso rispetto a qualunque regolamento reale: anche un
+// manuale molto lungo, con tutta la formattazione OOXML intorno al testo,
+// sta comodamente sotto qualche MB di XML.
+const maxDocumentXMLBytes = 5 * 1024 * 1024
+
+// ErrDocumentXMLTooLarge è l'errore restituito quando word/document.xml
+// supera maxDocumentXMLBytes una volta decompresso. È distinto da "il
+// documento non contiene testo": sono due cause diverse, e il Task 5 deve
+// poter dire all'admin cose diverse per ciascuna. Esportato (non un
+// semplice fmt.Errorf) perché il chiamante deve poterlo riconoscere con
+// errors.Is: un confronto sul testo del messaggio si romperebbe al primo
+// refactoring della frase, e — come il round di review precedente ha
+// mostrato empiricamente — un file troncato da maxDocumentXMLBytes può
+// produrre anche un errore di parsing XML dal tutt'altro aspetto: solo
+// l'identità del sentinel distingue in modo affidabile "era troppo grande"
+// da "era troncato in un punto che ha rotto l'XML".
+var ErrDocumentXMLTooLarge = errors.New("docx: word/document.xml supera il limite consentito una volta decompresso")
 
 // DocxToMarkdown legge un .docx (uno zip OOXML) e ne restituisce il corpo
 // come markdown: un sottoinsieme deliberatamente limitato — paragrafi,
@@ -47,17 +78,25 @@ const documentXMLPart = "word/document.xml"
 //     scelta deliberata per restare dentro lo stdlib e i tre elementi che
 //     contano (w:p, w:r, w:t) senza aprire una quarta parte dello zip solo
 //     per un dettaglio che alla ricerca FTS non serve.
-//   - Il testo di un paragrafo normale viene protetto quando il suo primo
-//     carattere avrebbe un significato speciale in markdown ("#", "-",
-//     "*", "+", ">", o una lista numerata "1."): senza, un paragrafo Normal
-//     che comincia per coincidenza con "#" verrebbe riletto da
-//     ParseSections come un titolo, spezzando la sezione a metà frase.
-//     Il titolo emesso da questa funzione stesso ("# " + testo) non viene
+//   - Il testo di un paragrafo normale viene protetto SOLO quando il suo
+//     primo carattere è "#": senza, un paragrafo Normal che comincia per
+//     coincidenza con un cancelletto verrebbe riletto da ParseSections
+//     come un titolo, spezzando la sezione a metà frase. Nessun altro
+//     carattere ("-", "*", "+", ">", un elenco numerato "1.") viene
+//     protetto: questo markdown non viene mai renderizzato, il solo
+//     consumatore è ParseSections, e ParseSections guarda esclusivamente i
+//     titoli ATX — non liste né blockquote. Un regolamento scritto senza
+//     usare le liste di Word comincia legittimamente paragrafi con "1." o
+//     "-", e un backslash spurio lì dentro finirebbe nell'indice FTS5 e
+//     nelle citazioni mostrate all'utente senza che nessuno lo tolga mai.
+//     Il titolo emesso da questa funzione stessa ("# " + testo) non viene
 //     protetto: è un titolo apposta.
-//   - Un documento senza testo utile (zip senza word/document.xml, o con
-//     un corpo che non produce nessun paragrafo non vuoto) è un errore,
-//     non una stringa vuota: una stringa vuota senza errore sparirebbe in
-//     silenzio, mentre l'errore arriva fino all'admin (Task 5).
+//   - Un documento senza testo utile (zip senza word/document.xml, un
+//     corpo che non produce nessun paragrafo non vuoto, o un contenuto
+//     interamente escluso come una tabella senza altro testo) è un
+//     errore, non una stringa vuota: una stringa vuota senza errore
+//     sparirebbe in silenzio, mentre l'errore arriva fino all'admin
+//     (Task 5).
 func DocxToMarkdown(raw []byte) (string, error) {
 	zr, err := zip.NewReader(bytes.NewReader(raw), int64(len(raw)))
 	if err != nil {
@@ -81,7 +120,18 @@ func DocxToMarkdown(raw []byte) (string, error) {
 	}
 	defer rc.Close()
 
-	md, err := decodeDocumentXML(rc)
+	// Il +1 permette di distinguere "esattamente al limite" da "oltre il
+	// limite": se dopo la lettura data è più lungo di maxDocumentXMLBytes,
+	// lo stream conteneva più byte della soglia.
+	data, err := io.ReadAll(io.LimitReader(rc, maxDocumentXMLBytes+1))
+	if err != nil {
+		return "", fmt.Errorf("docx: lettura di %s: %w", documentXMLPart, err)
+	}
+	if len(data) > maxDocumentXMLBytes {
+		return "", ErrDocumentXMLTooLarge
+	}
+
+	md, err := decodeDocumentXML(bytes.NewReader(data))
 	if err != nil {
 		return "", err
 	}
@@ -261,26 +311,22 @@ func headingLevel(style string, outline int) int {
 }
 
 // escapeLeadingMarkdown antepone un backslash quando il primo carattere di
-// un paragrafo Normal avrebbe, a inizio riga, un significato speciale in
-// markdown: titolo ATX ("#"), elenco puntato ("-", "*", "+"), blockquote
-// (">"), o l'inizio di un elenco numerato ("1." / "1)"). Protegge solo il
-// primo carattere, non ogni riga: <w:t> non contiene mai un "\n" letterale
-// in un documento prodotto da Word (gli a capo sono <w:br/>, già resi come
-// spazio più sopra), quindi un paragrafo di questa funzione è sempre una
-// singola riga logica.
+// un paragrafo Normal è "#": senza, un paragrafo che comincia per
+// coincidenza con un cancelletto verrebbe riletto da ParseSections (che
+// guarda SOLO i titoli ATX a inizio riga — markdown.go) come un titolo,
+// spezzando la sezione a metà frase.
+//
+// Nessun altro carattere viene protetto — non "-", "*", "+", ">", non un
+// elenco numerato ("1."/"1)") — perché questo markdown non viene mai
+// renderizzato: l'unico consumatore è ParseSections, e ParseSections non
+// guarda liste né blockquote. Proteggerli sarebbe rumore spurio dentro il
+// testo indicizzato da FTS5 e mostrato nelle citazioni (Task 5): un
+// regolamento scritto senza usare le liste di Word comincia legittimamente
+// paragrafi con "1." o "-", e un backslash spurio lì non lo toglierebbe mai
+// nessuno.
 func escapeLeadingMarkdown(s string) string {
-	if s == "" {
-		return s
-	}
-	if strings.ContainsRune("#-*+>", rune(s[0])) {
+	if s != "" && s[0] == '#' {
 		return "\\" + s
-	}
-	end := 0
-	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-		end++
-	}
-	if end > 0 && end < len(s) && (s[end] == '.' || s[end] == ')') {
-		return s[:end] + "\\" + s[end:]
 	}
 	return s
 }

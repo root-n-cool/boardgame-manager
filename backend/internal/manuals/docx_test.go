@@ -1,6 +1,7 @@
 package manuals_test
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -172,18 +173,86 @@ func TestDocxToMarkdown_EscapesLeadingHashSoParseSectionsDoesNotMisreadIt(t *tes
 	}
 }
 
-// TestDocxToMarkdown_NoTextReturnsError copre un .docx senza contenuto
-// testuale utile: deve dare un errore riconoscibile, non una stringa vuota
-// senza errore — che sparirebbe in silenzio invece di arrivare all'admin.
+// TestDocxToMarkdown_OnlyEscapesLeadingHash conferma che "-", "*", "+", ">"
+// e un elenco numerato ("1.") NON vengono protetti: l'unico consumatore di
+// questo markdown è ParseSections, che rilegge solo i titoli ATX. Un
+// regolamento scritto senza usare le liste di Word comincia legittimamente
+// paragrafi così, e proteggerli sarebbe rumore spurio dentro il testo
+// indicizzato e nelle citazioni mostrate all'utente.
+func TestDocxToMarkdown_OnlyEscapesLeadingHash(t *testing.T) {
+	raw := manuals.NewDocx([]manuals.DocxParagraph{
+		{Text: "1. Preparazione del tavolo"},
+		{Text: "- variante per due giocatori"},
+		{Text: "* punto elenco"},
+		{Text: "> citazione dal regolamento originale"},
+	})
+
+	md, err := manuals.DocxToMarkdown(raw)
+	if err != nil {
+		t.Fatalf("docx: %v", err)
+	}
+	for _, line := range []string{
+		"1. Preparazione del tavolo",
+		"- variante per due giocatori",
+		"* punto elenco",
+		"> citazione dal regolamento originale",
+	} {
+		if !hasExactLine(md, line) {
+			t.Fatalf("il paragrafo %q è uscito alterato da un escaping spurio:\n%s", line, md)
+		}
+	}
+}
+
+// TestDocxToMarkdown_NoTextReturnsError copre tre forme diverse in cui un
+// .docx reale arriva senza contenuto testuale utile: zero paragrafi, un
+// paragrafo di soli spazi, e un documento che contiene testo SOLO dentro
+// una tabella (esclusa per scelta di design). La prima da sola non basta a
+// discriminare l'implementazione: un bug che, per esempio, dimenticasse di
+// TrimSpace il testo di un paragrafo prima di considerarlo vuoto passerebbe
+// comunque con zero paragrafi, ma non con un paragrafo di soli spazi o con
+// un documento che ha SOLO una tabella.
 func TestDocxToMarkdown_NoTextReturnsError(t *testing.T) {
-	raw := manuals.NewDocx(nil)
+	cases := map[string][]byte{
+		"nessun paragrafo": manuals.NewDocx(nil),
+		"solo spazi":       manuals.NewDocx([]manuals.DocxParagraph{{Text: "   \n\t  "}}),
+		"solo una tabella": manuals.NewDocxRawBody(
+			`<w:tbl><w:tr><w:tc><w:p><w:r><w:t>Cella A</w:t></w:r></w:p></w:tc></w:tr></w:tbl>`),
+	}
+
+	for name, raw := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := manuals.DocxToMarkdown(raw)
+			if err == nil {
+				t.Fatalf("%s: nessun errore per un docx senza testo utile", name)
+			}
+			if !strings.Contains(err.Error(), "non contiene testo") {
+				t.Fatalf("%s: errore inatteso per un docx senza testo: %v", name, err)
+			}
+		})
+	}
+}
+
+// TestDocxToMarkdown_DocumentXMLTooLargeReturnsError copre un
+// word/document.xml che, una volta decompresso, supera la soglia: un
+// document.xml è XML ripetitivo che comprime moltissimo, quindi un
+// archivio piccolo può nasconderne uno enorme (uno zip bomb).
+//
+// L'asserzione usa errors.Is su ErrDocumentXMLTooLarge, non un controllo
+// generico "un errore qualsiasi" o un Contains sul messaggio: un
+// io.LimitReader che tronca semplicemente il flusso, SENZA un controllo
+// esplicito sulla lunghezza letta, produce comunque un errore (di parsing
+// XML, perché il documento troncato non chiude i suoi tag) che un
+// controllo debole non distinguerebbe dal comportamento corretto —
+// verificato rompendo apposta il controllo di lunghezza in isolamento.
+func TestDocxToMarkdown_DocumentXMLTooLargeReturnsError(t *testing.T) {
+	// Il corpo da solo, prima dell'involucro XML, è già oltre la soglia:
+	// il totale lo sarà per forza.
+	oversized := strings.Repeat("A", 6*1024*1024)
+	raw := manuals.NewDocxRawBody(oversized)
 
 	_, err := manuals.DocxToMarkdown(raw)
-	if err == nil {
-		t.Fatal("un docx senza paragrafi non ha dato errore")
-	}
-	if !strings.Contains(err.Error(), "non contiene testo") {
-		t.Fatalf("errore inatteso per un docx senza testo: %v", err)
+	if !errors.Is(err, manuals.ErrDocumentXMLTooLarge) {
+		t.Fatalf("atteso manuals.ErrDocumentXMLTooLarge, ottenuto: %v", err)
 	}
 }
 
