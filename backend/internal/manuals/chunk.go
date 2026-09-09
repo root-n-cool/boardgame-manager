@@ -3,7 +3,6 @@ package manuals
 import (
 	"regexp"
 	"strings"
-	"unicode"
 )
 
 // MaxChunkChars è la dimensione massima di un chunk. Mille caratteri sono
@@ -16,46 +15,11 @@ const MaxChunkChars = 1000
 // sovrapposizione non si troverebbe né prima né dopo.
 const ChunkOverlapChars = 100
 
-// TextChunk è un pezzo cercabile di manuale. PageNumber è ciò che rende
-// possibile la citazione; Seq è l'ordinale nella pagina, e serve ad
-// allegare il chunk vicino quando il match cade su un bordo.
-//
-// Chiamato TextChunk e non Chunk: Go non permette un tipo e una funzione
-// con lo stesso identificatore nello stesso package, e la funzione sotto
-// deve chiamarsi Chunk (è così che la chiama, senza qualificatore, lo
-// store del Task 5). Il brief di questo task nominava entrambi "Chunk";
-// è un conflitto irrisolvibile alla lettera, quindi si rinomina il tipo,
-// che altrove nel piano non è mai referenziato per nome — solo la
-// funzione lo è (`Chunk(plain)` in store.go).
-type TextChunk struct {
-	PageNumber int
-	Seq        int
-	Text       string
-}
-
 // sentenceEnd trova la fine di una frase: punto, esclamativo, interrogativo
 // o due punti, seguiti da spazio. Compilata a livello di package come le
-// regexp di pdf.go: è usata per ogni pagina di ogni manuale, ricompilarla
+// regexp di pdf.go: è usata per ogni sezione di ogni manuale, ricompilarla
 // ad ogni chiamata rifarebbe lo stesso lavoro.
 var sentenceEnd = regexp.MustCompile(`[.!?:]\s+`)
-
-// Chunk spezza le pagine in chunk, tagliando prima sui paragrafi e poi
-// sulle frasi, senza mai spezzare una frase. Deterministico: lo stesso
-// input dà sempre gli stessi chunk, così manual_chunk si può svuotare e
-// ricostruire da manual_page in qualunque momento.
-func Chunk(pages []Page) []TextChunk {
-	var out []TextChunk
-	for _, p := range pages {
-		text := strings.TrimSpace(p.Text)
-		if text == "" {
-			continue
-		}
-		for i, body := range splitToSize(text) {
-			out = append(out, TextChunk{PageNumber: p.Number, Seq: i, Text: body})
-		}
-	}
-	return out
-}
 
 // splitToSize riduce un testo a pezzi sotto MaxChunkChars, con la coda del
 // pezzo precedente ripetuta in testa al successivo.
@@ -158,66 +122,4 @@ func tailFrom(body string) string {
 		return ""
 	}
 	return window + " "
-}
-
-// headingWords è il massimo di parole che può avere un titolo di sezione.
-const headingWords = 8
-
-// headingOrdinal è la numerazione che apre un titolo in un regolamento:
-// "1. Preparazione", "2) Il turno". Serve lo spazio dopo il separatore, così
-// "1.5 punti vittoria" non diventa "5 punti vittoria".
-var headingOrdinal = regexp.MustCompile(`^\d{1,2}[.)]\s+`)
-
-// stripHeadingMarkers toglie la sintassi che precede il titolo vero:
-// i cancelletti di un heading markdown, gli asterischi o i trattini bassi
-// dell'enfasi, e la numerazione di sezione.
-//
-// Non è un dettaglio cosmetico: il prompt di trascrizione (internal/ai)
-// chiede esplicitamente il markdown e di conservare i titoli, quindi da una
-// pagina scansionata arriva "## Fase di Upkeep" e non "Fase di Upkeep".
-// Senza questa ripulitura il primo rune è '#', il controllo sull'iniziale
-// maiuscola fallisce e OGNI pagina di un manuale scansionato resta senza
-// titolo — cioè l'indice del manuale, che esiste per risparmiare al modello
-// la chiamata esplorativa al tool, sparisce proprio sui manuali lunghi, che
-// sono quelli che il tool lo usano davvero.
-func stripHeadingMarkers(s string) string {
-	// TrimRight oltre a TrimLeft: un heading ATX può essere chiuso
-	// ("## Titolo ##") e l'enfasi lo è sempre ("**Titolo**").
-	s = strings.Trim(s, "#*_ \t")
-	return strings.TrimSpace(headingOrdinal.ReplaceAllString(s, ""))
-}
-
-// DetectHeading restituisce il titolo di sezione di una pagina, o stringa
-// vuota. Un titolo è la prima riga — spogliata dei marcatori markdown e
-// della numerazione — quando è corta, non finisce con un punto e comincia in
-// maiuscolo: sono le tre proprietà che distinguono "Fase di Upkeep" da
-// "La partita termina quando...". I marcatori si tolgono prima, mai al posto
-// dei tre controlli: "## Il gioco finisce qui." resta una frase compiuta e
-// va rifiutata come lo era senza cancelletti.
-//
-// Alimenta l'indice del manuale iniettato nel prompt, che è ciò che evita
-// al modello la chiamata esplorativa al tool.
-func DetectHeading(text string) string {
-	first := strings.TrimSpace(text)
-	if first == "" {
-		return ""
-	}
-	if idx := strings.IndexByte(first, '\n'); idx >= 0 {
-		first = strings.TrimSpace(first[:idx])
-	}
-	first = stripHeadingMarkers(first)
-	if first == "" {
-		return ""
-	}
-	if len(strings.Fields(first)) > headingWords {
-		return ""
-	}
-	if strings.HasSuffix(first, ".") {
-		return ""
-	}
-	r := []rune(first)[0]
-	if !unicode.IsUpper(r) {
-		return ""
-	}
-	return first
 }
