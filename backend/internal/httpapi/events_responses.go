@@ -71,7 +71,7 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 	}
 	withManual := map[int64]bool{}
 	if s.Manuals != nil && s.aiConfigured(ctx) {
-		if got, err := s.Manuals.GamesWithPages(ctx, gameIDs); err == nil {
+		if got, err := s.Manuals.GamesWithChunks(ctx, gameIDs); err == nil {
 			withManual = got
 		}
 	}
@@ -130,7 +130,7 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 	// basta la condizione presa direttamente.
 	canAsk := false
 	if s.Manuals != nil && s.aiConfigured(ctx) {
-		if has, err := s.Manuals.HasPages(ctx, game.ID); err == nil {
+		if has, err := s.Manuals.HasChunks(ctx, game.ID); err == nil {
 			canAsk = has
 		}
 	}

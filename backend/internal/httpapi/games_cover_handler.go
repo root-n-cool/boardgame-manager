@@ -27,14 +27,14 @@ func (s *Server) uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid upload")
 		return
 	}
-	file, _, err := r.FormFile("file")
+	file, header, err := r.FormFile("file")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "file is required")
 		return
 	}
 	defer file.Close()
 
-	path, err := s.Storage.Save(storage.CoverCategory, file)
+	path, err := s.Storage.Save(storage.CoverCategory, file, header.Filename)
 	if errors.Is(err, storage.ErrUnsupportedType) {
 		writeError(w, http.StatusBadRequest, "only JPEG, PNG or WebP images are allowed")
 		return

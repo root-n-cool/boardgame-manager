@@ -60,13 +60,19 @@ func seedGameWithManualPage4Text(t *testing.T, conn *sql.DB, page4Text string) i
 	mediaID, _ := m.LastInsertId()
 
 	store := manuals.NewStore(conn)
-	if err := store.ReplacePages(ctx, gameID, mediaID, "it", []manuals.StoredPage{
-		{PageNumber: 4, Heading: "Fase di Upkeep", Source: "vision",
-			Text: "Fase di Upkeep\n" + page4Text},
-		{PageNumber: 7, Heading: "Fine partita", Source: "vision",
-			Text: "Fine partita\nLa partita termina quando la pila di pesca si esaurisce."},
+	// L'indice FTS5 (game_source_chunk_fts) copre solo la colonna `text`,
+	// non `heading` (vedi il trigger in 0015_game_sources.sql): il testo
+	// del chunk deve quindi contenere davvero la parola che i test cercano
+	// ("Upkeep"), non bastare che sia nel titolo.
+	if err := store.ReplaceSource(ctx, gameID, &mediaID, []manuals.SourceChunk{
+		{ReferenceType: "document", Reference: "Regolamento base", ReferenceDetail: "pagina 4",
+			Heading: "Fase di Upkeep", LanguageCode: "it", Seq: 0,
+			Text: "Fase di Upkeep. " + page4Text},
+		{ReferenceType: "document", Reference: "Regolamento base", ReferenceDetail: "pagina 7",
+			Heading: "Fine partita", LanguageCode: "it", Seq: 1,
+			Text: "Fine partita. La partita termina quando la pila di pesca si esaurisce."},
 	}); err != nil {
-		t.Fatalf("replace pages: %v", err)
+		t.Fatalf("replace source: %v", err)
 	}
 	return gameID
 }
@@ -105,19 +111,17 @@ func TestAskHandler_AnswersInTheShapeDeepChatExpects(t *testing.T) {
 		t.Fatalf("il campo text non contiene la risposta: %q", body.Text)
 	}
 
-	// La AskRequest deve portare il nome del gioco, lo storico, e il
-	// corpus con il suo indice.
+	// La AskRequest deve portare il nome del gioco e lo storico.
 	if asker.got.GameName != "Wingspan" {
 		t.Fatalf("nome gioco: %q", asker.got.GameName)
 	}
 	if len(asker.got.Turns) != 1 || asker.got.Turns[0].Text != "finite le carte che si fa?" {
 		t.Fatalf("storico non passato: %+v", asker.got.Turns)
 	}
-	if asker.got.CorpusChars == 0 {
-		t.Fatal("CorpusChars a zero: l'handler non ha caricato il corpus")
-	}
-	if !strings.Contains(asker.got.CorpusIndex, "Fase di Upkeep p.4") {
-		t.Fatalf("indice non passato: %q", asker.got.CorpusIndex)
+	// CorpusIndex resta vuoto per adesso: l'indice per fonte è il Task 7
+	// (vedi il TODO in ask_handler.go), che non è ancora stato fatto.
+	if asker.got.CorpusIndex != "" {
+		t.Fatalf("CorpusIndex doveva restare vuoto (Task 7 non ancora fatto), è %q", asker.got.CorpusIndex)
 	}
 	if asker.got.Search == nil {
 		t.Fatal("Search non agganciata: con un manuale lungo il modello non avrebbe come cercare")
@@ -179,11 +183,12 @@ func addSecondManual(t *testing.T, conn *sql.DB, gameID int64) {
 		t.Fatalf("insert media: %v", err)
 	}
 	mediaEN, _ := m.LastInsertId()
-	if err := manuals.NewStore(conn).ReplacePages(ctx, gameID, mediaEN, "en", []manuals.StoredPage{
-		{PageNumber: 12, Heading: "Upkeep phase", Source: "vision",
-			Text: "Upkeep phase\nEach player pays one coin per building."},
+	if err := manuals.NewStore(conn).ReplaceSource(ctx, gameID, &mediaEN, []manuals.SourceChunk{
+		{ReferenceType: "document", Reference: "English rulebook", ReferenceDetail: "pagina 12",
+			Heading: "Upkeep phase", LanguageCode: "en", Seq: 0,
+			Text: "Each player pays one coin per building."},
 	}); err != nil {
-		t.Fatalf("replace pages: %v", err)
+		t.Fatalf("replace source: %v", err)
 	}
 }
 
@@ -325,7 +330,10 @@ func TestAskHandler_SearchClosureIsScopedToTheGame(t *testing.T) {
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if !strings.Contains(out, "pag. 4") {
+	// out è il JSON di manuals.MarshalHits: reference_detail porta "pagina
+	// 4", non più "pag. 4" (quel formato era di manuals.FormatSearchResult,
+	// cancellato dal Task 1).
+	if !strings.Contains(out, "pagina 4") {
 		t.Fatalf("la ricerca non trova la pagina del gioco chiesto:\n%s", out)
 	}
 	// Il testo del gioco richiesto deve esserci...
@@ -338,7 +346,7 @@ func TestAskHandler_SearchClosureIsScopedToTheGame(t *testing.T) {
 	if strings.Contains(out, "scarta una carta bonus") {
 		t.Fatalf("la ricerca sconfina sul contenuto di un altro gioco:\n%s", out)
 	}
-	if strings.Count(out, "pag. 4") > 1 {
+	if strings.Count(out, "pagina 4") > 1 {
 		t.Fatalf("la ricerca sconfina su un altro gioco:\n%s", out)
 	}
 }
@@ -458,16 +466,16 @@ func TestGameDetail_ExposesTheManualHeadings(t *testing.T) {
 		t.Fatalf("GET game: %d %s", rec.Code, rec.Body.String())
 	}
 	var body struct {
-		ManualHeadings []string `json:"manualHeadings"`
+		SourceHeadings []string `json:"sourceHeadings"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatalf("risposta non JSON: %v", err)
 	}
-	if len(body.ManualHeadings) != 2 {
-		t.Fatalf("attesi i 2 titoli del manuale, ottenuti %v", body.ManualHeadings)
+	if len(body.SourceHeadings) != 2 {
+		t.Fatalf("attesi i 2 titoli del manuale, ottenuti %v", body.SourceHeadings)
 	}
-	if body.ManualHeadings[0] != "Fase di Upkeep" || body.ManualHeadings[1] != "Fine partita" {
-		t.Fatalf("titoli sbagliati o fuori ordine di pagina: %v", body.ManualHeadings)
+	if body.SourceHeadings[0] != "Fase di Upkeep" || body.SourceHeadings[1] != "Fine partita" {
+		t.Fatalf("titoli sbagliati o fuori ordine di pagina: %v", body.SourceHeadings)
 	}
 }
 
@@ -483,16 +491,18 @@ func TestGameDetail_CapsTheManualHeadings(t *testing.T) {
 	if err := conn.QueryRow(`SELECT id FROM game_media LIMIT 1`).Scan(&mediaID); err != nil {
 		t.Fatalf("media: %v", err)
 	}
-	pages := make([]manuals.StoredPage, 0, 40)
+	chunks := make([]manuals.SourceChunk, 0, 40)
 	for i := 1; i <= 40; i++ {
-		pages = append(pages, manuals.StoredPage{
-			PageNumber: i, Source: "vision",
-			Heading: fmt.Sprintf("Sezione %d", i),
-			Text:    fmt.Sprintf("Sezione %d\nTesto della sezione numero %d.", i, i),
+		chunks = append(chunks, manuals.SourceChunk{
+			ReferenceType: "document", Reference: "Regolamento base",
+			ReferenceDetail: fmt.Sprintf("pagina %d", i),
+			Heading:         fmt.Sprintf("Sezione %d", i),
+			LanguageCode:    "it", Seq: i - 1,
+			Text: fmt.Sprintf("Testo della sezione numero %d.", i),
 		})
 	}
-	if err := manuals.NewStore(conn).ReplacePages(
-		context.Background(), gameID, mediaID, "it", pages); err != nil {
+	if err := manuals.NewStore(conn).ReplaceSource(
+		context.Background(), gameID, &mediaID, chunks); err != nil {
 		t.Fatalf("replace: %v", err)
 	}
 
@@ -500,14 +510,14 @@ func TestGameDetail_CapsTheManualHeadings(t *testing.T) {
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	var body struct {
-		ManualHeadings []string `json:"manualHeadings"`
+		SourceHeadings []string `json:"sourceHeadings"`
 	}
 	json.Unmarshal(rec.Body.Bytes(), &body)
-	if len(body.ManualHeadings) == 0 {
+	if len(body.SourceHeadings) == 0 {
 		t.Fatal("nessun titolo: la scheda non ha di che costruire le domande")
 	}
-	if len(body.ManualHeadings) > 8 {
-		t.Fatalf("%d titoli mandati alla scheda pubblica: nessun tetto", len(body.ManualHeadings))
+	if len(body.SourceHeadings) > 8 {
+		t.Fatalf("%d titoli mandati alla scheda pubblica: nessun tetto", len(body.SourceHeadings))
 	}
 }
 

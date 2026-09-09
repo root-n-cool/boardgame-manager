@@ -51,9 +51,9 @@ func (s *Server) createFileMediaHandler(w http.ResponseWriter, r *http.Request, 
 	}
 	defer file.Close()
 
-	path, err := s.Storage.Save(storage.ManualCategory, file)
+	path, err := s.Storage.Save(storage.ManualCategory, file, header.Filename)
 	if errors.Is(err, storage.ErrUnsupportedType) {
-		writeError(w, http.StatusBadRequest, "only PDF files are allowed")
+		writeError(w, http.StatusBadRequest, "only PDF, TXT, MD or DOCX files are allowed")
 		return
 	}
 	if errors.Is(err, storage.ErrTooLarge) {
@@ -77,7 +77,7 @@ func (s *Server) createFileMediaHandler(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusInternalServerError, "could not save media")
 		return
 	}
-	writeJSON(w, http.StatusCreated, toMediaResponse(media))
+	writeJSON(w, http.StatusCreated, toMediaResponse(media, nil))
 }
 
 type createLinkMediaRequest struct {
@@ -117,7 +117,7 @@ func (s *Server) createLinkMediaHandler(w http.ResponseWriter, r *http.Request, 
 		writeError(w, http.StatusInternalServerError, "could not save media")
 		return
 	}
-	writeJSON(w, http.StatusCreated, toMediaResponse(media))
+	writeJSON(w, http.StatusCreated, toMediaResponse(media, nil))
 }
 
 func (s *Server) deleteMediaHandler(w http.ResponseWriter, r *http.Request) {

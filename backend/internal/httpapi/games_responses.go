@@ -20,11 +20,36 @@ func toGameSummary(g games.Game) map[string]any {
 	}
 }
 
-func toMediaResponse(m games.GameMedia) map[string]any {
-	return map[string]any{"id": m.ID, "type": m.Type, "url": m.URLOrPath, "title": m.Title}
+// toMediaResponse porta anche indexedChunks, quanti chunk il Task 5 ha
+// salvato per questo media: 0 quando il media non è (ancora, o più)
+// indicizzato. Il pannello admin lo usa per mostrare se un manuale è
+// pronto per la chat senza dover chiamare una rotta a parte per gioco.
+func toMediaResponse(m games.GameMedia, chunksByMedia map[int64]int) map[string]any {
+	return map[string]any{
+		"id": m.ID, "type": m.Type, "url": m.URLOrPath, "title": m.Title,
+		"indexedChunks": chunksByMedia[m.ID],
+	}
 }
 
 func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.GameLanguage) (map[string]any, error) {
+	// canAsk governa la comparsa della chat sulla scheda pubblica. Vero solo
+	// se entrambe le condizioni valgono: provider AI configurato e almeno
+	// una fonte indicizzata. In UI non esiste il pulsante disabilitato con
+	// la spiegazione: se è falso, la chat non c'è.
+	//
+	// sourceHeadings esce dalla STESSA lettura: sono i titoli di sezione
+	// distinti di tutte le fonti del gioco, da cui la chat costruisce le
+	// domande suggerite ("Cosa dice il manuale su «Fase di Upkeep»?").
+	// PerMedia alimenta indexedChunks di ogni media, per il pannello admin.
+	// Chiederli con una seconda query costerebbe un giro in più alla
+	// pagina che ogni partecipante apre.
+	summary := manuals.SourceSummary{}
+	if s.Manuals != nil {
+		if got, err := s.Manuals.Summary(ctx, g.ID); err == nil {
+			summary = got
+		}
+	}
+
 	langOut := make([]map[string]any, 0, len(langs))
 	for _, l := range langs {
 		media, err := s.Games.ListMedia(ctx, l.ID)
@@ -33,7 +58,7 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 		}
 		mediaOut := make([]map[string]any, 0, len(media))
 		for _, m := range media {
-			mediaOut = append(mediaOut, toMediaResponse(m))
+			mediaOut = append(mediaOut, toMediaResponse(m, summary.PerMedia))
 		}
 		langOut = append(langOut, map[string]any{
 			"code": l.LanguageCode, "isBaseLanguage": l.IsBaseLanguage,
@@ -42,27 +67,12 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 	}
 	detail := toGameSummary(g)
 	detail["languages"] = langOut
-	// canAsk governa la comparsa della chat sulla scheda pubblica. Vero solo
-	// se entrambe le condizioni valgono: provider AI configurato e manuale
-	// preparato. In UI non esiste il pulsante disabilitato con la
-	// spiegazione: se è falso, la chat non c'è.
-	//
-	// manualHeadings esce dalla STESSA lettura: sono i titoli di sezione del
-	// manuale, da cui la chat costruisce le domande suggerite ("Cosa dice il
-	// manuale su «Fase di Upkeep»?"). Chiederli con una seconda query
-	// costerebbe un giro in più alla pagina che ogni partecipante apre.
-	summary := manuals.ManualSummary{}
-	if s.Manuals != nil {
-		if got, err := s.Manuals.Summary(ctx, g.ID); err == nil {
-			summary = got
-		}
-	}
-	detail["canAsk"] = summary.HasPages && s.aiConfigured(ctx)
+	detail["canAsk"] = summary.HasChunks && s.aiConfigured(ctx)
 	// Sempre un array, mai null: il frontend lo tratta come lista.
 	headings := summary.Headings
 	if headings == nil {
 		headings = []string{}
 	}
-	detail["manualHeadings"] = headings
+	detail["sourceHeadings"] = headings
 	return detail, nil
 }

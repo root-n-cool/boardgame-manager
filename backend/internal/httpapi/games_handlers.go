@@ -188,7 +188,9 @@ func (s *Server) downloadCover(ctx context.Context, imageURL string) (string, er
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("cover download returned status %d", resp.StatusCode)
 	}
-	return s.Storage.Save(storage.CoverCategory, resp.Body)
+	// Nessun nome file: la risposta HTTP di BGG non ne porta uno utilizzabile,
+	// quindi Save ripiega sul tipo sniffato (vedi extensionFor in store.go).
+	return s.Storage.Save(storage.CoverCategory, resp.Body, "")
 }
 
 // searchMinQuery mirrors the frontend picker: below three characters a BGG

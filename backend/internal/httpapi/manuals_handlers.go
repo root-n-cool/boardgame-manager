@@ -2,13 +2,14 @@ package httpapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5"
 
@@ -31,13 +32,21 @@ import (
 // caratteri qualunque sia il numero di pagine, mentre una vera pagina di
 // manuale (un paragrafo o più di regole) media sulle centinaia. 100 sta
 // comodamente sopra il tetto del rumore e comodamente sotto la prosa vera.
-//
-// Una pagina vera ma davvero corta (un cartoncino di riferimento di una
-// pagina) può restare sotto questa media — è previsto, e gestito altrove:
-// extractManualHandler ripiega comunque su quel testo (per quanto debole)
-// invece di rispondere con un errore, quando il percorso vision non ha
-// nemmeno un'immagine da trascrivere (vedi il commento lì).
 const minAvgUsableCharsPerPage = 100
+
+// pageAnchorChars è la lunghezza dell'ancora usata per ritrovare l'inizio
+// di una pagina dentro il testo segmentato (vedi pageStartsInSegmented):
+// abbastanza lunga da essere quasi certamente unica nel documento,
+// abbastanza corta da restare quasi sempre dentro il margine di
+// tolleranza con cui Segment può aver leggermente toccato gli spazi
+// intorno a una frase.
+const pageAnchorChars = 40
+
+// errPDFNoContent è l'esito di un PDF su cui NÉ il percorso testo NÉ
+// quello vision hanno prodotto niente di usabile: l'unico caso in cui
+// l'ingestione di un PDF risponde con un errore invece di indicizzare
+// qualcosa.
+var errPDFNoContent = errors.New("index: il pdf non ha né testo né pagine leggibili")
 
 // transcriber restituisce il trascrittore per questa richiesta: quello
 // iniettato se c'è (i test), altrimenti uno costruito dalle impostazioni.
@@ -49,10 +58,47 @@ func (s *Server) transcriber(ctx context.Context) ai.Transcriber {
 	}
 	cfg, err := s.Settings.Get(ctx)
 	if err != nil {
-		log.Printf("manuals: could not load settings: %v", err)
+		log.Printf("index: could not load settings: %v", err)
 		return ai.NewHTTPClientWithVision("", "", "", "")
 	}
 	return ai.NewHTTPClientWithVision(cfg.AIBaseURL, cfg.AIAPIKey, cfg.AIModel, cfg.AIVisionModel)
+}
+
+// segmenter restituisce il segmentatore per questa richiesta: quello
+// iniettato se c'è (i test), altrimenti uno costruito dalle impostazioni.
+// Stesso schema di transcriber() e translator().
+func (s *Server) segmenter(ctx context.Context) ai.Segmenter {
+	if s.Segmenter != nil {
+		return s.Segmenter
+	}
+	cfg, err := s.Settings.Get(ctx)
+	if err != nil {
+		log.Printf("index: could not load settings: %v", err)
+		return ai.NewHTTPClient("", "", "")
+	}
+	return ai.NewHTTPClient(cfg.AIBaseURL, cfg.AIAPIKey, cfg.AIModel)
+}
+
+// aiProviderConfigured dice se il provider di testo (quello che serve a
+// Segment, non necessariamente il modello vision, che è a parte e
+// facoltativo) è configurato, senza fare nessuna chiamata. Governa il
+// gate del Task 5: senza provider l'intera funzione di indicizzazione non
+// esiste, esattamente come askHandler senza Asker configurato — POST
+// .../index risponde 404, la stessa degradazione silenziosa di SMTP e
+// dell'arricchimento automatico del catalogo.
+//
+// s.Segmenter iniettato conta come "configurato" (è il punto di aggancio
+// dei test, come s.Asker per askHandler), indipendentemente da cosa dicano
+// le impostazioni vere.
+func (s *Server) aiProviderConfigured(ctx context.Context) bool {
+	if s.Segmenter != nil {
+		return true
+	}
+	cfg, err := s.Settings.Get(ctx)
+	if err != nil {
+		return false
+	}
+	return cfg.AIBaseURL != "" && cfg.AIAPIKey != "" && cfg.AIModel != ""
 }
 
 // manualTarget risolve i tre parametri di rotta in un manuale concreto, e
@@ -109,18 +155,11 @@ func writeManualTargetError(w http.ResponseWriter, err error) {
 	writeError(w, http.StatusBadRequest, err.Error())
 }
 
-type manualPageResponse struct {
-	PageNumber int    `json:"pageNumber"`
-	Text       string `json:"text"`
-	Heading    string `json:"heading"`
-	Source     string `json:"source"`
-}
-
 // averageUsableTextChars è la media dei caratteri di testo (dopo trim) per
-// pagina: è la misura con cui extractManualHandler decide se il layer
-// testo letto da ExtractText vale davvero, o se è meglio ripiegare su
-// vision. Vedi il commento su minAvgUsableCharsPerPage per il perché di
-// una media e non di un totale.
+// pagina: è la misura con cui buildPDFChunks decide se il layer testo
+// letto da ExtractText vale davvero, o se è meglio ripiegare su vision.
+// Vedi il commento su minAvgUsableCharsPerPage per il perché di una media
+// e non di un totale.
 func averageUsableTextChars(pages []manuals.Page) float64 {
 	if len(pages) == 0 {
 		return 0
@@ -132,217 +171,485 @@ func averageUsableTextChars(pages []manuals.Page) float64 {
 	return float64(total) / float64(len(pages))
 }
 
-// pdfTextPageResponses converte le Page di manuals.ExtractText nella forma
-// di risposta, rilevando l'heading di ciascuna. Usata sia dal percorso
-// primario (testo sopra soglia) sia dal ripiego (testo debole ma nessuna
-// immagine da trascrivere): lo stesso mapping, non due copie.
-func pdfTextPageResponses(pages []manuals.Page) []manualPageResponse {
-	out := make([]manualPageResponse, 0, len(pages))
-	for _, p := range pages {
-		out = append(out, manualPageResponse{
-			PageNumber: p.Number, Text: p.Text,
-			Heading: manuals.DetectHeading(p.Text), Source: "pdf_text",
-		})
+// detailedChunk è un manuals.SectionChunk a cui è già stato risolto il
+// reference_detail: "pagina N" per un PDF, 'sezione «...»' (o "") per gli
+// altri formati. È il punto in cui SectionChunk (quel che produce il
+// chunker, Task 2) comincia a diventare SourceChunk (quel che si
+// persiste, Task 1): manca solo Reference e LanguageCode, che
+// indexMediaHandler aggiunge una volta sola per tutti i chunk di un file.
+type detailedChunk struct {
+	manuals.SectionChunk
+	detail string
+}
+
+// sectionDetails calcola il reference_detail "a sezione" per i formati
+// senza pagine (md, docx, txt): il titolo della sezione fra caporali, o
+// stringa vuota quando la sezione non ne ha uno (il preambolo prima del
+// primo titolo del documento).
+func sectionDetails(chunks []manuals.SectionChunk) []detailedChunk {
+	out := make([]detailedChunk, 0, len(chunks))
+	for _, c := range chunks {
+		detail := ""
+		if h := strings.TrimSpace(c.Heading); h != "" {
+			detail = "sezione «" + h + "»"
+		}
+		out = append(out, detailedChunk{SectionChunk: c, detail: detail})
 	}
 	return out
 }
 
-// extractManualHandler propone il testo di un manuale senza salvarlo. Non
-// salva di proposito: l'admin conferma sempre, come già per
-// l'arricchimento BGG.
+// buildSourceChunks instrada dal contenuto grezzo del file ai chunk
+// pronti da persistere, secondo l'estensione: il cuore del Task 5. Le
+// cinque strade sono quelle del brief:
 //
-// Il percorso si sceglie in tre passi, non due:
+//	.md    → il contenuto è già markdown
+//	.docx  → DocxToMarkdown
+//	.txt   → Segment(testo)
+//	.pdf   → percorso testo o percorso vision, vedi buildPDFChunks
+func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) ([]detailedChunk, error) {
+	switch ext {
+	case ".md":
+		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(string(raw)))), nil
+	case ".docx":
+		md, err := manuals.DocxToMarkdown(raw)
+		if err != nil {
+			return nil, err
+		}
+		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(md))), nil
+	case ".txt":
+		segmented, err := s.segmenter(ctx).Segment(ctx, string(raw))
+		if err != nil {
+			return nil, err
+		}
+		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(segmented))), nil
+	case ".pdf":
+		return s.buildPDFChunks(ctx, raw)
+	default:
+		return nil, fmt.Errorf("index: estensione non supportata %q", ext)
+	}
+}
+
+// buildPDFChunks riproduce la cascata di preferenza già decisa per
+// l'estrazione di un PDF (era in extractManualHandler, prima che questo
+// task sostituisse le quattro rotte a pagina con l'indicizzazione unica):
+//
 //  1. Se HasTextLayer dice che c'è un layer testo, si prova ExtractText.
-//     Se il risultato è buono in media (vedi minAvgUsableCharsPerPage) è
-//     la risposta: nessun bisogno di vision.
+//     Se il risultato è buono in media (vedi minAvgUsableCharsPerPage) si
+//     segmenta quel testo (percorso testo).
 //  2. Altrimenti (nessun layer testo, ExtractText fallito, o testo troppo
-//     debole in media) si prova il percorso vision. Due ragioni concrete
-//     per cui "debole" conta quanto "assente": ExtractText si ferma alla
-//     prima pagina corrotta (limite noto della libreria, vedi il suo
-//     commento), e un PDF i cui font vivono in un object stream compresso
-//     risponde false a HasTextLayer pur avendo un vero layer testo.
+//     debole in media) si prova il percorso vision.
 //  3. Se il percorso vision non trova nemmeno un'immagine da trascrivere
-//     (ExtractPageImages torna vuoto) ma il passo 1 aveva comunque estratto
-//     del testo, per quanto debole in media, quel testo diventa la
-//     risposta invece di un errore: è il caso di un PDF di solo testo
-//     davvero corto (un cartoncino di riferimento di una pagina), che senza
-//     questo ripiego finirebbe rifiutato nonostante avesse un contenuto
-//     vero e leggibile. Un errore va restituito solo quando *nessuno* dei
-//     due percorsi ha prodotto niente: quello sì è un file davvero
-//     inutilizzabile.
-func (s *Server) extractManualHandler(w http.ResponseWriter, r *http.Request) {
-	_, _, _, media, err := s.manualTarget(r)
+//     ma il passo 1 aveva comunque estratto del testo, per quanto debole
+//     in media, quel testo diventa comunque la base del percorso testo
+//     invece di un errore: è il caso di un PDF di solo testo davvero
+//     corto (un cartoncino di riferimento di una pagina). Un errore
+//     (errPDFNoContent) si restituisce solo quando *nessuno* dei due
+//     percorsi ha prodotto niente.
+func (s *Server) buildPDFChunks(ctx context.Context, raw []byte) ([]detailedChunk, error) {
+	var extractedPages []manuals.Page
+	if manuals.HasTextLayer(raw) {
+		pages, textErr := manuals.ExtractText(raw)
+		if textErr != nil {
+			log.Printf("index: extract text: %v", textErr)
+		} else {
+			extractedPages = pages
+			if averageUsableTextChars(pages) >= minAvgUsableCharsPerPage {
+				return s.pdfTextChunks(ctx, pages)
+			}
+		}
+	}
+
+	images, _ := manuals.ExtractPageImages(raw)
+	if len(images) == 0 {
+		if len(extractedPages) > 0 {
+			return s.pdfTextChunks(ctx, extractedPages)
+		}
+		return nil, errPDFNoContent
+	}
+	return s.pdfVisionChunks(ctx, images)
+}
+
+// pdfTextChunks è il percorso testo di un PDF: le pagine estratte da
+// ExtractText non hanno titoli markdown (sono testo piatto), quindi si
+// concatenano IN UNA SOLA STRINGA e si segmentano IN UNA SOLA CHIAMATA a
+// Segment — non pagina per pagina. È la parte che rende possibile una
+// sezione a cavallo di due pagine (il test che conta di più, vedi il
+// piano): Segment vede il testo continuo e aggiunge un titolo solo dove
+// comincia davvero un argomento nuovo, non a ogni riavvio di pagina.
+//
+// Segment non garantisce una preservazione byte-esatta (solo un tetto di
+// scarto sul contenuto, vedi maxContentDeviationRatio in ai/segment.go):
+// per questo la pagina di un chunk si ritrova con un'ancora (vedi
+// pageStartsInSegmented), non con un offset già noto.
+func (s *Server) pdfTextChunks(ctx context.Context, pages []manuals.Page) ([]detailedChunk, error) {
+	joined, _ := concatTextsTracked(pageTexts(pages))
+	segmented, err := s.segmenter(ctx).Segment(ctx, joined)
+	if err != nil {
+		return nil, err
+	}
+
+	numbers := pageNumbers(pages)
+	starts := pageStartsInSegmented(pages, segmented)
+	return chunksWithPageDetail(manuals.ChunkSections(manuals.ParseSections(segmented)), numbers, starts), nil
+}
+
+// pdfVisionChunks è il percorso vision di un PDF: ogni pagina è già
+// trascritta in markdown da Transcribe (il modello riceve l'istruzione di
+// conservare i titoli), quindi qui non c'è nessun bisogno di Segment: le
+// pagine si concatenano così come sono, tenendo l'offset ESATTO (non
+// un'ancora: nessuna trasformazione le tocca dopo Transcribe) a cui
+// ciascuna comincia.
+func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage) ([]detailedChunk, error) {
+	vision := s.transcriber(ctx)
+
+	var texts []string
+	var numbers []int
+	for _, img := range images {
+		text, err := vision.Transcribe(ctx, img.JPEG, img.Number)
+		if err != nil {
+			if errors.Is(err, ai.ErrNotConfigured) {
+				// Un modello vision non configurato fallisce identicamente
+				// per ogni pagina: non ha senso provarle tutte per scoprirlo
+				// N volte, quindi si esce alla prima.
+				return nil, ai.ErrNotConfigured
+			}
+			log.Printf("index: transcribe page %d: %v", img.Number, err)
+			continue // pagina saltata: le altre proseguono (isolamento guasti)
+		}
+		if strings.TrimSpace(text) == "" {
+			continue // pagina di sole illustrazioni: niente da indicizzare
+		}
+		texts = append(texts, text)
+		numbers = append(numbers, img.Number)
+	}
+	if len(texts) == 0 {
+		return nil, errPDFNoContent
+	}
+
+	joined, starts := concatTextsTracked(texts)
+	return chunksWithPageDetail(manuals.ChunkSections(manuals.ParseSections(joined)), numbers, starts), nil
+}
+
+// chunksWithPageDetail applica ReferenceDetail = "pagina N" a ogni chunk,
+// trovando N con pageForOffset.
+func chunksWithPageDetail(chunks []manuals.SectionChunk, pageNumbers, starts []int) []detailedChunk {
+	out := make([]detailedChunk, 0, len(chunks))
+	for _, c := range chunks {
+		page := pageForOffset(pageNumbers, starts, c.Offset)
+		out = append(out, detailedChunk{SectionChunk: c, detail: fmt.Sprintf("pagina %d", page)})
+	}
+	return out
+}
+
+func pageTexts(pages []manuals.Page) []string {
+	out := make([]string, len(pages))
+	for i, p := range pages {
+		out[i] = p.Text
+	}
+	return out
+}
+
+func pageNumbers(pages []manuals.Page) []int {
+	out := make([]int, len(pages))
+	for i, p := range pages {
+		out[i] = p.Number
+	}
+	return out
+}
+
+// concatTextsTracked unisce texts in ordine con una riga vuota di
+// separazione, restituendo insieme il testo unito e, per ciascun testo in
+// ingresso, l'offset ESATTO in cui comincia dentro quel testo unito.
+func concatTextsTracked(texts []string) (string, []int) {
+	var b strings.Builder
+	starts := make([]int, len(texts))
+	for i, t := range texts {
+		if i > 0 {
+			b.WriteString("\n\n")
+		}
+		starts[i] = b.Len()
+		b.WriteString(t)
+	}
+	return b.String(), starts
+}
+
+// pageStartsInSegmented ritrova, per ciascuna pagina (tranne la prima, che
+// comincia sempre a 0: qualunque cosa preceda l'ancora della pagina 2,
+// incluso un titolo che il modello ha messo in cima al documento, è
+// contenuto della pagina 1), l'offset a cui il suo testo comincia dentro
+// segmented — il markdown che Segment ha prodotto dal testo unito delle
+// pagine originali.
+//
+// Segment può solo INSERIRE righe di titolo, non riscrivere il resto (è
+// il suo contratto, verificato da un tetto sullo scarto di lunghezza): il
+// testo originale di ciascuna pagina dovrebbe quindi comparire ancora,
+// nello stesso ordine, dentro segmented. Si cerca perciò un'ancora (i primi
+// pageAnchorChars caratteri del testo ORIGINALE della pagina, non del
+// segmentato) con una ricerca SOLO IN AVANTI a partire da un cursore che
+// avanza pagina dopo pagina: è quel che impedisce a una frase che si
+// ripete nel documento di essere scambiata per l'inizio di una pagina
+// successiva — lo stesso principio, applicato qui alle pagine invece che
+// ai chunk, del commento su chunkPiece in chunk.go.
+//
+// Se l'ancora di una pagina non si ritrova (il modello l'ha toccata più di
+// quanto il tetto di tolleranza dovrebbe permettere), quella pagina eredita
+// l'offset della precedente: i suoi chunk finiscono attribuiti alla pagina
+// prima, una degradazione ragionevole per un caso che il tetto di
+// tolleranza di Segment dovrebbe già rendere raro.
+func pageStartsInSegmented(pages []manuals.Page, segmented string) []int {
+	starts := make([]int, len(pages))
+	cursor := 0
+	for i, p := range pages {
+		if i == 0 {
+			starts[0] = 0
+			continue
+		}
+		anchor := anchorText(p.Text)
+		if anchor == "" {
+			starts[i] = starts[i-1]
+			continue
+		}
+		idx := strings.Index(segmented[min(cursor, len(segmented)):], anchor)
+		if idx < 0 {
+			starts[i] = starts[i-1]
+			continue
+		}
+		starts[i] = cursor + idx
+		cursor = starts[i] + len(anchor)
+	}
+	return starts
+}
+
+// anchorText restituisce i primi pageAnchorChars caratteri (tagliati su un
+// confine di rune valido, mai a metà di un carattere multi-byte) del testo
+// di una pagina, dopo trim: l'ancora usata da pageStartsInSegmented per
+// ritrovare dove comincia quella pagina nel testo segmentato. Stringa
+// vuota per una pagina senza testo (nessun'ancora possibile).
+func anchorText(pageText string) string {
+	t := strings.TrimSpace(pageText)
+	if t == "" {
+		return ""
+	}
+	if len(t) <= pageAnchorChars {
+		return t
+	}
+	cut := pageAnchorChars
+	for cut > 0 && !utf8.RuneStart(t[cut]) {
+		cut--
+	}
+	return t[:cut]
+}
+
+// pageForOffset trova, per un offset dentro il testo unito, l'ultima
+// pagina il cui inizio (starts[i]) è <= offset: esattamente "la pagina il
+// cui intervallo di offset contiene chunk.Offset" del brief. starts è per
+// costruzione non decrescente (sia in concatTextsTracked sia in
+// pageStartsInSegmented il cursore avanza sempre), quindi l'ultima che
+// soddisfa la condizione è quella giusta.
+func pageForOffset(pageNumbers, starts []int, offset int) int {
+	page := pageNumbers[0]
+	for i, s := range starts {
+		if offset >= s {
+			page = pageNumbers[i]
+		} else {
+			break
+		}
+	}
+	return page
+}
+
+// sourceReference decide la Reference da salvare per questo media: parte
+// dal titolo (game_media.title — MAI da url_or_path, che è uno sha256
+// senza nessun significato per chi legge una citazione), e la disambigua
+// contro le fonti GIÀ indicizzate dello stesso gioco (used, letto da
+// Summary DOPO aver già cancellato le fonti precedenti di QUESTO stesso
+// media: così re-indicizzare lo stesso file con lo stesso titolo non si
+// scontra con la propria vecchia voce e non guadagna un suffisso senza
+// motivo).
+//
+// title è testo libero e nullable (game_media.title): quando è vuoto si
+// ripiega su "Documento", per non salvare mai una reference vuota. Senza
+// collisione la reference è il titolo così com'è; con una collisione si
+// aggiunge la lingua; se collide ancora (due fonti con lo stesso titolo E
+// nella stessa lingua) un ordinale progressivo. Senza questa
+// disambiguazione la mappa reference → percorso file che il Task 7
+// costruisce dalle hit di ricerca punterebbe al file sbagliato per uno dei
+// due media — è precisamente il bug che quel task esiste per chiudere.
+func sourceReference(title, langCode string, used map[string]bool) string {
+	base := strings.TrimSpace(title)
+	if base == "" {
+		base = "Documento"
+	}
+	candidate := base
+	if used[strings.ToLower(candidate)] {
+		candidate = fmt.Sprintf("%s (%s)", base, langCode)
+	}
+	if used[strings.ToLower(candidate)] {
+		for i := 2; ; i++ {
+			try := fmt.Sprintf("%s (%s) #%d", base, langCode, i)
+			if !used[strings.ToLower(try)] {
+				candidate = try
+				break
+			}
+		}
+	}
+	return candidate
+}
+
+// indexErrorResponse traduce un errore di buildSourceChunks nello status e
+// nel messaggio che arrivano all'admin: la tabella del brief, in codice.
+// Ogni caso dice una cosa diversa e vera, mai un guasto generico — è
+// l'unica cosa che sta fra l'admin e un vicolo cieco quando l'ingestione
+// non riesce.
+func indexErrorResponse(err error) (int, string) {
+	switch {
+	case errors.Is(err, ai.ErrNotConfigured):
+		// Il gate all'inizio dell'handler garantisce che il provider di
+		// TESTO sia configurato: se ai.ErrNotConfigured emerge comunque da
+		// buildSourceChunks, può venire solo dal percorso vision di un PDF
+		// scansionato (vedi pdfVisionChunks), che ha il suo campo a parte
+		// nelle impostazioni.
+		return http.StatusUnprocessableEntity,
+			`Questo file è un PDF scansionato: serve un modello che legga le immagini. ` +
+				`Configuralo nel campo "Modello per i manuali scansionati" nelle impostazioni.`
+	case errors.Is(err, errPDFNoContent):
+		return http.StatusUnprocessableEntity,
+			"Questo PDF non ha né testo né immagini leggibili: prova a convertirlo in un altro formato (per esempio in .docx o .txt)."
+	case errors.Is(err, ai.ErrSegmentationRejected):
+		return http.StatusUnprocessableEntity,
+			"La lettura di questo file non è affidabile: il modello sembra aver riscritto il testo invece di limitarsi a segmentarlo. Riprova."
+	case errors.Is(err, manuals.ErrDocumentXMLTooLarge):
+		return http.StatusUnprocessableEntity,
+			"Questo file .docx è troppo grande per essere letto: prova a semplificarlo o a esportarlo in un altro formato."
+	case strings.Contains(err.Error(), "docx: il documento non contiene testo"):
+		return http.StatusUnprocessableEntity,
+			"Questo file .docx non contiene testo: verifica che il documento abbia davvero del contenuto scritto."
+	default:
+		return http.StatusUnprocessableEntity, "Non è stato possibile leggere questo file."
+	}
+}
+
+// indexMediaHandler è l'ingestione unica per i quattro formati (Task 5):
+// da un file già caricato (createMediaHandler/createFileMediaHandler, non
+// tocco questo task) ai chunk cercabili, in una sola richiesta. Sostituisce
+// le quattro rotte a pagina (extract/pages GET/PUT/DELETE) che il manuale
+// scansionato usava prima: niente più bozza da correggere a mano, niente
+// più testo conservato — solo i chunk.
+func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
+	// Gate unico sul provider: senza un provider di testo configurato
+	// questa funzione non esiste, esattamente come askHandler senza Asker.
+	// Il pannello non mostra nemmeno il bottone in quel caso: nessun
+	// partecipante ci arriva navigando.
+	if !s.aiProviderConfigured(r.Context()) {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	gameID, mediaID, lang, media, err := s.manualTarget(r)
 	if err != nil {
 		writeManualTargetError(w, err)
 		return
 	}
-	if media.Type != games.MediaTypeFile || !strings.HasSuffix(strings.ToLower(media.URLOrPath), ".pdf") {
-		writeError(w, http.StatusConflict, "questo media non è un manuale PDF")
+	if media.Type != games.MediaTypeFile {
+		writeError(w, http.StatusConflict, "questo media non è un file caricato")
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(media.URLOrPath))
+	switch ext {
+	case ".md", ".docx", ".txt", ".pdf":
+	default:
+		writeError(w, http.StatusConflict, "formato non supportato per l'indicizzazione")
 		return
 	}
 
 	f, err := s.Storage.Open(media.URLOrPath)
 	if err != nil {
-		log.Printf("manuals: open %s: %v", media.URLOrPath, err)
-		writeError(w, http.StatusNotFound, "il file del manuale non è più sul disco")
+		log.Printf("index: open %s: %v", media.URLOrPath, err)
+		writeError(w, http.StatusNotFound, "il file non è più sul disco")
 		return
 	}
 	raw, err := io.ReadAll(f)
 	f.Close()
 	if err != nil {
-		log.Printf("manuals: read %s: %v", media.URLOrPath, err)
-		writeError(w, http.StatusInternalServerError, "non è stato possibile leggere il file del manuale")
+		log.Printf("index: read %s: %v", media.URLOrPath, err)
+		writeError(w, http.StatusInternalServerError, "non è stato possibile leggere il file")
 		return
 	}
 
-	// extractedPages tiene il risultato di ExtractText anche quando è
-	// troppo debole in media per essere la risposta primaria: serve come
-	// ripiego al passo 3, se il percorso vision non trova nessuna pagina
-	// da trascrivere.
-	var extractedPages []manuals.Page
-	if manuals.HasTextLayer(raw) {
-		pages, textErr := manuals.ExtractText(raw)
-		if textErr != nil {
-			log.Printf("manuals: extract text: %v", textErr)
-		} else {
-			extractedPages = pages
-			if averageUsableTextChars(pages) >= minAvgUsableCharsPerPage {
-				writeJSON(w, http.StatusOK, map[string]any{
-					"source": "pdf_text", "pages": pdfTextPageResponses(pages),
-				})
-				return
-			}
-			// Nessun return: la media è troppo bassa per fidarsene come
-			// risposta primaria, ma extractedPages resta come ripiego più
-			// sotto se vision non trova immagini.
-		}
+	chunks, err := s.buildSourceChunks(r.Context(), ext, raw)
+	if err != nil {
+		status, msg := indexErrorResponse(err)
+		writeError(w, status, msg)
+		return
 	}
-
-	// ExtractPageImages non restituisce mai un errore: una pagina illeggibile
-	// viene saltata e il resto del file continua a essere estratto, quindi
-	// "non ho trovato immagini" arriva sempre come lista vuota. Il ramo
-	// `if err != nil` che stava qui era morto, e se fosse mai tornato in vita
-	// avrebbe risposto 422 senza guardare extractedPages — contro la regola
-	// per cui il 422 si dà solo quando NESSUNO dei due percorsi ha prodotto
-	// qualcosa. La lista vuota qui sotto è l'unico punto in cui si decide.
-	images, _ := manuals.ExtractPageImages(raw)
-	if len(images) == 0 {
-		if len(extractedPages) > 0 {
-			// Nessuna immagine da trascrivere, ma un po' di testo vero
-			// (per quanto debole in media) c'è: è meglio di un errore, e
-			// l'admin lo legge e lo corregge dove serve.
-			writeJSON(w, http.StatusOK, map[string]any{
-				"source": "pdf_text", "pages": pdfTextPageResponses(extractedPages),
-			})
-			return
-		}
+	if len(chunks) == 0 {
 		writeError(w, http.StatusUnprocessableEntity,
-			"questo PDF non ha né testo né pagine leggibili: puoi scrivere il testo a mano")
+			"Questo file non contiene testo utilizzabile: prova a convertirlo o a scriverlo in un altro formato.")
 		return
 	}
 
-	// Una richiesta per pagina, non tutte insieme: se la pagina 3 fallisce
-	// non si perdono le altre, e l'admin riprova solo quella.
-	vision := s.transcriber(r.Context())
-	out := make([]manualPageResponse, 0, len(images))
-	for _, img := range images {
-		text, err := vision.Transcribe(r.Context(), img.JPEG, img.Number)
-		if err != nil {
-			// Senza modello vision, o con un guasto del provider, la pagina
-			// esce vuota: l'anteprima si apre comunque e si riempie a mano.
-			if !errors.Is(err, ai.ErrNotConfigured) {
-				log.Printf("manuals: transcribe page %d: %v", img.Number, err)
-			}
-			out = append(out, manualPageResponse{PageNumber: img.Number, Source: "manual"})
-			continue
-		}
-		out = append(out, manualPageResponse{
-			PageNumber: img.Number, Text: text,
-			Heading: manuals.DetectHeading(text), Source: "vision",
+	// Si cancellano PRIMA le eventuali vecchie fonti di QUESTO media: la
+	// lettura di Summary subito dopo deve vedere le referenze delle ALTRE
+	// fonti del gioco, non anche la propria di prima del re-indicizzare —
+	// altrimenti una riesecuzione con lo stesso titolo si scontrerebbe con
+	// se stessa e guadagnerebbe un suffisso di lingua senza nessun secondo
+	// media coinvolto.
+	if err := s.Manuals.DeleteSource(r.Context(), mediaID); err != nil {
+		log.Printf("index: delete previous chunks of media %d: %v", mediaID, err)
+		writeError(w, http.StatusInternalServerError, "could not replace the source")
+		return
+	}
+	summary, err := s.Manuals.Summary(r.Context(), gameID)
+	if err != nil {
+		log.Printf("index: summary for game %d: %v", gameID, err)
+		writeError(w, http.StatusInternalServerError, "could not check existing sources")
+		return
+	}
+	used := make(map[string]bool, len(summary.Sources))
+	for _, src := range summary.Sources {
+		used[strings.ToLower(src.Reference)] = true
+	}
+	title := ""
+	if media.Title != nil {
+		title = *media.Title
+	}
+	reference := sourceReference(title, lang, used)
+
+	sourceChunks := make([]manuals.SourceChunk, 0, len(chunks))
+	for _, c := range chunks {
+		sourceChunks = append(sourceChunks, manuals.SourceChunk{
+			ReferenceType:   "document",
+			Reference:       reference,
+			ReferenceDetail: c.detail,
+			Heading:         c.Heading,
+			LanguageCode:    lang,
+			Seq:             c.Seq,
+			Text:            c.Text,
 		})
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"source": "vision", "pages": out})
+	if err := s.Manuals.ReplaceSource(r.Context(), gameID, &mediaID, sourceChunks); err != nil {
+		log.Printf("index: replace source for media %d: %v", mediaID, err)
+		writeError(w, http.StatusInternalServerError, "could not save the index")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"reference": reference, "chunks": len(sourceChunks)})
 }
 
-func (s *Server) listManualPagesHandler(w http.ResponseWriter, r *http.Request) {
+// deleteMediaIndexHandler rimuove tutti i chunk indicizzati di un media:
+// niente gate sul provider, perché ripulire un'indicizzazione esistente
+// deve restare possibile anche se nel frattempo l'admin ha tolto la
+// configurazione del provider AI.
+func (s *Server) deleteMediaIndexHandler(w http.ResponseWriter, r *http.Request) {
 	_, mediaID, _, _, err := s.manualTarget(r)
 	if err != nil {
 		writeManualTargetError(w, err)
 		return
 	}
-	pages, err := s.Manuals.ListPages(r.Context(), mediaID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "could not load manual pages")
-		return
-	}
-	out := make([]manualPageResponse, 0, len(pages))
-	for _, p := range pages {
-		out = append(out, manualPageResponse{
-			PageNumber: p.PageNumber, Text: p.Text, Heading: p.Heading, Source: p.Source,
-		})
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"pages": out})
-}
-
-type putManualPagesRequest struct {
-	Pages []struct {
-		PageNumber int    `json:"pageNumber"`
-		Text       string `json:"text"`
-		Source     string `json:"source"`
-	} `json:"pages"`
-}
-
-// putManualPagesHandler salva le pagine confermate (o corrette a mano)
-// dall'admin: è l'unico punto che scrive manual_page, e ReplacePages
-// ricostruisce anche i chunk cercabili nella stessa transazione, quindi la
-// ricerca funziona subito dopo, senza un passaggio separato.
-func (s *Server) putManualPagesHandler(w http.ResponseWriter, r *http.Request) {
-	gameID, mediaID, lang, _, err := s.manualTarget(r)
-	if err != nil {
-		writeManualTargetError(w, err)
-		return
-	}
-	var body putManualPagesRequest
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-
-	pages := make([]manuals.StoredPage, 0, len(body.Pages))
-	for _, p := range body.Pages {
-		if p.PageNumber < 1 {
-			writeError(w, http.StatusBadRequest, "il numero di pagina parte da 1")
-			return
-		}
-		source := p.Source
-		switch source {
-		case "pdf_text", "vision", "manual":
-		default:
-			// Una pagina scritta o corretta a mano è "manual": è il default
-			// più onesto quando il client non lo dice.
-			source = "manual"
-		}
-		pages = append(pages, manuals.StoredPage{
-			PageNumber: p.PageNumber, Text: p.Text, Source: source,
-		})
-	}
-
-	if err := s.Manuals.ReplacePages(r.Context(), gameID, mediaID, lang, pages); err != nil {
-		log.Printf("manuals: replace pages of media %d: %v", mediaID, err)
-		writeError(w, http.StatusInternalServerError, "could not save manual pages")
-		return
-	}
-	s.listManualPagesHandler(w, r)
-}
-
-func (s *Server) deleteManualPagesHandler(w http.ResponseWriter, r *http.Request) {
-	_, mediaID, _, _, err := s.manualTarget(r)
-	if err != nil {
-		writeManualTargetError(w, err)
-		return
-	}
-	if err := s.Manuals.DeletePages(r.Context(), mediaID); err != nil {
-		writeError(w, http.StatusInternalServerError, "could not delete manual pages")
+	if err := s.Manuals.DeleteSource(r.Context(), mediaID); err != nil {
+		log.Printf("index: delete source for media %d: %v", mediaID, err)
+		writeError(w, http.StatusInternalServerError, "could not delete the index")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

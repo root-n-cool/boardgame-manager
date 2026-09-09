@@ -3,9 +3,6 @@ package httpapi_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
-	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -19,24 +16,44 @@ import (
 	"boardgames-manager/internal/storage"
 )
 
-// fakeTranscriber finge un modello multimodale: restituisce un testo che
-// contiene il numero di pagina, così i test verificano l'accoppiamento.
-// errOnPage, se diverso da zero, limita err a quella sola pagina: le altre
-// riescono normalmente. È così che si esercita l'isolamento dei guasti
-// (una pagina che fallisce non deve far sparire le altre) senza un secondo
-// tipo finto.
-type fakeTranscriber struct {
-	calls     int
-	err       error
-	errOnPage int
+// fakeSegmenter sta al posto del provider AI per Segment: cattura l'ultimo
+// testo ricevuto (per verificare che venga chiamato davvero, o non
+// chiamato affatto), e per difetto restituisce il testo invariato (nessun
+// titolo aggiunto), che è già una segmentazione valida secondo il
+// contratto di Segment ("se il brano non ha sezioni distinte,
+// restituiscilo invariato").
+type fakeSegmenter struct {
+	calls  int
+	lastIn string
+	out    string
+	err    error
 }
 
-func (f *fakeTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+func (f *fakeSegmenter) Segment(ctx context.Context, text string) (string, error) {
 	f.calls++
-	if f.err != nil && (f.errOnPage == 0 || f.errOnPage == page) {
+	f.lastIn = text
+	if f.err != nil {
 		return "", f.err
 	}
-	return "Trascrizione della pagina " + fmt.Sprint(page), nil
+	if f.out != "" {
+		return f.out, nil
+	}
+	return text, nil
+}
+
+// pageTranscriber trascrive ogni pagina restituendo esattamente il
+// markdown che il test le ha assegnato: serve al test che conta più di
+// tutti (il confine di pagina), dove serve controllare parola per parola
+// cosa "vede" ciascuna pagina per costruire una sezione che ne attraversa
+// due.
+type pageTranscriber struct {
+	byPage map[int]string
+	calls  int
+}
+
+func (p *pageTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+	p.calls++
+	return p.byPage[page], nil
 }
 
 // loginAsAdmin esegue il bootstrap del primo admin e restituisce il
@@ -46,11 +63,14 @@ func loginAsAdmin(t *testing.T, router http.Handler) *http.Cookie {
 	return bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 }
 
-// seedGameWithManual crea un gioco con lingua "it" e un media "file" il
-// cui contenuto su disco è pdfBytes. Passa direttamente per gli store
-// (non per l'HTTP): un test come TestManualPages_RequireAuth deve poter
-// preparare il fixture senza nessuna sessione admin.
-func seedGameWithManual(t *testing.T, server *httpapi.Server, conn *sql.DB, pdfBytes []byte) (gameID, mediaID int64) {
+// seedGameWithFile crea un gioco con lingua "it" e un media "file" salvato
+// su disco con filename (decide l'estensione, quindi il formato su cui
+// l'ingestione instrada): passa direttamente per gli store, non per
+// l'HTTP, così un test come TestIndexMedia_RequiresAuth può preparare il
+// fixture senza nessuna sessione admin. title, se non vuoto, diventa
+// game_media.title (la Reference di cui si parla nel piano); vuoto lascia
+// il fallback del titolo di default.
+func seedGameWithFile(t *testing.T, server *httpapi.Server, content []byte, filename, title string) (gameID, mediaID int64) {
 	t.Helper()
 	ctx := context.Background()
 
@@ -64,13 +84,19 @@ func seedGameWithManual(t *testing.T, server *httpapi.Server, conn *sql.DB, pdfB
 	if err != nil {
 		t.Fatalf("create language: %v", err)
 	}
-	filename, err := server.Storage.Save(storage.ManualCategory, bytes.NewReader(pdfBytes))
+	path, err := server.Storage.Save(storage.ManualCategory, bytes.NewReader(content), filename)
 	if err != nil {
-		t.Fatalf("save manual: %v", err)
+		t.Fatalf("save file: %v", err)
 	}
-	title := "Regolamento"
+	var titlePtr *string
+	if title != "" {
+		titlePtr = &title
+	} else {
+		defaultTitle := "Regolamento"
+		titlePtr = &defaultTitle
+	}
 	media, err := server.Games.CreateMedia(ctx, games.GameMedia{
-		GameLanguageID: lang.ID, Type: games.MediaTypeFile, URLOrPath: filename, Title: &title,
+		GameLanguageID: lang.ID, Type: games.MediaTypeFile, URLOrPath: path, Title: titlePtr,
 	})
 	if err != nil {
 		t.Fatalf("create media: %v", err)
@@ -78,498 +104,541 @@ func seedGameWithManual(t *testing.T, server *httpapi.Server, conn *sql.DB, pdfB
 	return game.ID, media.ID
 }
 
-// seedGameWithScannedManual è il caso più usato in questo file: un manuale
-// scansionato (nessun layer testo), la forma del manuale reale del club.
-func seedGameWithScannedManual(t *testing.T, server *httpapi.Server, conn *sql.DB) (gameID, mediaID int64) {
-	t.Helper()
-	return seedGameWithManual(t, server, conn, manuals.NewScannedPDF())
+func indexPath(gameID, mediaID int64) string {
+	return fmt.Sprintf("/api/games/%d/languages/it/media/%d/index", gameID, mediaID)
 }
 
-// scannedPDFWithMisleadingTextMarkers costruisce un PDF con le stesse due
-// pagine scansionate di manuals.NewScannedPDF (nessun operatore di testo
-// nel loro vero contenuto), più un font e un operatore Tj "civetta", mai
-// referenziati da nessuna pagina. È esattamente la combinazione, isolata,
-// che fa dire manuals.HasTextLayer=true senza che ci sia un vero layer
-// testo: il caso limite della correzione 2 del brief. ExtractText, su un
-// file così, non restituisce errore ma solo pagine vuote — ed è quello
-// che extractManualHandler deve riconoscere per ripiegare su vision.
-func scannedPDFWithMisleadingTextMarkers() []byte {
-	jpg1 := manuals.NewTestJPEG(24, 32)
-	jpg2 := manuals.NewTestJPEG(20, 28)
-	content := "q 200 0 0 260 0 0 cm /Im0 Do Q" // disegna solo l'immagine: nessun Tj vero
-	page := func(imgRef, contentRef string) string {
-		return fmt.Sprintf(
-			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] "+
-				"/Resources << /XObject << /Im0 %s >> >> /Contents %s >>", imgRef, contentRef)
+func postIndex(cookie *http.Cookie, router http.Handler, gameID, mediaID int64) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, indexPath(gameID, mediaID), nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
 	}
-	streamObj := func(s string) string {
-		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
-	}
-	return manuals.BuildTestPDF([]string{
-		"<< /Type /Catalog /Pages 2 0 R >>",                      // 1
-		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",        // 2
-		page("5 0 R", "7 0 R"),                                   // 3
-		page("6 0 R", "8 0 R"),                                   // 4
-		manuals.ImageObject(jpg1, 24, 32),                        // 5
-		manuals.ImageObject(jpg2, 20, 28),                        // 6
-		streamObj(content),                                       // 7
-		streamObj(content),                                       // 8
-		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 9: mai referenziato da nessuna pagina
-		streamObj("(testo civetta) Tj"),                          // 10: mai referenziato da nessun /Contents
-	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
 }
 
-// scannedPDFWithThinHeaderText costruisce un manuale scansionato di due
-// pagine, ognuna con un'immagine a piena pagina *e* un vero operatore Tj
-// che disegna la stessa intestazione corta ("Manuale Esempio", 15
-// caratteri). A differenza di scannedPDFWithMisleadingTextMarkers, qui
-// /Font e Tj sono nel contenuto vero della pagina, non in oggetti civetta
-// mai referenziati: è la forma realistica del problema di scala descritto
-// nel commento su minAvgUsableCharsPerPage — uno scanner che stampa
-// un'intestazione o un numero di pagina in un vero (ma quasi vuoto) layer
-// testo sopra l'immagine scansionata. Sommando su più pagine il totale
-// cresce con il numero di pagine (qui ~30 caratteri su 2 pagine, già sopra
-// una vecchia soglia sul totale di 20) restando comunque inutile riga per
-// riga: solo una media per pagina lo riconosce.
-func scannedPDFWithThinHeaderText() []byte {
-	jpg1 := manuals.NewTestJPEG(24, 32)
-	jpg2 := manuals.NewTestJPEG(20, 28)
-	header := "Manuale Esempio"
-	content := fmt.Sprintf("q 200 0 0 260 0 0 cm /Im0 Do Q BT /F1 12 Tf 10 10 Td (%s) Tj ET", header)
-	page := func(imgRef, contentRef string) string {
-		return fmt.Sprintf(
-			"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] "+
-				"/Resources << /XObject << /Im0 %s >> /Font << /F1 9 0 R >> >> /Contents %s >>", imgRef, contentRef)
+func deleteIndex(cookie *http.Cookie, router http.Handler, gameID, mediaID int64) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodDelete, indexPath(gameID, mediaID), nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
 	}
-	streamObj := func(s string) string {
-		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
-	}
-	return manuals.BuildTestPDF([]string{
-		"<< /Type /Catalog /Pages 2 0 R >>",                      // 1
-		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",        // 2
-		page("5 0 R", "7 0 R"),                                   // 3
-		page("6 0 R", "8 0 R"),                                   // 4
-		manuals.ImageObject(jpg1, 24, 32),                        // 5
-		manuals.ImageObject(jpg2, 20, 28),                        // 6
-		streamObj(content),                                       // 7
-		streamObj(content),                                       // 8
-		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>", // 9
-	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
 }
 
-func manualPath(gameID, mediaID int64, suffix string) string {
-	return fmt.Sprintf("/api/games/%d/languages/it/media/%d/%s", gameID, mediaID, suffix)
+// TestIndexMedia_RequiresAuth verifica che entrambe le rotte siano dietro
+// il middleware di autenticazione: un'attenzione dalla fase precedente
+// (vedi il brief) è che un test così può passare per il motivo sbagliato
+// se una rotta risponde 400 prima di arrivare all'auth. Qui il gameID e il
+// mediaID passati sono VALIDI (seedGameWithFile li ha davvero creati),
+// quindi un'eventuale validazione dei parametri di rotta non può essere
+// lei a produrre lo status: se il 401 arriva lo stesso, è il middleware,
+// non un incidente di validazione.
+func TestIndexMedia_RequiresAuth(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	router := httpapi.NewRouter(server)
+	gameID, mediaID := seedGameWithFile(t, server, []byte("# Titolo\n\nTesto."), "regole.md", "")
+
+	if rec := postIndex(nil, router, gameID, mediaID); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("POST index senza sessione: atteso 401, ottenuto %d (%s)", rec.Code, rec.Body.String())
+	}
+	if rec := deleteIndex(nil, router, gameID, mediaID); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("DELETE index senza sessione: atteso 401, ottenuto %d (%s)", rec.Code, rec.Body.String())
+	}
 }
 
-func TestExtractManual_ReturnsPagesWithoutSaving(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	tr := &fakeTranscriber{}
-	server.Vision = tr
+// TestIndexMedia_WithoutAProviderIs404 è il gate del Task 5: senza un
+// provider di testo configurato la rotta si comporta come inesistente,
+// esattamente come askHandler senza Asker.
+func TestIndexMedia_WithoutAProviderIs404(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, []byte("# Titolo\n\nTesto."), "regole.md", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("atteso 404 senza provider, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestIndexMedia_MarkdownDoesNotCallVisionOrSegmentation copre il ramo più
+// semplice del routing: un .md è già markdown, quindi non deve passare né
+// da Segment né da Transcribe. I due finti qui sopra, se chiamati,
+// falliscono il test da soli: err non-nil li farebbe fallire la richiesta,
+// ma qui basta contare le chiamate per essere sicuri che il ramo giusto sia
+// stato preso, non solo che non ci sia stato un errore.
+func TestIndexMedia_MarkdownDoesNotCallVisionOrSegmentation(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	seg := &fakeSegmenter{}
+	vis := &pageTranscriber{}
+	server.Segmenter = seg
+	server.Vision = vis
 	router := httpapi.NewRouter(server)
 	cookie := loginAsAdmin(t, router)
 
-	gameID, mediaID := seedGameWithScannedManual(t, server, conn)
+	md := "## Preparazione\n\nOgni giocatore pesca cinque carte.\n\n## Fine partita\n\nSi vince con più punti."
+	gameID, mediaID := seedGameWithFile(t, server, []byte(md), "regole.md", "Regolamento base")
 
-	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
+	rec := postIndex(cookie, router, gameID, mediaID)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
-	var body struct {
-		Source string `json:"source"`
-		Pages  []struct {
-			PageNumber int    `json:"pageNumber"`
-			Text       string `json:"text"`
-			Heading    string `json:"heading"`
-		} `json:"pages"`
+	if seg.calls != 0 {
+		t.Fatalf("un .md non deve chiamare Segment, chiamato %d volte", seg.calls)
 	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("risposta non JSON: %v", err)
-	}
-	if body.Source != "vision" {
-		t.Fatalf("un PDF scansionato va sul percorso vision, source = %q", body.Source)
-	}
-	if len(body.Pages) != 2 {
-		t.Fatalf("attese 2 pagine (quante ne ha lo scan), ottenute %d", len(body.Pages))
-	}
-	if body.Pages[0].PageNumber != 1 || body.Pages[1].PageNumber != 2 {
-		t.Fatalf("numerazione pagine sbagliata: %d, %d", body.Pages[0].PageNumber, body.Pages[1].PageNumber)
-	}
-	if tr.calls != len(body.Pages) {
-		t.Fatalf("una richiesta per pagina: %d pagine, %d chiamate", len(body.Pages), tr.calls)
+	if vis.calls != 0 {
+		t.Fatalf("un .md non deve chiamare Transcribe, chiamato %d volte", vis.calls)
 	}
 
-	// extract NON deve salvare: la conferma dell'admin è un altro giro.
-	pages, err := manuals.NewStore(conn).ListPages(context.Background(), mediaID)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(pages) != 0 {
-		t.Fatalf("extract ha salvato %d pagine: doveva solo proporle", len(pages))
-	}
-}
-
-func TestExtractManual_WithoutAVisionModelReturnsEmptyPages(t *testing.T) {
-	// Nessun modello vision configurato: l'anteprima si apre comunque, con
-	// le pagine vuote, e l'admin scrive il testo a mano. La funzione non si
-	// blocca perché manca l'AI.
-	server, conn := newTestServerWithDB(t)
-	server.Vision = &fakeTranscriber{err: ai.ErrNotConfigured}
-	router := httpapi.NewRouter(server)
-	cookie := loginAsAdmin(t, router)
-	gameID, mediaID := seedGameWithScannedManual(t, server, conn)
-
-	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("senza modello vision l'anteprima si apre comunque: atteso 200, ottenuto %d (%s)",
-			rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Pages []struct {
-			PageNumber int    `json:"pageNumber"`
-			Text       string `json:"text"`
-		} `json:"pages"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("risposta non JSON: %v", err)
-	}
-	// Le pagine proposte devono corrispondere davvero alle pagine del PDF
-	// (2, quante ne ha lo scan): un'implementazione che, in assenza di
-	// vision, restituisse un'unica pagina vuota qualsiasi supererebbe un
-	// controllo che si limitasse a "len(pages) != 0" senza che l'admin
-	// abbia davvero un posto dove scrivere ciascuna pagina del manuale.
-	if len(body.Pages) != 2 {
-		t.Fatalf("attese 2 pagine vuote da riempire a mano (una per pagina del PDF), ottenute %d", len(body.Pages))
-	}
-	if body.Pages[0].PageNumber != 1 || body.Pages[1].PageNumber != 2 {
-		t.Fatalf("numerazione pagine sbagliata: %d, %d", body.Pages[0].PageNumber, body.Pages[1].PageNumber)
-	}
-	for i, p := range body.Pages {
-		if p.Text != "" {
-			t.Fatalf("pagina %d non doveva avere testo: %q", i, p.Text)
-		}
-	}
-}
-
-// TestExtractManual_TextLayerFalsePositiveFallsBackToVision è la
-// correzione 2 del brief: un PDF che manuals.HasTextLayer accetta (c'è un
-// /Font e un operatore Tj da qualche parte nel file) ma la cui estrazione
-// testo vera non produce niente di usabile deve comunque finire trascritto
-// da vision, non tornare con pagine vuote silenziosamente.
-func TestExtractManual_TextLayerFalsePositiveFallsBackToVision(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	tr := &fakeTranscriber{}
-	server.Vision = tr
-	router := httpapi.NewRouter(server)
-	cookie := loginAsAdmin(t, router)
-
-	gameID, mediaID := seedGameWithManual(t, server, conn, scannedPDFWithMisleadingTextMarkers())
-
-	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Source string `json:"source"`
-		Pages  []struct {
-			Text string `json:"text"`
-		} `json:"pages"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("risposta non JSON: %v", err)
-	}
-	if body.Source != "vision" {
-		t.Fatalf("un /Font e un Tj civetta senza vero testo devono ripiegare su vision, source = %q", body.Source)
-	}
-	if len(body.Pages) != 2 {
-		t.Fatalf("attese 2 pagine trascritte, ottenute %d", len(body.Pages))
-	}
-	for i, p := range body.Pages {
-		if p.Text == "" {
-			t.Fatalf("pagina %d doveva avere il testo trascritto da vision, non vuoto", i)
-		}
-	}
-	if tr.calls != 2 {
-		t.Fatalf("attese 2 chiamate a vision (una per pagina), ottenute %d", tr.calls)
-	}
-}
-
-// TestExtractManual_ThinPerPageTextFallsBackToVision è il caso di scala
-// segnalato in review: un totale sommato su tutte le pagine cresce con il
-// numero di pagine, quindi un'intestazione corta ma reale, ripetuta su più
-// pagine, può superare una soglia sul totale nonostante resti inutile
-// pagina per pagina. La media per pagina non ha questo buco: 15 caratteri
-// di media restano sotto qualunque soglia ragionevole indipendentemente da
-// quante pagine ripetono la stessa intestazione.
-func TestExtractManual_ThinPerPageTextFallsBackToVision(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	tr := &fakeTranscriber{}
-	server.Vision = tr
-	router := httpapi.NewRouter(server)
-	cookie := loginAsAdmin(t, router)
-
-	gameID, mediaID := seedGameWithManual(t, server, conn, scannedPDFWithThinHeaderText())
-
-	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Source string `json:"source"`
-		Pages  []struct {
-			Text string `json:"text"`
-		} `json:"pages"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("risposta non JSON: %v", err)
-	}
-	if body.Source != "vision" {
-		t.Fatalf("un'intestazione corta ripetuta su più pagine deve ripiegare su vision (media troppo bassa), source = %q", body.Source)
-	}
-	if len(body.Pages) != 2 {
-		t.Fatalf("attese 2 pagine trascritte, ottenute %d", len(body.Pages))
-	}
-	if tr.calls != 2 {
-		t.Fatalf("attese 2 chiamate a vision (una per pagina), ottenute %d", tr.calls)
-	}
-}
-
-// TestExtractManual_ShortAllTextPDFReturnsItsTextInsteadOfAnError copre
-// l'effetto collaterale segnalato in review: alzare la soglia (o passare a
-// una media) per chiudere il buco di scala sopra non deve trasformare un
-// PDF di solo testo genuinamente corto — un cartoncino di riferimento di
-// una pagina, senza nessuna immagine — in un errore 422. Il percorso
-// vision, su un PDF così, non trova nessuna immagine da trascrivere: il
-// ripiego deve restituire comunque il testo vero (per quanto debole in
-// media) invece di rispondere con un errore.
-func TestExtractManual_ShortAllTextPDFReturnsItsTextInsteadOfAnError(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	router := httpapi.NewRouter(server)
-	cookie := loginAsAdmin(t, router)
-
-	gameID, mediaID := seedGameWithManual(t, server, conn, manuals.NewTextPDF())
-
-	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("un cartoncino di una pagina, per quanto corto, ha un testo vero: non deve tornare un errore. atteso 200, ottenuto %d: %s",
-			rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Source string `json:"source"`
-		Pages  []struct {
-			PageNumber int    `json:"pageNumber"`
-			Text       string `json:"text"`
-		} `json:"pages"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("risposta non JSON: %v", err)
-	}
-	if body.Source != "pdf_text" {
-		t.Fatalf("un PDF di solo testo senza immagini deve tornare il suo testo, source = %q", body.Source)
-	}
-	if len(body.Pages) != 1 {
-		t.Fatalf("attesa 1 pagina, ottenute %d", len(body.Pages))
-	}
-	if !strings.Contains(body.Pages[0].Text, "Upkeep") {
-		t.Fatalf("il testo estratto doveva essere quello vero del PDF, ottenuto %q", body.Pages[0].Text)
-	}
-}
-
-// TestExtractManual_OnePageFailingTranscriptionDoesNotLoseTheOthers pinna
-// l'isolamento dei guasti nel percorso vision: la pagina 2 fallisce, ma le
-// pagine 1 e 3 devono comunque tornare col loro testo, la pagina 2 deve
-// comunque essere presente (vuota, source "manual") e la numerazione non
-// deve slittare — quei numeri sono la citazione che qualcuno usa per
-// aprire il manuale alla pagina giusta.
-func TestExtractManual_OnePageFailingTranscriptionDoesNotLoseTheOthers(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	tr := &fakeTranscriber{errOnPage: 2, err: errors.New("provider momentaneamente giù")}
-	server.Vision = tr
-	router := httpapi.NewRouter(server)
-	cookie := loginAsAdmin(t, router)
-
-	// TRE pagine, con quella che fallisce IN MEZZO: con due pagine la
-	// fallita sarebbe l'ultima, e il test non distinguerebbe una
-	// numerazione presa da img.Number da una presa dall'indice di append —
-	// che coincidono finché nessuna pagina "salta". Qui, se il numero
-	// venisse dall'indice, la pagina 3 arriverebbe numerata 3 lo stesso ma
-	// la 2 sarebbe l'unica a poter slittare: è il caso in mezzo che rende
-	// visibile l'accoppiamento.
-	gameID, mediaID := seedGameWithManual(t, server, conn, manuals.NewScannedPDFPages(3))
-
-	req := httptest.NewRequest(http.MethodPost, manualPath(gameID, mediaID, "extract"), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
-	}
-	var body struct {
-		Pages []struct {
-			PageNumber int    `json:"pageNumber"`
-			Text       string `json:"text"`
-			Source     string `json:"source"`
-		} `json:"pages"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("risposta non JSON: %v", err)
-	}
-	if len(body.Pages) != 3 {
-		t.Fatalf("attese 3 pagine (una fallita non deve far sparire le altre), ottenute %d", len(body.Pages))
-	}
-	for i, p := range body.Pages {
-		if p.PageNumber != i+1 {
-			t.Fatalf("la numerazione non deve slittare: pagina in posizione %d numerata %d", i, p.PageNumber)
-		}
-	}
-	for _, i := range []int{0, 2} {
-		if body.Pages[i].Text == "" || body.Pages[i].Source != "vision" {
-			t.Fatalf("pagina %d doveva riuscire: text=%q source=%q",
-				i+1, body.Pages[i].Text, body.Pages[i].Source)
-		}
-		// fakeTranscriber ignora i byte JPEG ed echeggia il proprio
-		// argomento page (vedi fakeTranscriber più sopra): il testo che
-		// arriva qui è quindi il numero di pagina passato a Transcribe,
-		// non una lettura dell'immagine. Con la pagina fallita IN MEZZO
-		// (vedi sopra), verificare che la pagina in posizione i porti il
-		// numero i+1 lega il PageNumber della risposta all'argomento
-		// realmente passato a Transcribe per quella pagina — e non
-		// all'indice della sua posizione nello slice dei successi, che
-		// coinciderebbe comunque se il codice ricomponesse per indice le
-		// sole trascrizioni riuscite (bug invisibile se il fallimento è
-		// l'ultima pagina).
-		if !strings.Contains(body.Pages[i].Text, fmt.Sprint(i+1)) {
-			t.Fatalf("pagina %d ha ricevuto la trascrizione di un'altra pagina: %q", i+1, body.Pages[i].Text)
-		}
-	}
-	if body.Pages[1].Text != "" {
-		t.Fatalf("pagina 2 (fallita) doveva arrivare con testo vuoto, non %q", body.Pages[1].Text)
-	}
-	if body.Pages[1].Source != "manual" {
-		t.Fatalf("pagina 2 (fallita) doveva avere source \"manual\", non %q", body.Pages[1].Source)
-	}
-}
-
-func TestPutManualPages_SavesAndBuildsTheIndex(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	router := httpapi.NewRouter(server)
-	cookie := loginAsAdmin(t, router)
-	gameID, mediaID := seedGameWithScannedManual(t, server, conn)
-
-	payload := `{"pages":[
-	  {"pageNumber":4,"text":"Fase di Upkeep\nOgni giocatore paga una moneta.","source":"vision"},
-	  {"pageNumber":7,"text":"Fine partita\nLa partita termina subito.","source":"manual"}
-	]}`
-	req := httptest.NewRequest(http.MethodPut, manualPath(gameID, mediaID, "pages"), strings.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusOK {
-		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
-	}
-
-	store := manuals.NewStore(conn)
-	pages, _ := store.ListPages(context.Background(), mediaID)
-	if len(pages) != 2 {
-		t.Fatalf("attese 2 pagine salvate, ottenute %d", len(pages))
-	}
-	if pages[0].Heading != "Fase di Upkeep" {
-		t.Fatalf("l'heading doveva essere rilevato al salvataggio, è %q", pages[0].Heading)
-	}
-	// I chunk devono essere pronti: la ricerca funziona subito dopo il salvataggio.
-	res, err := store.Search(context.Background(), gameID, "it", []string{"Upkeep"})
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"pesca"})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
-	if len(res.Hits) == 0 {
-		t.Fatal("dopo il salvataggio la ricerca non trova nulla: i chunk non sono stati costruiti")
+	if len(hits) == 0 {
+		t.Fatal("il .md doveva essere indicizzato: la ricerca non trova nulla")
+	}
+	if hits[0].ReferenceDetail != `sezione «Preparazione»` {
+		t.Fatalf("reference_detail per un formato senza pagine: atteso 'sezione «Preparazione»', ottenuto %q", hits[0].ReferenceDetail)
+	}
+	if hits[0].Reference != "Regolamento base" {
+		t.Fatalf("reference doveva venire dal titolo del media, ottenuto %q", hits[0].Reference)
 	}
 }
 
-func TestManualPages_RequireAuth(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	router := httpapi.NewRouter(server)
-	gameID, mediaID := seedGameWithScannedManual(t, server, conn)
-
-	for _, tc := range []struct{ method, suffix string }{
-		{http.MethodPost, "extract"},
-		{http.MethodGet, "pages"},
-		{http.MethodPut, "pages"},
-		{http.MethodDelete, "pages"},
-	} {
-		path := manualPath(gameID, mediaID, tc.suffix)
-		req := httptest.NewRequest(tc.method, path, strings.NewReader(`{"pages":[]}`))
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, req)
-		if rec.Code != http.StatusUnauthorized {
-			t.Fatalf("%s %s senza sessione: atteso 401, ottenuto %d (%s)", tc.method, path, rec.Code, rec.Body.String())
-		}
-	}
-}
-
-func TestDeleteManualPages(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
+// TestIndexMedia_TxtCallsSegmentation è il caso simmetrico: un .txt è
+// testo piatto senza titoli, quindi DEVE passare da Segment perché
+// ParseSections possa trovarci delle sezioni.
+func TestIndexMedia_TxtCallsSegmentation(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	seg := &fakeSegmenter{out: "## Regole\n\nOgni giocatore pesca due carte all'inizio del turno."}
+	server.Segmenter = seg
 	router := httpapi.NewRouter(server)
 	cookie := loginAsAdmin(t, router)
-	gameID, mediaID := seedGameWithScannedManual(t, server, conn)
 
-	store := manuals.NewStore(conn)
-	store.ReplacePages(context.Background(), gameID, mediaID, "it", []manuals.StoredPage{
-		{PageNumber: 1, Text: "Testo qualsiasi.", Source: "manual"},
+	raw := "Ogni giocatore pesca due carte all'inizio del turno."
+	gameID, mediaID := seedGameWithFile(t, server, []byte(raw), "regole.txt", "Regole scritte a mano")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if seg.calls != 1 {
+		t.Fatalf("un .txt deve chiamare Segment esattamente una volta, chiamato %d volte", seg.calls)
+	}
+	if seg.lastIn != raw {
+		t.Fatalf("Segment doveva ricevere il testo grezzo del file, ha ricevuto %q", seg.lastIn)
+	}
+
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"pesca"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("il .txt doveva essere indicizzato dopo la segmentazione")
+	}
+}
+
+// TestIndexMedia_DocxIsAccepted copre il quarto formato: un .docx passa da
+// DocxToMarkdown, non da Segment né da Transcribe (esattamente come un
+// .md, una volta convertito).
+func TestIndexMedia_DocxIsAccepted(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	seg := &fakeSegmenter{}
+	server.Segmenter = seg
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	docx := manuals.NewDocx([]manuals.DocxParagraph{
+		{Style: "Heading1", Text: "Preparazione"},
+		{Style: "", Text: "Si mescolano le carte e si distribuiscono a testa in giù."},
 	})
+	gameID, mediaID := seedGameWithFile(t, server, docx, "Regolamento.docx", "Regolamento Word")
 
-	req := httptest.NewRequest(http.MethodDelete, manualPath(gameID, mediaID, "pages"), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if seg.calls != 0 {
+		t.Fatalf("un .docx non deve chiamare Segment, chiamato %d volte", seg.calls)
+	}
+
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"mescolano"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("il .docx doveva essere indicizzato")
+	}
+	if hits[0].ReferenceDetail != `sezione «Preparazione»` {
+		t.Fatalf("reference_detail: atteso 'sezione «Preparazione»', ottenuto %q", hits[0].ReferenceDetail)
+	}
+}
+
+// TestIndexMedia_DocxWithoutTextIsAClearError copre il messaggio dedicato
+// del brief: un .docx senza testo (una tabella vuota, un documento senza
+// paragrafi) deve dirlo, non fingere un guasto generico.
+func TestIndexMedia_DocxWithoutTextIsAClearError(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	empty := manuals.NewDocxRawBody("") // nessun paragrafo: DocxToMarkdown non produce testo
+	gameID, mediaID := seedGameWithFile(t, server, empty, "vuoto.docx", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "non contiene testo") {
+		t.Fatalf("il messaggio deve dire che il file non ha testo, non un guasto generico: %s", rec.Body.String())
+	}
+}
+
+// TestIndexMedia_ScannedPDFWithoutVisionModelNamesTheSetting copre il
+// primo messaggio della tabella: un PDF scansionato senza modello vision
+// configurato deve nominare il campo delle impostazioni, non dare un
+// errore generico.
+func TestIndexMedia_ScannedPDFWithoutVisionModelNamesTheSetting(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{} // il provider di testo è configurato...
+	server.Vision = &erroringTranscriber{err: ai.ErrNotConfigured} // ...ma non quello vision
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewScannedPDF(), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Modello per i manuali scansionati") {
+		t.Fatalf("il messaggio deve nominare il campo delle impostazioni: %s", rec.Body.String())
+	}
+}
+
+type erroringTranscriber struct{ err error }
+
+func (e *erroringTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+	return "", e.err
+}
+
+// TestIndexMedia_PDFWithNeitherTextNorImagesSuggestsConverting copre il
+// secondo messaggio: un PDF che non è né testo né immagini leggibili deve
+// suggerire di convertire il file.
+func TestIndexMedia_PDFWithNeitherTextNorImagesSuggestsConverting(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	// Un PDF valido (Catalog + Pages + una pagina), ma senza nessun testo
+	// né nessuna immagine DCTDecode: né il percorso testo né quello vision
+	// hanno niente da offrire.
+	empty := manuals.BuildTestPDF([]string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] /Contents 4 0 R >>",
+		"<< /Length 0 >>\nstream\n\nendstream",
+	})
+	gameID, mediaID := seedGameWithFile(t, server, empty, "vuoto.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "convertirlo") {
+		t.Fatalf("il messaggio deve suggerire di convertire il file: %s", rec.Body.String())
+	}
+}
+
+// TestIndexMedia_SegmentationRejectedIsAClearError copre il quarto
+// messaggio: la segmentazione rifiutata (il modello ha riscritto invece di
+// segmentare) deve dire che la lettura non è affidabile e invitare a
+// riprovare, non un errore generico.
+func TestIndexMedia_SegmentationRejectedIsAClearError(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{err: ai.ErrSegmentationRejected}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, []byte("Testo qualsiasi da segmentare."), "regole.txt", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "non è affidabile") || !strings.Contains(body, "iprova") {
+		t.Fatalf("il messaggio deve dire che la lettura non è affidabile e invitare a riprovare: %s", body)
+	}
+}
+
+// TestIndexMedia_DeleteRemovesTheChunks copre il DELETE.
+func TestIndexMedia_DeleteRemovesTheChunks(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	md := "## Preparazione\n\nOgni giocatore pesca cinque carte."
+	gameID, mediaID := seedGameWithFile(t, server, []byte(md), "regole.md", "")
+
+	if rec := postIndex(cookie, router, gameID, mediaID); rec.Code != http.StatusOK {
+		t.Fatalf("index: atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	has, err := server.Manuals.HasChunks(context.Background(), gameID)
+	if err != nil || !has {
+		t.Fatalf("il gioco doveva avere chunk dopo l'indicizzazione: has=%v err=%v", has, err)
+	}
+
+	rec := deleteIndex(cookie, router, gameID, mediaID)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("atteso 204, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
-	pages, _ := store.ListPages(context.Background(), mediaID)
-	if len(pages) != 0 {
-		t.Fatalf("restano %d pagine", len(pages))
+	has, err = server.Manuals.HasChunks(context.Background(), gameID)
+	if err != nil {
+		t.Fatalf("has chunks: %v", err)
+	}
+	if has {
+		t.Fatal("dopo il DELETE non devono restare chunk")
 	}
 }
 
-// TestManualTarget_RejectsMediaFromAnotherGame pinna il controllo
-// descritto nel brief: manualTarget deve verificare che il media
-// appartenga davvero a quel gioco (e a quella lingua), non solo che
-// esista. Senza questo controllo, l'id di un media di un altro gioco
-// passerebbe indisturbato. Lo status atteso è esattamente 404 (non un
-// generico "diverso da 200"): un media che non appartiene a quel gioco è
-// un caso "non trovato", come lo tratta translateLanguageHandler per lo
-// stesso genere di lookup — non un parametro di rotta malformato (400).
-func TestManualTarget_RejectsMediaFromAnotherGame(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
+// TestIndexMedia_ReindexingTheSameMediaDoesNotDisambiguateAgainstItself è
+// il caso citato nel piano come motivo per cui Summary va letto DOPO aver
+// cancellato le vecchie fonti di QUESTO stesso media: senza quell'ordine,
+// re-indicizzare lo stesso file con lo stesso titolo si scontrerebbe con
+// la propria vecchia voce e guadagnerebbe un suffisso di lingua alla
+// seconda esecuzione, anche senza nessun secondo media coinvolto.
+func TestIndexMedia_ReindexingTheSameMediaDoesNotDisambiguateAgainstItself(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
 	router := httpapi.NewRouter(server)
 	cookie := loginAsAdmin(t, router)
 
-	_, mediaID := seedGameWithScannedManual(t, server, conn)
-	otherGameID, _ := seedGameWithScannedManual(t, server, conn)
+	md := "## Preparazione\n\nOgni giocatore pesca cinque carte."
+	gameID, mediaID := seedGameWithFile(t, server, []byte(md), "regole.md", "Regolamento base")
 
-	req := httptest.NewRequest(http.MethodGet, manualPath(otherGameID, mediaID, "pages"), nil)
+	for i := 0; i < 2; i++ {
+		rec := postIndex(cookie, router, gameID, mediaID)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("giro %d: atteso 200, ottenuto %d: %s", i, rec.Code, rec.Body.String())
+		}
+	}
+
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"pesca"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("nessun risultato dopo la doppia indicizzazione")
+	}
+	if hits[0].Reference != "Regolamento base" {
+		t.Fatalf("re-indicizzare lo stesso media non deve aggiungere un suffisso: reference = %q", hits[0].Reference)
+	}
+}
+
+// TestIndexMedia_DisambiguatesACollidingReference è il cuore della
+// disambiguazione descritta nel piano: due media DISTINTI dello stesso
+// gioco con lo stesso titolo devono finire con reference diverse, o la
+// mappa reference → percorso file (Task 7) punterebbe al file sbagliato
+// per uno dei due.
+func TestIndexMedia_DisambiguatesACollidingReference(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	md1 := "## Preparazione\n\nOgni giocatore pesca cinque carte."
+	gameID, media1 := seedGameWithFile(t, server, []byte(md1), "regole.md", "Regolamento")
+
+	// Un secondo media, STESSO gioco, STESSO titolo: creato direttamente
+	// nella stessa lingua "it" (game_language_id), per collidere davvero
+	// con il primo.
+	var langID int64
+	if err := conn.QueryRow(`SELECT id FROM game_languages WHERE game_id = ?`, gameID).Scan(&langID); err != nil {
+		t.Fatalf("lang id: %v", err)
+	}
+	path2, err := server.Storage.Save(storage.ManualCategory,
+		bytes.NewReader([]byte("## Fine partita\n\nSi vince con più punti.")), "regole2.md")
+	if err != nil {
+		t.Fatalf("save: %v", err)
+	}
+	title := "Regolamento"
+	media2, err := server.Games.CreateMedia(context.Background(), games.GameMedia{
+		GameLanguageID: langID, Type: games.MediaTypeFile, URLOrPath: path2, Title: &title,
+	})
+	if err != nil {
+		t.Fatalf("create media: %v", err)
+	}
+
+	if rec := postIndex(cookie, router, gameID, media1); rec.Code != http.StatusOK {
+		t.Fatalf("index media1: atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if rec := postIndex(cookie, router, gameID, media2.ID); rec.Code != http.StatusOK {
+		t.Fatalf("index media2: atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+
+	hits1, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"pesca"})
+	if err != nil || len(hits1) == 0 {
+		t.Fatalf("search media1: hits=%d err=%v", len(hits1), err)
+	}
+	hits2, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"vince"})
+	if err != nil || len(hits2) == 0 {
+		t.Fatalf("search media2: hits=%d err=%v", len(hits2), err)
+	}
+	if hits1[0].Reference == hits2[0].Reference {
+		t.Fatalf("due media con lo stesso titolo devono avere reference diverse, entrambe %q", hits1[0].Reference)
+	}
+	// Il primo mantiene il titolo puro; il secondo, arrivato dopo e in
+	// collisione, guadagna il suffisso di lingua.
+	if hits1[0].Reference != "Regolamento" {
+		t.Fatalf("il primo media non doveva cambiare reference: %q", hits1[0].Reference)
+	}
+	if hits2[0].Reference != "Regolamento (it)" {
+		t.Fatalf("il secondo media doveva disambiguarsi con la lingua: %q", hits2[0].Reference)
+	}
+}
+
+// TestIndexMedia_ChunkThatBeginsOnTheSecondPageGetsThatPage è il test che
+// conta più di tutti (vedi il piano): un manuale scansionato di tre
+// pagine, con una sezione ("Fase di Upkeep") che comincia a pagina 1 e
+// continua a pagina 2 SENZA un titolo nuovo. Il paragrafo di pagina 1 è
+// tenuto apposta sotto MaxChunkChars ma abbastanza lungo, e SENZA nessuna
+// punteggiatura di fine frase (solo virgole) negli ultimi 100 caratteri:
+// questo impedisce a splitToSize di portare una coda di sovrapposizione
+// da pagina 1 dentro il chunk successivo (vedi tailFrom in chunk.go), che
+// altrimenti farebbe iniziare quel chunk ancora dentro pagina 1. Così il
+// chunk con il testo di pagina 2 comincia ESATTAMENTE all'offset di
+// pagina 2, non prima.
+func TestIndexMedia_ChunkThatBeginsOnTheSecondPageGetsThatPage(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{} // gate: il provider di testo è "configurato"
+
+	// ~960 caratteri, tutti separati da virgole: nessun '.', '!', '?' o ':'
+	// seguito da spazio negli ultimi 100 caratteri (né altrove).
+	clause := "ogni giocatore paga una moneta per ciascun edificio che possiede, in ordine di turno, senza fermarsi mai, "
+	page1Body := strings.Repeat(clause, 10)
+	page1Body = strings.TrimSpace(page1Body[:960])
+	page1 := "## Fase di Upkeep\n\n" + page1Body
+
+	page2 := "Se un giocatore non può pagare, scarta l'edificio invece di pagarlo. Poi si passa alla fase successiva."
+	page3 := "## Fine partita\n\nLa partita termina quando la pila di pesca si esaurisce."
+
+	server.Vision = &pageTranscriber{byPage: map[int]string{1: page1, 2: page2, 3: page3}}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewScannedPDFPages(3), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"scarta"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	found := false
+	for _, h := range hits {
+		if strings.Contains(h.Text, "scarta l'edificio") {
+			found = true
+			if h.ReferenceDetail != "pagina 2" {
+				t.Fatalf("il chunk che comincia a pagina 2 doveva portare \"pagina 2\", ha %q (testo: %q)",
+					h.ReferenceDetail, h.Text)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("nessun chunk contiene il testo di pagina 2: %+v", hits)
+	}
+
+	// La pagina 1 deve restare pagina 1: non è che tutto sia franato su
+	// pagina 2 per un offset scambiato.
+	// L'indice FTS5 copre solo il testo del chunk, non il titolo (vedi il
+	// trigger in 0015_game_sources.sql): si cerca una parola del CORPO di
+	// pagina 1 ("moneta"), non "Upkeep" che vive solo nell'heading.
+	hitsPage1, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"moneta"})
+	if err != nil {
+		t.Fatalf("search moneta: %v", err)
+	}
+	foundPage1 := false
+	for _, h := range hitsPage1 {
+		if strings.Contains(h.Text, "paga una moneta") {
+			foundPage1 = true
+			if h.ReferenceDetail != "pagina 1" {
+				t.Fatalf("il chunk che comincia a pagina 1 doveva portare \"pagina 1\", ha %q", h.ReferenceDetail)
+			}
+		}
+	}
+	if !foundPage1 {
+		t.Fatalf("nessun chunk contiene il testo di pagina 1: %+v", hitsPage1)
+	}
+
+	// Pagina 3, con il proprio titolo, resta pagina 3.
+	hitsPage3, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"esaurisce"})
+	if err != nil {
+		t.Fatalf("search fine partita: %v", err)
+	}
+	if len(hitsPage3) == 0 || hitsPage3[0].ReferenceDetail != "pagina 3" {
+		t.Fatalf("il chunk di pagina 3 doveva portare \"pagina 3\": %+v", hitsPage3)
+	}
+}
+
+// TestIndexMedia_TextLayerPDFCallsSegmentation copre il percorso testo di
+// un PDF (layer testo usabile): deve chiamare Segment sul testo estratto,
+// non Transcribe.
+func TestIndexMedia_TextLayerPDFCallsSegmentation(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	seg := &fakeSegmenter{out: "## Regole\n\nQuesto testo ha un vero layer testo nel PDF di prova."}
+	vis := &pageTranscriber{}
+	server.Segmenter = seg
+	server.Vision = vis
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewTextPDF(), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if seg.calls != 1 {
+		t.Fatalf("un PDF con layer testo deve chiamare Segment esattamente una volta, chiamato %d volte", seg.calls)
+	}
+	if vis.calls != 0 {
+		t.Fatalf("un PDF con layer testo non deve chiamare Transcribe, chiamato %d volte", vis.calls)
+	}
+
+	// "Regole" vive solo nel titolo che il segmentatore ha aggiunto: l'FTS5
+	// indicizza solo il testo del chunk (vedi il trigger in
+	// 0015_game_sources.sql), quindi si cerca una parola del corpo.
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"prova"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 || hits[0].ReferenceDetail != "pagina 1" {
+		t.Fatalf("atteso un chunk con reference_detail \"pagina 1\", ottenuto %+v", hits)
+	}
+}
+
+// TestManualTarget_RejectsMediaFromAnotherGame pinna il controllo che
+// manualTarget faceva già prima di questo task: un media di un altro
+// gioco è "non trovato" (404), non un parametro di rotta malformato.
+func TestManualTarget_RejectsMediaFromAnotherGame(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	_, mediaID := seedGameWithFile(t, server, []byte("# T\n\nx"), "a.md", "")
+	otherGameID, _ := seedGameWithFile(t, server, []byte("# T\n\nx"), "b.md", "")
+
+	req := httptest.NewRequest(http.MethodDelete, indexPath(otherGameID, mediaID), nil)
 	req.AddCookie(cookie)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)

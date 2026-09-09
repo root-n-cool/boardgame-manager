@@ -139,27 +139,40 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	corpus, err := s.Manuals.Corpus(r.Context(), gameID)
+	hasChunks, err := s.Manuals.HasChunks(r.Context(), gameID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load the manual")
 		return
 	}
-	// Nessun manuale preparato: la rotta si comporta come inesistente,
+	// Nessuna fonte indicizzata: la rotta si comporta come inesistente,
 	// esattamente come senza provider AI. Non c'è nulla da spiegare a un
 	// partecipante — la chat, in quel caso, non è nemmeno comparsa.
-	if len(corpus.Manuals) == 0 {
+	if !hasChunks {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
 	// La lingua preferita è quella base del gioco: è quella in cui la
-	// scheda pubblica mostra tutto il resto.
+	// scheda pubblica mostra tutto il resto. Nella stessa lettura si
+	// raccolgono anche i percorsi dei manuali PDF del gioco (in ogni
+	// lingua): linkifyCitations ne ha bisogno per il suo link "pag. N",
+	// ed è la stessa informazione che prima veniva da manuals.Corpus,
+	// tipo cancellato dal Task 1.
 	preferLang := "it"
+	var pdfPaths []string
 	if langs, err := s.Games.ListLanguages(r.Context(), gameID); err == nil {
 		for _, l := range langs {
 			if l.IsBaseLanguage {
 				preferLang = l.LanguageCode
-				break
+			}
+			media, err := s.Games.ListMedia(r.Context(), l.ID)
+			if err != nil {
+				continue
+			}
+			for _, m := range media {
+				if m.Type == games.MediaTypeFile && strings.HasSuffix(strings.ToLower(m.URLOrPath), ".pdf") {
+					pdfPaths = append(pdfPaths, m.URLOrPath)
+				}
 			}
 		}
 	}
@@ -168,19 +181,21 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	// parametro del tool, così il modello non può leggere il manuale di un
 	// altro gioco.
 	search := func(ctx context.Context, keywords []string) (string, error) {
-		res, err := s.Manuals.Search(ctx, gameID, preferLang, keywords)
+		hits, missing, err := s.Manuals.Search(ctx, gameID, preferLang, keywords)
 		if err != nil {
 			return "", err
 		}
-		return manuals.FormatSearchResult(res), nil
+		return manuals.MarshalHits(hits, missing)
 	}
 
 	answer, err := s.asker(r.Context()).Ask(r.Context(), ai.AskRequest{
-		GameName:    game.Name,
-		Turns:       turns,
-		CorpusChars: corpus.Chars,
-		CorpusText:  manuals.FormatCorpus(corpus),
-		CorpusIndex: manuals.FormatIndex(corpus),
+		GameName: game.Name,
+		Turns:    turns,
+		// CorpusIndex resta vuoto: l'indice per fonte (i titoli di
+		// sezione, raggruppati per manuale) è il Task 7, che ha anche
+		// l'accesso a manuals.Store.Summary per costruirlo.
+		// TODO(task-7): l'indice per fonte.
+		CorpusIndex: "",
 		Search:      search,
 	})
 	if errors.Is(err, ai.ErrNotConfigured) {
@@ -195,7 +210,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// deep-chat legge {"text": ...}.
-	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, corpus)})
+	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, pdfPaths)})
 }
 
 // citationRe trova le citazioni di pagina nella risposta del modello.
@@ -222,7 +237,13 @@ var citationRe = regexp.MustCompile(`pag\.\s*(\d+)`)
 // Legare la citazione al manuale giusto vorrebbe dire far dichiarare al
 // modello quale manuale sta citando (o riconoscerne il titolo nel testo): è
 // la strada giusta, ma è una feature, non una correzione.
-func linkifyCitations(answer string, corpus manuals.Corpus) string {
+//
+// pdfPaths sostituisce quello che prima veniva da manuals.Corpus (tipo
+// cancellato dal Task 1): i percorsi di tutti i manuali PDF del gioco, in
+// qualunque lingua. La funzione stessa non cambia: brutta e sbagliata con
+// due manuali come lo era prima — sistemarla è il Task 7, un rifacimento a
+// metà qui sarebbe peggio di nessuno.
+func linkifyCitations(answer string, pdfPaths []string) string {
 	// Se il modello ha già prodotto un link, non si raddoppia.
 	if strings.Contains(answer, "](/api/uploads/") {
 		return answer
@@ -230,12 +251,9 @@ func linkifyCitations(answer string, corpus manuals.Corpus) string {
 
 	path := ""
 	pdfs := 0
-	for _, m := range corpus.Manuals {
-		if !strings.HasSuffix(strings.ToLower(m.Path), ".pdf") {
-			continue
-		}
+	for _, p := range pdfPaths {
 		pdfs++
-		path = m.Path
+		path = p
 	}
 	if path == "" || pdfs > 1 {
 		return answer
