@@ -15,6 +15,10 @@ esterno obbligatorio.
 - **Catalogo giochi**: import da BoardGameGeek (nome, anno, numero
   giocatori, copertina) o inserimento manuale; ogni gioco ha una o più
   lingue, ciascuna con i propri media (manuale PDF, link, video YouTube).
+  Caricando un manuale, l'app elenca i file che BoardGameGeek ha per quel
+  gioco nella lingua della scheda: il download resta un gesto manuale — BGG
+  li serve solo a chi ha fatto login sul sito — ma il file giusto si trova
+  senza cercarlo.
   Ogni gioco ha anche un numero di **posti prenotabili per copia**: `1`
   per un gioco da tavolo normale, dove chi prenota si prende la copia e
   si porta i suoi; più di 1 per un tavolo aperto — una partita a D&D, un

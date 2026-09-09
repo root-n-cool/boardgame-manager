@@ -105,6 +105,7 @@ func NewRouter(s *Server) http.Handler {
 		protected.Patch("/api/games/{id}", s.updateGameHandler)
 		protected.Delete("/api/games/{id}", s.deleteGameHandler)
 		protected.Post("/api/games/{id}/cover", s.uploadCoverHandler)
+		protected.Get("/api/games/{id}/bgg-files", s.listBggFilesHandler)
 		protected.Post("/api/games/{id}/languages", s.createLanguageHandler)
 		protected.Patch("/api/games/{id}/languages/{lang}", s.updateLanguageHandler)
 		protected.Post("/api/games/{id}/languages/{lang}/translate", s.translateLanguageHandler)

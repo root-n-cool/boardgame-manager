@@ -15,6 +15,11 @@ type fakeBGGClient struct {
 	detailsErr    error
 	detailsIDs    []string
 	detailsCalls  int
+
+	files           []bgg.FileEntry
+	filesErr        error
+	filesBGGID      string
+	filesLanguageID string
 }
 
 func (f *fakeBGGClient) Search(ctx context.Context, token, query string) ([]bgg.SearchResult, error) {
@@ -29,4 +34,10 @@ func (f *fakeBGGClient) Details(ctx context.Context, token string, ids []string)
 	f.detailsCalls++
 	f.detailsIDs = ids
 	return f.details, f.detailsErr
+}
+
+func (f *fakeBGGClient) Files(ctx context.Context, bggID, languageID string) ([]bgg.FileEntry, error) {
+	f.filesBGGID = bggID
+	f.filesLanguageID = languageID
+	return f.files, f.filesErr
 }

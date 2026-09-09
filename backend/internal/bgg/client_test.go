@@ -207,3 +207,120 @@ func TestGetThing_ReadsThumbnailAndWeight(t *testing.T) {
 		t.Fatalf("unexpected thumbnail: %q", detail.ThumbnailURL)
 	}
 }
+
+// filesJSON è una risposta ridotta di api.geekdo.com/api/files: due file
+// con lingua e uno "(neutral)", che nel JSON reale arriva come null.
+const filesJSON = `{"files":[
+	{"filepageid":"142767","fileid":"218863","filename":"S-CAR v7.4.pdf","size":"551718","title":"Annotated Rules","numpositive":"330","language":"English","languageid":"2184","href":"\/filepage\/142767\/annotated-rules"},
+	{"filepageid":"143911","fileid":"183457","filename":"Carcopedia.pdf","size":"18083546","title":"Carcopedia","numpositive":"13","language":"Italian","languageid":"2193","href":"\/filepage\/143911\/carcopedia"},
+	{"filepageid":"9","fileid":"9","filename":"tiles.zip","size":"12","title":"Tiles","numpositive":null,"language":null,"href":"\/filepage\/9\/tiles"}
+],"config":{"endpage":1,"numitems":3}}`
+
+func TestFiles_ParsesEntriesAndBuildsAbsolutePageURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(filesJSON))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{FilesBaseURL: server.URL, HTTPClient: server.Client()}
+	files, err := client.Files(context.Background(), "822", "")
+	if err != nil {
+		t.Fatalf("files: %v", err)
+	}
+	if len(files) != 3 {
+		t.Fatalf("expected 3 files, got %d", len(files))
+	}
+	first := files[0]
+	if first.Title != "Annotated Rules" || first.Filename != "S-CAR v7.4.pdf" {
+		t.Fatalf("unexpected title/filename: %+v", first)
+	}
+	if first.Language != "English" || first.Positive != 330 || first.SizeBytes != 551718 {
+		t.Fatalf("unexpected metadata: %+v", first)
+	}
+	if first.PageURL != "https://boardgamegeek.com/filepage/142767/annotated-rules" {
+		t.Fatalf("expected absolute page URL, got %q", first.PageURL)
+	}
+	if first.LanguageID != "2184" {
+		t.Fatalf("expected language id 2184, got %q", first.LanguageID)
+	}
+}
+
+func TestFiles_NullLanguageAndVotesBecomeEmpty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(filesJSON))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{FilesBaseURL: server.URL, HTTPClient: server.Client()}
+	files, err := client.Files(context.Background(), "822", "")
+	if err != nil {
+		t.Fatalf("files: %v", err)
+	}
+	neutral := files[2]
+	if neutral.Language != "" {
+		t.Fatalf("expected empty language for null, got %q", neutral.Language)
+	}
+	if neutral.Positive != 0 {
+		t.Fatalf("expected 0 votes for null, got %d", neutral.Positive)
+	}
+	if neutral.LanguageID != "" {
+		t.Fatalf("expected empty language id for null, got %q", neutral.LanguageID)
+	}
+}
+
+func TestFiles_SendsObjectIDLanguageAndHotSort(t *testing.T) {
+	var got url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		w.Write([]byte(`{"files":[],"config":{"numitems":0}}`))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{FilesBaseURL: server.URL, HTTPClient: server.Client()}
+	if _, err := client.Files(context.Background(), "822", "2193"); err != nil {
+		t.Fatalf("files: %v", err)
+	}
+	if got.Get("objectid") != "822" {
+		t.Errorf("expected objectid 822, got %q", got.Get("objectid"))
+	}
+	if got.Get("objecttype") != "thing" {
+		t.Errorf("expected objecttype thing, got %q", got.Get("objecttype"))
+	}
+	if got.Get("languageid") != "2193" {
+		t.Errorf("expected languageid 2193, got %q", got.Get("languageid"))
+	}
+	if got.Get("sort") != "hot" {
+		t.Errorf("expected sort hot (the only ordering BGG honours), got %q", got.Get("sort"))
+	}
+}
+
+func TestFiles_OmitsLanguageIDWhenEmpty(t *testing.T) {
+	var got url.Values
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = r.URL.Query()
+		w.Write([]byte(`{"files":[],"config":{"numitems":0}}`))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{FilesBaseURL: server.URL, HTTPClient: server.Client()}
+	if _, err := client.Files(context.Background(), "822", ""); err != nil {
+		t.Fatalf("files: %v", err)
+	}
+	if _, present := got["languageid"]; present {
+		t.Errorf("expected no languageid param, got %q", got.Get("languageid"))
+	}
+}
+
+func TestFiles_NonOKStatusReturnsError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("blocked"))
+	}))
+	defer server.Close()
+
+	client := &bgg.HTTPClient{FilesBaseURL: server.URL, HTTPClient: server.Client()}
+	if _, err := client.Files(context.Background(), "822", ""); err == nil {
+		t.Fatal("expected error on 403")
+	}
+}

@@ -35,3 +35,51 @@ export interface GameDetail {
   canTranslate: boolean
   languages: GameLanguageInfo[]
 }
+
+/**
+ * Il nome esteso di una lingua, dal suo codice. Rende leggibile un bottone
+ * ("Traduci in italiano" invece di "Traduci in it") e traduce le etichette
+ * che BoardGameGeek manda in inglese sui suoi file. L'elenco copre le
+ * lingue che BGG riconosce, le stesse su cui l'indice dei file sa filtrare;
+ * un codice sconosciuto torna com'è.
+ */
+const languageNames: Record<string, string> = {
+  ar: 'arabo',
+  ca: 'catalano',
+  cs: 'ceco',
+  da: 'danese',
+  de: 'tedesco',
+  el: 'greco',
+  en: 'inglese',
+  es: 'spagnolo',
+  et: 'estone',
+  fa: 'persiano',
+  fi: 'finlandese',
+  fr: 'francese',
+  gl: 'galiziano',
+  he: 'ebraico',
+  hr: 'croato',
+  hu: 'ungherese',
+  it: 'italiano',
+  ja: 'giapponese',
+  ko: 'coreano',
+  lt: 'lituano',
+  nl: 'olandese',
+  no: 'norvegese',
+  pl: 'polacco',
+  pt: 'portoghese',
+  ro: 'romeno',
+  ru: 'russo',
+  sr: 'serbo',
+  sv: 'svedese',
+  th: 'thailandese',
+  tr: 'turco',
+  ug: 'uiguro',
+  uk: 'ucraino',
+  vi: 'vietnamita',
+  zh: 'cinese',
+}
+
+export function languageName(code: string): string {
+  return languageNames[code] || code
+}

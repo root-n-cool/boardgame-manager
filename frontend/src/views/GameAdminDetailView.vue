@@ -5,7 +5,8 @@ import { api } from '../api/client'
 import ModalDialog from '../components/ModalDialog.vue'
 import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
-import type { GameDetail, GameLanguageInfo } from '../utils/game'
+import BggFilesPicker, { type BggFile } from '../components/BggFilesPicker.vue'
+import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +29,7 @@ const languageError = ref('')
 const linkUrl = ref('')
 const linkTitle = ref('')
 const uploadFile = ref<File | null>(null)
+const fileTitle = ref('')
 const mediaError = ref('')
 const mediaModalOpen = ref(false)
 const mediaKind = ref<'file' | 'link' | 'youtube'>('file')
@@ -43,20 +45,6 @@ const seatsError = ref('')
 const aiConfigured = ref(false)
 const translating = ref(false)
 const translateError = ref('')
-
-// Il nome esteso della lingua rende il bottone leggibile: "Traduci in
-// italiano" invece di "Traduci in it".
-const languageNames: Record<string, string> = {
-  it: 'italiano',
-  en: 'inglese',
-  fr: 'francese',
-  de: 'tedesco',
-  es: 'spagnolo',
-}
-
-function languageName(code: string): string {
-  return languageNames[code] || code
-}
 
 async function translateDescription() {
   if (!window.confirm(`Ritradurre la descrizione in ${languageName(activeLangCode.value)}? Il testo attuale viene sostituito.`)) {
@@ -227,8 +215,16 @@ function openMediaModal() {
   uploadFile.value = null
   linkUrl.value = ''
   linkTitle.value = ''
+  fileTitle.value = ''
   mediaError.value = ''
   mediaModalOpen.value = true
+}
+
+/** Il file scelto sull'indice BGG si scarica dal browser dell'admin, non da
+ *  qui: al ritorno nel modale il titolo è già scritto e resta solo il PDF da
+ *  allegare. */
+function onBggFilePicked(file: BggFile) {
+  fileTitle.value = file.title
 }
 
 /** Un solo submit per i tre tipi: file caricato, link esterno, video YouTube. */
@@ -243,6 +239,9 @@ async function submitMedia() {
       }
       const formData = new FormData()
       formData.append('file', uploadFile.value)
+      if (fileTitle.value.trim()) {
+        formData.append('title', fileTitle.value.trim())
+      }
       await api.post(base, formData)
     } else {
       await api.post(base, {
@@ -255,6 +254,7 @@ async function submitMedia() {
     uploadFile.value = null
     linkUrl.value = ''
     linkTitle.value = ''
+    fileTitle.value = ''
     await load()
   } catch (e) {
     mediaError.value = (e as Error).message
@@ -583,6 +583,24 @@ onMounted(async () => {
             <input type="file" accept="application/pdf" @change="onFileSelected" />
           </label>
           <p class="field-hint">Solo PDF, massimo 20MB.</p>
+          <label>
+            Titolo
+            <input v-model="fileTitle" placeholder="Regolamento" />
+          </label>
+          <!--
+            Il contenuto della modale sta nel DOM anche a modale chiusa (è
+            `<dialog>`, non un `v-if`): senza `mediaModalOpen` il picker si
+            montava al caricamento della pagina, cioè prima che `load()`
+            avesse scelto la lingua attiva — chiedeva a BGG i file di
+            nessuna lingua, e li chiedeva a ogni apertura della scheda.
+          -->
+          <BggFilesPicker
+            v-if="mediaModalOpen && game?.bggId"
+            :game-id="gameId"
+            :bgg-id="game.bggId"
+            :lang="activeLangCode"
+            @pick="onBggFilePicked"
+          />
         </template>
         <template v-else>
           <label>

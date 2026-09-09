@@ -2,6 +2,7 @@ package bgg
 
 import (
 	"context"
+	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -13,6 +14,17 @@ import (
 )
 
 const DefaultBaseURL = "https://boardgamegeek.com/xmlapi2"
+
+// DefaultFilesBaseURL è l'endpoint JSON che alimenta la sezione "Files"
+// del sito. Non fa parte della XML API2 e non vuole token: risponde
+// senza header Authorization. Serve solo la metadata (nome, lingua,
+// voti, link alla filepage) — i byte dei file restano dietro il login
+// e la bot protection di boardgamegeek.com.
+const DefaultFilesBaseURL = "https://api.geekdo.com/api/files"
+
+// filesPageSize è il massimo che BGG serve per pagina: showcount più
+// alti vengono comunque troncati a 50.
+const filesPageSize = "50"
 
 type SearchResult struct {
 	ID   string
@@ -35,21 +47,38 @@ type ThingDetail struct {
 	Weight float64
 }
 
+// FileEntry è un file della sezione "Files" di un gioco. PageURL punta
+// alla filepage su BGG, non al file: il download richiede il login.
+type FileEntry struct {
+	Title    string
+	Filename string
+	Language string
+	// LanguageID è l'id BGG della lingua del file: lo stesso con cui si
+	// filtra la lista, e da cui si risale al codice lingua dell'app.
+	LanguageID string
+	Positive   int
+	SizeBytes  int64
+	PageURL    string
+}
+
 type Client interface {
 	Search(ctx context.Context, token, query string) ([]SearchResult, error)
 	GetThing(ctx context.Context, token, id string) (ThingDetail, error)
 	Details(ctx context.Context, token string, ids []string) (map[string]ThingDetail, error)
+	Files(ctx context.Context, bggID, languageID string) ([]FileEntry, error)
 }
 
 type HTTPClient struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	BaseURL      string
+	FilesBaseURL string
+	HTTPClient   *http.Client
 }
 
 func NewHTTPClient() *HTTPClient {
 	return &HTTPClient{
-		BaseURL:    DefaultBaseURL,
-		HTTPClient: &http.Client{Timeout: 15 * time.Second},
+		BaseURL:      DefaultBaseURL,
+		FilesBaseURL: DefaultFilesBaseURL,
+		HTTPClient:   &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
@@ -227,4 +256,97 @@ func (c *HTTPClient) doRequest(ctx context.Context, token, path string, query ur
 	}
 
 	return body, nil
+}
+
+// filesResponseJSON matcha la risposta di DefaultFilesBaseURL. I campi
+// numerici arrivano come stringhe, e language/numpositive possono essere
+// null (file "(neutral)", o mai votati): da qui i puntatori.
+type filesResponseJSON struct {
+	Files []struct {
+		Filename    string  `json:"filename"`
+		Title       string  `json:"title"`
+		Size        *string `json:"size"`
+		NumPositive *string `json:"numpositive"`
+		Language    *string `json:"language"`
+		LanguageID  *string `json:"languageid"`
+		Href        string  `json:"href"`
+	} `json:"files"`
+}
+
+// Files elenca i file che BGG ha per un gioco, opzionalmente filtrati
+// per lingua (languageID è l'id BGG della lingua, "" per tutte).
+func (c *HTTPClient) Files(ctx context.Context, bggID, languageID string) ([]FileEntry, error) {
+	query := url.Values{}
+	query.Set("ajax", "1")
+	query.Set("nosession", "1")
+	query.Set("objecttype", "thing")
+	query.Set("objectid", bggID)
+	query.Set("pageid", "1")
+	query.Set("showcount", filesPageSize)
+	// "hot" è l'unico ordinamento che BGG onora davvero: numpositive e
+	// postdate restituiscono un ordine arbitrario.
+	query.Set("sort", "hot")
+	if languageID != "" {
+		query.Set("languageid", languageID)
+	}
+
+	base := c.FilesBaseURL
+	if base == "" {
+		base = DefaultFilesBaseURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"?"+query.Encode(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("bgg files request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read bgg files response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("bgg files returned status %d", resp.StatusCode)
+	}
+
+	var parsed filesResponseJSON
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return nil, fmt.Errorf("parse bgg files response: %w", err)
+	}
+
+	out := make([]FileEntry, 0, len(parsed.Files))
+	for _, f := range parsed.Files {
+		entry := FileEntry{
+			Title:    strings.TrimSpace(f.Title),
+			Filename: strings.TrimSpace(f.Filename),
+		}
+		if entry.Title == "" {
+			entry.Title = entry.Filename
+		}
+		if f.Language != nil {
+			entry.Language = *f.Language
+		}
+		if f.LanguageID != nil {
+			entry.LanguageID = *f.LanguageID
+		}
+		if f.NumPositive != nil {
+			entry.Positive, _ = strconv.Atoi(*f.NumPositive)
+		}
+		if f.Size != nil {
+			entry.SizeBytes, _ = strconv.ParseInt(*f.Size, 10, 64)
+		}
+		if f.Href != "" {
+			entry.PageURL = "https://boardgamegeek.com" + f.Href
+		}
+		out = append(out, entry)
+	}
+	return out, nil
 }

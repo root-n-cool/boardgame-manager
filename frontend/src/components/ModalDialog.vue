@@ -50,7 +50,15 @@ function onClick(event: MouseEvent) {
           </svg>
         </button>
       </div>
-      <slot />
+      <!--
+        Il corpo scorre da sé, invece di far scorrere tutto il foglio: su una
+        finestra bassa un contenuto lungo portava il titolo fuori dalla vista
+        e lasciava i bottoni sotto la piega, senza niente che dicesse che
+        c'era altro. Il titolo e la X restano fermi.
+      -->
+      <div class="modal-body">
+        <slot />
+      </div>
     </div>
   </dialog>
 </template>

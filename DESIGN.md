@@ -367,6 +367,56 @@ BGG) e `GameMediaList` (la griglia media, con prop `editable`).
   visibile dove l'hover non esiste (`@media (hover: none)`), con l'area di
   tocco portata a 44px da uno `::after` trasparente.
 
+#### Indice dei file BGG (`BggFilesPicker`)
+- **Un indice, non un download** (`.bgg-files`, dentro il modale "Aggiungi
+  media", sotto i campi). BoardGameGeek tiene i manuali di quasi tutto,
+  spesso tradotti, ma li serve solo a chi ha fatto login sul sito:
+  scaricarli dall'app non si può. Quel che si può togliere è la caccia al
+  file. Una riga apre la sua pagina su BGG in una scheda nuova — dove
+  l'admin è già loggato — e intanto **scrive il titolo nel campo sopra**:
+  al ritorno resta da allegare il PDF e salvare. Nessun media nasce finché
+  il file non c'è davvero.
+- **Sta chiuso, ed è un `<details>` nativo** — come la modale è un
+  `<dialog>` nativo. Aperto si prendeva più di metà del foglio (663px di
+  modale su desktop) e comprimeva in cima il controllo primario, che è
+  scegliere il PDF. La riga di riepilogo porta già il conteggio in mono
+  ("11 file in italiano"), così si sa se vale la pena aprirlo — e un
+  "nessun file in italiano" si legge senza un click. Il triangolino di
+  serie sparisce a favore del caret disegnato del menù utente, l'unica
+  freccia del sistema, che ruota all'apertura.
+- **`align-self: stretch`, come `.bgg-select` e `.segmented`.**
+  `.app-page form` allinea i figli a `flex-start`: un blocco senza
+  larghezza propria si dimensiona sul contenuto, qui il titolo più lungo,
+  che è `white-space: nowrap` e non ha un minimo. La modale finiva a
+  scorrere in orizzontale invece di troncare i titoli (bug reale). Chi
+  aggiunge un blocco a piena riga dentro un form lo dichiara, e mette
+  `min-width: 0` dove il contenuto deve poter scendere sotto la sua misura.
+- **La lista è quella della lingua aperta.** L'indice parte filtrato sulla
+  lingua della scheda; quando non c'è niente, la nota lo dice e offre le due
+  vie d'uscita su una riga sola (`.bgg-files-actions`, `.link-button` +
+  link): allargare a tutte le lingue, o andare sul sito. Nessun file non è
+  un errore, come nessuna mappa su un evento.
+- **Le lingue si scrivono in italiano** (`languageName` in `utils/game.ts`,
+  condiviso con il bottone "Traduci in…"): BGG etichetta i suoi file in
+  inglese ("Italian", "English"), l'interfaccia no. Il backend manda anche
+  il codice lingua, e la pastiglia ricade sul nome inglese solo per le
+  lingue fuori mappa; un file senza lingua è "neutro".
+- **La riga è il bottone** (`.bgg-file`), come al banco prestiti: si sceglie
+  la riga, non un bottone dentro la riga. Vale quindi la spoliazione delle
+  liste dentro una card — `.bgg-file-list` rinuncia a ombra e margine di
+  `ul`, le sue `li` al padding, **ma il filetto tra le righe resta**: la
+  scatola scorre, e una riga tagliata a metà dal bordo inferiore si legge
+  come "continua" solo se le righe sono visibilmente separate — più due
+  rifiuti dell'eredità:
+  il rosso che `li button` dà per default ai "Rimuovi" (questo bottone non
+  distrugge niente) e l'anello di focus disegnato fuori dal bordo, che una
+  scatola con `overflow-y: auto` ritaglierebbe sulla prima e sull'ultima
+  riga visibile (`outline-offset: -2px`).
+- **Il nome del file è un dato, e si tronca** (`.bgg-filename` in mono
+  dentro `.bgg-meta`, con dimensione e voti): è quello che si riconosce
+  nella cartella dei download, quindi va troncato lui, non la riga di
+  metadati che gli sta accanto.
+
 ### Amministratori (`/admin/users`)
 - **La riga admin** (`.admin-row`, dentro `.admin-list` in un `.panel-card`):
   la pedina con l'iniziale (`.admin-pawn`) sta dove il catalogo mette la
@@ -491,6 +541,17 @@ Medio, `<4` Impegnativo, `≥4` Esperto. Il decimale esatto vive nel
 saprebbe cosa farsene di "3,2/5" mentre sceglie un tavolo. Il testo usa
 `--gold-text`, mai `--gold` (vedi Don't sul contrasto). Con `weight`
 nullo la riga sparisce: nessun segnaposto per un dato che non c'è.
+
+### La modale scorre nel corpo, non nel foglio (`ModalDialog`)
+Il tetto d'altezza sta su `.modal` (`calc(100dvh - 3rem)`), e a scorrere è
+`.modal-body`: testa e X restano ferme. Il massimo di serie di `<dialog>`
+fa scorrere il dialog intero, e su una finestra bassa il titolo usciva
+dalla vista lasciando i bottoni sotto la piega, senza niente che dicesse
+che c'era altro (bug reale trovato aprendo l'indice BGG in una finestra da
+600px). Il corpo porta un rientro negativo di `0.35rem` compensato dal
+padding: un contenitore con `overflow` ritaglia l'anello di focus dei campi
+che gli stanno a filo, ed è la stessa regola già applicata alle card con
+`overflow: hidden`.
 
 ### Prenotazione in modale
 Il form di prenotazione vive in `ModalDialog` (`<dialog>` nativo), aperto
@@ -819,6 +880,12 @@ prima di questa voce.
   spunta con la sua etichetta finisce con la casella **sopra** la parola
   invece che accanto (bug reale su `.game-select-bookable`; già risolto
   così in `.game-select-copies` e `.checkbox-label`).
+- **Don't** dichiarare un `display` su `.modal` (o su qualunque `<dialog>`):
+  scavalca il `dialog:not([open]) { display: none }` del browser — una
+  regola d'autore vince su quella di serie a qualunque specificità — e ogni
+  modale chiusa si disegna in fondo alla pagina (bug reale, introdotto e
+  corretto nella stessa sessione). Il `display` che serve al foglio va su
+  `.modal[open]`.
 - **Don't** mettere due `margin-left: auto` nella stessa
   `.section-head`: conteggio e bottone si spartiscono lo spazio libero e il
   numero galleggia in mezzo alla riga, fuori dalla colonna dove sta nelle

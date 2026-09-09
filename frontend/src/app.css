@@ -2289,6 +2289,7 @@ ul.game-grid {
   border: 1px solid var(--card-line);
   border-radius: var(--radius-sm);
   box-shadow: none;
+  min-width: 0;
 }
 
 .games-picker-chosen {
@@ -2606,10 +2607,15 @@ tbody tr:nth-child(3) .rank-medal {
 /* ---------- Modale (ModalDialog.vue) ---------- */
 
 /* Un foglio di cartoncino sollevato sul feltro: <dialog> nativo, quindi il
-   focus trap e l'Esc sono del browser. */
+   focus trap e l'Esc sono del browser.
+   Il tetto d'altezza è sul foglio, non sul browser: il massimo di serie di
+   <dialog> fa scorrere il dialog intero, titolo e bottoni compresi. Qui
+   scorre solo il corpo (`.modal-body`), e la testa resta dov'è. */
 .modal {
   width: min(30rem, calc(100% - 2rem));
+  max-height: calc(100dvh - 3rem);
   padding: 0;
+  overflow: hidden;
   color: var(--ink);
   background: var(--card);
   border: 1px solid var(--card-line);
@@ -2617,12 +2623,36 @@ tbody tr:nth-child(3) .rank-medal {
   box-shadow: var(--shadow-lift);
 }
 
+/* Il flex che regge il foglio va sullo stato **aperto**: dichiarato su
+   `.modal` scavalca il `dialog:not([open]) { display: none }` del browser —
+   una regola d'autore vince su quella di serie a qualunque specificità — e
+   ogni modale chiusa si disegna in fondo alla pagina. */
+.modal[open] {
+  display: flex;
+}
+
 .modal::backdrop {
   background: rgb(20 53 40 / 55%);
 }
 
 .modal-sheet {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  width: 100%;
   padding: 1.35rem;
+}
+
+/* Il corpo è il contenitore con lo scroll. Il rientro negativo con il
+   padding che lo compensa lascia posto all'anello di focus dei campi: 2px
+   di anello più 2px di offset, che un contenitore con `overflow` ritaglia
+   se il contenuto gli sta a filo. */
+.modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -0.35rem;
+  padding: 0 0.35rem;
 }
 
 .modal-head {
@@ -3101,8 +3131,185 @@ tbody tr:nth-child(3) .rank-medal {
   margin-left: auto;
 }
 
-.bgg-select .error-text {
+.bgg-select .error-text,
+.bgg-files .error-text {
   color: var(--danger);
+}
+
+/* BGG tiene i manuali di quasi tutto, spesso tradotti, ma dietro il login:
+   questo indice non li scarica, li fa trovare. Vive dentro il modale del
+   media, sotto il campo del file, e per questo è una scatola che scorre da
+   sé: se allungasse il form, il bottone "Aggiungi" scapperebbe sotto il
+   bordo del modale a ogni gioco con molti file. */
+/* BGG tiene i manuali di quasi tutto, spesso tradotti, ma dietro il login:
+   questo indice non li scarica, li fa trovare. Vive nel modale del media,
+   sotto i campi, e sta **chiuso**: aperto si prendeva più di metà del
+   foglio e comprimeva in cima il controllo primario, che è scegliere il
+   PDF. È un `<details>` nativo, come la modale è un `<dialog>` nativo.
+
+   `align-self: stretch` come `.bgg-select` e `.segmented`: `.app-page form`
+   allinea i figli a `flex-start`, quindi un blocco senza larghezza propria
+   si dimensiona sul contenuto — qui il titolo più lungo, che è
+   `white-space: nowrap` e non si spezza — e la modale finiva a scorrere in
+   orizzontale invece di troncare i titoli. `min-width: 0` sulla colonna e
+   sulla lista perché, stirate, possano scendere sotto il loro contenuto. */
+.bgg-files {
+  align-self: stretch;
+  min-width: 0;
+}
+
+/* La riga di riepilogo porta già il conteggio ("11 file in italiano"): si
+   sa se vale la pena aprire prima di aprire, e un "nessun file in italiano"
+   si legge senza un click. Il triangolino di serie sparisce a favore del
+   caret disegnato del menù utente, l'unica freccia del sistema. */
+.bgg-files > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0;
+  cursor: pointer;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 500;
+  list-style: none;
+}
+
+.bgg-files > summary::-webkit-details-marker {
+  display: none;
+}
+
+.bgg-files > summary:hover {
+  color: var(--accent);
+}
+
+.bgg-files-caret {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ink-muted);
+  transform: rotate(-90deg);
+  transition: transform 0.15s ease;
+}
+
+.bgg-files[open] > summary .bgg-files-caret {
+  transform: rotate(0deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bgg-files-caret {
+    transition: none;
+  }
+}
+
+.bgg-files-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.5rem;
+  min-width: 0;
+}
+
+/* Il conteggio è un dato, e sta all'altro capo di un'etichetta: mono e
+   attenuato, come ogni riga di stato di un campo. */
+.bgg-files-count {
+  font-family: 'Data', monospace;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.bgg-files[open] > summary {
+  margin-bottom: 0.15rem;
+}
+
+/* Si spoglia come `.admin-list`: la regola globale `ul` la vestirebbe da
+   card (fondo, raggio, ombra, margine) dentro una card che c'è già. Qui il
+   fondo e il bordo restano, ma sono quelli di una scatola con scroll, non
+   di un foglio: nessuna ombra. */
+.bgg-file-list {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+  max-height: 14rem;
+  overflow-y: auto;
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-sm);
+  box-shadow: none;
+  min-width: 0;
+}
+
+/* Le righe si spogliano del padding che `li` mette su ogni voce di lista —
+   qui la riga è il bottone — ma il filetto resta: la scatola scorre, e una
+   riga tagliata a metà dal bordo inferiore si legge come "continua" solo se
+   le righe sono visibilmente separate. */
+.bgg-file-list li {
+  display: block;
+  padding: 0;
+}
+
+/* Riga-bottone: fa due cose in un gesto (apre la pagina del file su BGG e
+   scrive il titolo nel form), quindi è un bottone, non un link. Del bottone
+   pieno non tiene nulla — in una lista di venti file sarebbero venti
+   pastiglie accese — e nemmeno del rosso che `li button` dà per default ai
+   "Rimuovi": questo bottone non distrugge niente.
+   L'anello di focus va dentro: la scatola scorre, e disegnato fuori dal
+   bordo verrebbe ritagliato sulla prima e sull'ultima riga visibile. */
+.bgg-file {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 400;
+  text-align: left;
+  outline-offset: -2px;
+}
+
+.bgg-file:hover {
+  background: var(--accent-bg);
+  border-color: transparent;
+}
+
+.bgg-file-text {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+/* Il nome del file sta accanto al titolo perché è quello che si riconosce
+   nella cartella dei download: va troncato lui, non dimensione e voti, che
+   sono due dati corti e vanno letti interi. */
+.bgg-file .bgg-meta {
+  min-width: 0;
+}
+
+.bgg-file .bgg-filename {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bgg-file .lang-chip {
+  flex: none;
+}
+
+/* Le due vie d'uscita quando la lingua della scheda non ha niente: allargare
+   a tutte le lingue, o andare sul sito. Stanno su una riga di nota, con il
+   peso di un link. */
+.bgg-files-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.9rem;
+  margin-top: 0.45rem;
 }
 
 /* Un'azione secondaria dentro una nota: è una deviazione dal percorso
