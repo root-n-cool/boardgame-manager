@@ -3,6 +3,7 @@ package httpapi_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -326,6 +327,26 @@ func (e *erroringTranscriber) Transcribe(ctx context.Context, jpeg []byte, page 
 	return "", e.err
 }
 
+// partialFailTranscriber fallisce con un errore le pagine elencate in
+// failPages e trascrive normalmente tutte le altre secondo byPage: serve al
+// test del successo parziale (difetto 2), dove alcune pagine devono
+// fallire per un errore del provider e altre riuscire — cosa che nessun
+// finto qui sopra permette da solo (erroringTranscriber fallisce sempre,
+// pageTranscriber non fallisce mai).
+type partialFailTranscriber struct {
+	byPage    map[int]string
+	failPages map[int]bool
+	calls     int
+}
+
+func (p *partialFailTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+	p.calls++
+	if p.failPages[page] {
+		return "", fmt.Errorf("ai provider returned status 500: pagina %d", page)
+	}
+	return p.byPage[page], nil
+}
+
 // TestIndexMedia_PDFWithNeitherTextNorImagesSuggestsConverting copre il
 // secondo messaggio: un PDF che non è né testo né immagini leggibili deve
 // suggerire di convertire il file.
@@ -352,6 +373,130 @@ func TestIndexMedia_PDFWithNeitherTextNorImagesSuggestsConverting(t *testing.T) 
 	}
 	if !strings.Contains(rec.Body.String(), "convertirlo") {
 		t.Fatalf("il messaggio deve suggerire di convertire il file: %s", rec.Body.String())
+	}
+}
+
+// TestIndexMedia_ScannedPDFAllPagesFailingTranscriptionBlamesTheProvider è
+// il difetto 1 dei log di produzione: un modello vision che il provider
+// rifiuta per OGNI pagina (status 500 su ognuna) deve dire che è stata la
+// lettura a non riuscire per un errore del modello, invitare a controllare
+// il modello configurato per i manuali scansionati e a riprovare — SENZA
+// suggerire di convertire il file, perché il documento non è affatto
+// sospetto qui. Va confrontato con
+// TestIndexMedia_ScannedPDFAllPagesEmptyTextSuggestsConverting: stesso
+// esito HTTP (422), fixture diversa (errore contro stringa vuota),
+// messaggio diverso — è la distinzione a essere la proprietà nuova, non i
+// singoli casi presi da soli.
+func TestIndexMedia_ScannedPDFAllPagesFailingTranscriptionBlamesTheProvider(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{} // il provider di testo è configurato: gate superato
+	server.Vision = &erroringTranscriber{err: fmt.Errorf("ai provider returned status 500: {\"error\":\"model not found\"}")}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewScannedPDFPages(3), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "modello configurato per i manuali scansionati") {
+		t.Fatalf("il messaggio deve invitare a controllare il modello configurato per i manuali scansionati: %s", body)
+	}
+	if !strings.Contains(body, "errore su ogni pagina") {
+		t.Fatalf("il messaggio deve dire che il provider ha risposto con un errore su ogni pagina: %s", body)
+	}
+	if !strings.Contains(body, "riprova") {
+		t.Fatalf("il messaggio deve invitare a riprovare: %s", body)
+	}
+	if strings.Contains(body, "convertirlo") {
+		t.Fatalf("un guasto del provider non deve suggerire di convertire un file sano: %s", body)
+	}
+}
+
+// TestIndexMedia_ScannedPDFAllPagesEmptyTextSuggestsConverting è il caso
+// gemello: ogni pagina viene letta SENZA nessun errore ma non contiene
+// testo (solo illustrazioni). Qui il documento È il sospetto, quindi il
+// messaggio resta quello attuale — suggerire di convertire il file — e
+// deve restare DIVERSO da quello del test gemello sopra.
+func TestIndexMedia_ScannedPDFAllPagesEmptyTextSuggestsConverting(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	server.Vision = &pageTranscriber{} // byPage nil: restituisce "" per ogni pagina, senza nessun errore
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewScannedPDFPages(3), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "convertirlo") {
+		t.Fatalf("pagine lette ma senza testo: il messaggio deve suggerire di convertire il file: %s", body)
+	}
+	if strings.Contains(body, "errore su ogni pagina") {
+		t.Fatalf("nessun errore di provider è avvenuto qui: il messaggio non deve parlarne: %s", body)
+	}
+	if strings.Contains(body, "modello configurato per i manuali scansionati") {
+		t.Fatalf("questo non è un guasto del provider: non deve invitare a controllare il modello: %s", body)
+	}
+}
+
+// TestIndexMedia_ScannedPDFPartialTranscriptionFailureReportsPageCounts è
+// il difetto 2: se alcune pagine falliscono la trascrizione ma le altre
+// bastano a produrre almeno un chunk, l'indicizzazione deve restare un
+// successo (2xx: un manuale a cui manca una pagina è comunque meglio di
+// nessun manuale) MA la risposta deve dire quante pagine sono state
+// indicizzate e quante saltate, così il pannello admin può segnalarlo
+// invece di far credere a un manuale completo quando non lo è.
+func TestIndexMedia_ScannedPDFPartialTranscriptionFailureReportsPageCounts(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	server.Vision = &partialFailTranscriber{
+		byPage: map[int]string{
+			1: "## Introduzione\n\nRegole di base per iniziare a giocare, testo pagina uno.",
+			3: "## Turno\n\nDurante il turno si pesca una carta, testo pagina tre.",
+			5: "## Fine\n\nLa partita finisce quando il mazzo termina, testo pagina cinque.",
+		},
+		failPages: map[int]bool{2: true, 4: true},
+	}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewScannedPDFPages(5), "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("un successo parziale resta un successo: atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("risposta non è JSON valido: %v (%s)", err, rec.Body.String())
+	}
+	indexed, ok := resp["pagesIndexed"].(float64)
+	if !ok {
+		t.Fatalf("la risposta deve avere pagesIndexed quando delle pagine sono state saltate: %s", rec.Body.String())
+	}
+	skipped, ok := resp["pagesSkipped"].(float64)
+	if !ok {
+		t.Fatalf("la risposta deve avere pagesSkipped quando delle pagine sono state saltate: %s", rec.Body.String())
+	}
+	if indexed != 3 {
+		t.Fatalf("pagesIndexed: atteso 3 (pagine 1, 3, 5), ottenuto %v", indexed)
+	}
+	if skipped != 2 {
+		t.Fatalf("pagesSkipped: atteso 2 (pagine 2 e 4 fallite), ottenuto %v", skipped)
+	}
+
+	// Le tre pagine riuscite devono comunque essere state indicizzate
+	// davvero, non solo contate.
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"pesca"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("il testo delle pagine riuscite doveva essere indicizzato")
 	}
 }
 

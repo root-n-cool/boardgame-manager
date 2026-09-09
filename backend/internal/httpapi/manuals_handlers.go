@@ -46,7 +46,27 @@ const pageAnchorChars = 40
 // quello vision hanno prodotto niente di usabile: l'unico caso in cui
 // l'ingestione di un PDF risponde con un errore invece di indicizzare
 // qualcosa.
+//
+// Va distinto da errPDFTranscriptionFailed: qui le pagine (quelle passate
+// per vision) sono state lette senza errori ma non contenevano testo — il
+// documento è il sospetto. errPDFTranscriptionFailed è l'esatto contrario:
+// il provider ha rifiutato ogni pagina, e il documento non c'entra.
 var errPDFNoContent = errors.New("index: il pdf non ha né testo né pagine leggibili")
+
+// errPDFTranscriptionFailed è l'esito di un PDF scansionato per cui il
+// percorso vision ha provato OGNI pagina e OGNI tentativo è fallito con un
+// errore del provider (vedi pdfVisionChunks): un log come
+//
+//	index: transcribe page 1: ai provider returned status 500: ...
+//	index: transcribe page 2: ai provider returned status 500: ...
+//	index: transcribe page 3: ai provider returned status 500: ...
+//
+// per un PDF perfettamente sano (un modello vision configurato che quel
+// provider non serve, per esempio). Senza questo caso a parte,
+// buildPDFChunks confonderebbe questo guasto del servizio AI con
+// errPDFNoContent e manderebbe l'admin a convertire un file che non ha
+// nessun bisogno di esserlo.
+var errPDFTranscriptionFailed = errors.New("index: la trascrizione di ogni pagina è fallita per un errore del modello")
 
 // transcriber restituisce il trascrittore per questa richiesta: quello
 // iniettato se c'è (i test), altrimenti uno costruito dalle impostazioni.
@@ -198,6 +218,18 @@ func sectionDetails(chunks []manuals.SectionChunk) []detailedChunk {
 	return out
 }
 
+// pdfPageStats riporta, solo per il percorso vision di un PDF scansionato
+// (pdfVisionChunks), quante pagine hanno contribuito testo all'indice e
+// quante sono state saltate per un errore di trascrizione (isolamento
+// guasti: vedi il "continue" in pdfVisionChunks). Per gli altri tre
+// formati e per il percorso testo di un PDF resta il valore zero — non
+// c'è nessuna pagina persa da segnalare, quindi indexMediaHandler non
+// aggiunge nulla alla risposta in quei casi.
+type pdfPageStats struct {
+	indexedPages int
+	skippedPages int
+}
+
 // buildSourceChunks instrada dal contenuto grezzo del file ai chunk
 // pronti da persistere, secondo l'estensione: il cuore del Task 5. Le
 // cinque strade sono quelle del brief:
@@ -206,26 +238,26 @@ func sectionDetails(chunks []manuals.SectionChunk) []detailedChunk {
 //	.docx  → DocxToMarkdown
 //	.txt   → Segment(testo)
 //	.pdf   → percorso testo o percorso vision, vedi buildPDFChunks
-func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) ([]detailedChunk, error) {
+func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) ([]detailedChunk, pdfPageStats, error) {
 	switch ext {
 	case ".md":
-		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(string(raw)))), nil
+		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(string(raw)))), pdfPageStats{}, nil
 	case ".docx":
 		md, err := manuals.DocxToMarkdown(raw)
 		if err != nil {
-			return nil, err
+			return nil, pdfPageStats{}, err
 		}
-		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(md))), nil
+		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(md))), pdfPageStats{}, nil
 	case ".txt":
 		segmented, err := s.segmenter(ctx).Segment(ctx, string(raw))
 		if err != nil {
-			return nil, err
+			return nil, pdfPageStats{}, err
 		}
-		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(segmented))), nil
+		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(segmented))), pdfPageStats{}, nil
 	case ".pdf":
 		return s.buildPDFChunks(ctx, raw)
 	default:
-		return nil, fmt.Errorf("index: estensione non supportata %q", ext)
+		return nil, pdfPageStats{}, fmt.Errorf("index: estensione non supportata %q", ext)
 	}
 }
 
@@ -245,7 +277,7 @@ func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) 
 //     corto (un cartoncino di riferimento di una pagina). Un errore
 //     (errPDFNoContent) si restituisce solo quando *nessuno* dei due
 //     percorsi ha prodotto niente.
-func (s *Server) buildPDFChunks(ctx context.Context, raw []byte) ([]detailedChunk, error) {
+func (s *Server) buildPDFChunks(ctx context.Context, raw []byte) ([]detailedChunk, pdfPageStats, error) {
 	var extractedPages []manuals.Page
 	if manuals.HasTextLayer(raw) {
 		pages, textErr := manuals.ExtractText(raw)
@@ -254,7 +286,8 @@ func (s *Server) buildPDFChunks(ctx context.Context, raw []byte) ([]detailedChun
 		} else {
 			extractedPages = pages
 			if averageUsableTextChars(pages) >= minAvgUsableCharsPerPage {
-				return s.pdfTextChunks(ctx, pages)
+				chunks, err := s.pdfTextChunks(ctx, pages)
+				return chunks, pdfPageStats{}, err
 			}
 		}
 	}
@@ -262,9 +295,10 @@ func (s *Server) buildPDFChunks(ctx context.Context, raw []byte) ([]detailedChun
 	images, _ := manuals.ExtractPageImages(raw)
 	if len(images) == 0 {
 		if len(extractedPages) > 0 {
-			return s.pdfTextChunks(ctx, extractedPages)
+			chunks, err := s.pdfTextChunks(ctx, extractedPages)
+			return chunks, pdfPageStats{}, err
 		}
-		return nil, errPDFNoContent
+		return nil, pdfPageStats{}, errPDFNoContent
 	}
 	return s.pdfVisionChunks(ctx, images)
 }
@@ -299,11 +333,23 @@ func (s *Server) pdfTextChunks(ctx context.Context, pages []manuals.Page) ([]det
 // pagine si concatenano così come sono, tenendo l'offset ESATTO (non
 // un'ancora: nessuna trasformazione le tocca dopo Transcribe) a cui
 // ciascuna comincia.
-func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage) ([]detailedChunk, error) {
+//
+// L'isolamento guasti è per pagina (una pagina che fallisce si logga e si
+// salta, le altre proseguono — vedi il "continue" sotto), ma i guasti si
+// contano: se OGNI pagina fallisce con un errore, len(texts) resta a 0
+// esattamente come nel caso "pagine lette ma senza testo", e i due casi
+// vanno raccontati diversamente all'admin (vedi errPDFTranscriptionFailed
+// contro errPDFNoContent). Quando invece l'indicizzazione riesce ma
+// qualche pagina è stata saltata per un errore, lo si riporta nello
+// pdfPageStats restituito: è quel che permette a indexMediaHandler di
+// dire "17 pagine indicizzate, 3 saltate" invece di un silenzioso
+// successo pieno su un manuale a cui in realtà mancano tre pagine.
+func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage) ([]detailedChunk, pdfPageStats, error) {
 	vision := s.transcriber(ctx)
 
 	var texts []string
 	var numbers []int
+	failed := 0
 	for _, img := range images {
 		text, err := vision.Transcribe(ctx, img.JPEG, img.Number)
 		if err != nil {
@@ -311,9 +357,10 @@ func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage
 				// Un modello vision non configurato fallisce identicamente
 				// per ogni pagina: non ha senso provarle tutte per scoprirlo
 				// N volte, quindi si esce alla prima.
-				return nil, ai.ErrNotConfigured
+				return nil, pdfPageStats{}, ai.ErrNotConfigured
 			}
 			log.Printf("index: transcribe page %d: %v", img.Number, err)
+			failed++
 			continue // pagina saltata: le altre proseguono (isolamento guasti)
 		}
 		if strings.TrimSpace(text) == "" {
@@ -323,11 +370,19 @@ func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage
 		numbers = append(numbers, img.Number)
 	}
 	if len(texts) == 0 {
-		return nil, errPDFNoContent
+		if failed > 0 && failed == len(images) {
+			// Nessuna pagina ha prodotto testo E ogni singolo tentativo è
+			// fallito con un errore: è il provider che non ha risposto, non
+			// il documento che non ha contenuto leggibile.
+			return nil, pdfPageStats{}, errPDFTranscriptionFailed
+		}
+		return nil, pdfPageStats{}, errPDFNoContent
 	}
 
 	joined, starts := concatTextsTracked(texts)
-	return chunksWithPageDetail(manuals.ChunkSections(manuals.ParseSections(joined)), numbers, starts), nil
+	chunks := chunksWithPageDetail(manuals.ChunkSections(manuals.ParseSections(joined)), numbers, starts)
+	stats := pdfPageStats{indexedPages: len(images) - failed, skippedPages: failed}
+	return chunks, stats, nil
 }
 
 // chunksWithPageDetail applica ReferenceDetail = "pagina N" a ogni chunk,
@@ -530,6 +585,16 @@ func indexErrorResponse(err error) (int, string) {
 		return http.StatusUnprocessableEntity,
 			`Questo file è un PDF scansionato: serve un modello che legga le immagini. ` +
 				`Configuralo nel campo "Modello per i manuali scansionati" nelle impostazioni.`
+	case errors.Is(err, errPDFTranscriptionFailed):
+		// A differenza del caso sopra (nessun modello configurato), qui un
+		// modello per i manuali scansionati C'È: ha solo risposto con un
+		// errore su ogni pagina (il caso reale: un modello che quel
+		// provider non serve per le immagini, con il provider che risponde
+		// 500 su ogni pagina). Il documento non è sospetto, quindi niente
+		// suggerimento di conversione — sarebbe mandare l'admin a fare
+		// l'unica cosa che non serve.
+		return http.StatusUnprocessableEntity,
+			`La lettura di questo PDF scansionato non è riuscita: il modello configurato per i manuali scansionati ha risposto con un errore su ogni pagina. Controlla il modello nelle impostazioni e riprova.`
 	case errors.Is(err, errPDFNoContent):
 		return http.StatusUnprocessableEntity,
 			"Questo PDF non ha né testo né immagini leggibili: se hai il documento originale, prova a convertirlo in .docx o .txt invece che in PDF."
@@ -596,7 +661,7 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunks, err := s.buildSourceChunks(r.Context(), ext, raw)
+	chunks, pageStats, err := s.buildSourceChunks(r.Context(), ext, raw)
 	if err != nil {
 		status, msg := indexErrorResponse(err)
 		writeError(w, status, msg)
@@ -653,7 +718,22 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"reference": reference, "chunks": len(sourceChunks)})
+	// "chunks"/"reference" bastano per un'indicizzazione piena. Ma quando
+	// pageStats dice che alcune pagine di un PDF scansionato sono state
+	// saltate per un errore di trascrizione, un successo pieno e uno
+	// parziale sarebbero indistinguibili per l'admin: senza pagesIndexed/
+	// pagesSkipped vedrebbe solo "N sezioni indicizzate" senza sapere che
+	// al manuale mancano delle pagine — e la chat risponderebbe poi con
+	// sicurezza da un regolamento incompleto. Campi additivi in
+	// camelCase, aggiunti SOLO quando c'è davvero qualcosa da segnalare:
+	// il resto del formato risposta (e il frontend che lo legge) resta
+	// invariato per ogni altro caso.
+	resp := map[string]any{"reference": reference, "chunks": len(sourceChunks)}
+	if pageStats.skippedPages > 0 {
+		resp["pagesIndexed"] = pageStats.indexedPages
+		resp["pagesSkipped"] = pageStats.skippedPages
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // deleteMediaIndexHandler rimuove tutti i chunk indicizzati di un media:
