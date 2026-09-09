@@ -60,6 +60,20 @@ func TestParseSuggestions(t *testing.T) {
 			in:   "Come si prepara?\n" + strings.Repeat("x", MaxSuggestionChars+1) + "?\nCome finisce?",
 			ok:   false,
 		},
+		{
+			// L'accento italiano ("è") occupa due byte in UTF-8 ma resta
+			// una sola rune. Una domanda accentata vicino al tetto ha quindi
+			// più byte di quanti caratteri ne conti chi la legge: se il
+			// tetto fosse contato in byte invece che in rune, questa domanda
+			// legittima verrebbe rifiutata solo perché scritta in italiano.
+			// strings.Repeat("è", 100) fa 101 rune (dentro i 120 di
+			// MaxSuggestionChars) ma 201 byte (ben oltre): il caso fallisce
+			// se qualcuno cambia len([]rune(q)) in len(q).
+			name: "una domanda accentata conta in caratteri non in byte",
+			in:   "Come si prepara?\n" + strings.Repeat("è", 100) + "?\nCome finisce?",
+			want: []string{"Come si prepara?", strings.Repeat("è", 100) + "?", "Come finisce?"},
+			ok:   true,
+		},
 		{name: "risposta vuota", in: "", ok: false},
 	}
 
