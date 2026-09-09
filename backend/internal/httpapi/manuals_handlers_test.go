@@ -964,7 +964,7 @@ func TestManualTarget_RejectsMediaFromAnotherGame(t *testing.T) {
 // ripetuta e non letta di là di proposito: la soglia è ciò che questi due
 // test verificano, quindi cambiarla nel codice di produzione deve rompere
 // il test e costringere a una decisione, non adattarsi in silenzio.
-const expectedTranscribeConcurrency = 5
+const expectedTranscribeConcurrency = 2
 
 // barrierTranscriber blocca ogni pagina finché non ne sono arrivate
 // `barrier` CONTEMPORANEAMENTE, poi le libera tutte insieme. È questa

@@ -9,16 +9,26 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 )
 
-// transcribeTimeout è più generoso di requestTimeout: una pagina di manuale
-// a 2000x3000 pixel è molta immagine da leggere, e un modello economico non
-// è veloce.
-const transcribeTimeout = 120 * time.Second
+// transcribeTimeout è il tetto per UN tentativo di trascrizione, non per
+// la pagina: la pagina ne ha fino a tre (vedi transcribeBackoff), quindi
+// il tempo massimo speso su una pagina sfortunata è tre volte questo più
+// le attese fra i tentativi.
+//
+// Era 120s, quando il tentativo era uno solo. Sessanta perché con i retry
+// un tetto alto è una trappola: sul manuale reale del club due pagine si
+// sono fermate per 120 secondi interi senza che il provider rispondesse,
+// e più il tetto è alto più tardi si scopre che quel tentativo era da
+// buttare. Una pagina a 2000x3000 che un modello economico legge davvero
+// risponde molto prima; oltre il minuto, riprovare rende più che
+// aspettare.
+const transcribeTimeout = 60 * time.Second
 
 // contentPart è una parte del contenuto di un messaggio nel formato
 // OpenAI: o testo, o un'immagine come data URI.
@@ -128,15 +138,53 @@ const maxRetryAfter = 20 * time.Second
 //
 // Il Retry-After del provider vince sull'attesa di base in ENTRAMBE le
 // direzioni: se lui sa dire quando riprovare, ne sa più di noi.
-func retryDelay(attempt int, err *StatusError) time.Duration {
+func retryDelay(attempt int, err error) time.Duration {
 	delay := transcribeBackoff[attempt]
-	if err.RetryAfter > 0 {
-		delay = err.RetryAfter
+	var status *StatusError
+	if errors.As(err, &status) && status.RetryAfter > 0 {
+		delay = status.RetryAfter
 		if delay > maxRetryAfter {
 			delay = maxRetryAfter
 		}
 	}
 	return delay
+}
+
+// retryable dice se err merita un altro tentativo.
+//
+// Il caso che ha allargato questa decisione oltre il solo StatusError:
+// sul manuale reale del club, con le pagine in volo insieme, due su
+// quattro sono morte con "context deadline exceeded" — il provider non
+// aveva risposto affatto — e restavano due pagine perse in silenzio
+// dall'indice, perché un errore di trasporto non è una risposta HTTP e
+// non passava da Temporary().
+//
+// Un timeout si riprova: il provider non ha risposto, non ha risposto
+// "no". Una connessione rifiutata no: è un host sbagliato o un servizio
+// spento, e riprovarlo dà lo stesso esito — lo stesso argomento del 4xx.
+func retryable(ctx context.Context, err error) bool {
+	// Prima di tutto: se è il contesto del CHIAMANTE a essere finito, non
+	// c'è niente da riprovare. È anche la distinzione che separa i due
+	// "deadline exceeded" possibili — quello del singolo tentativo, che si
+	// riprova, da quello di chi ha annullato tutto, che no.
+	if ctx.Err() != nil {
+		return false
+	}
+
+	var status *StatusError
+	if errors.As(err, &status) {
+		return status.Temporary()
+	}
+
+	// Il timeout del singolo tentativo arriva come *url.Error che avvolge
+	// context.DeadlineExceeded. Il controllo su net.Error copre anche il
+	// timeout imposto da http.Client.Timeout, che postRaw azzera ma che un
+	// altro chiamante potrebbe lasciare in piedi.
+	var netErr net.Error
+	if errors.As(err, &netErr) && netErr.Timeout() {
+		return true
+	}
+	return errors.Is(err, context.DeadlineExceeded)
 }
 
 // postChatRetrying riprova una richiesta di trascrizione sugli errori
@@ -153,8 +201,7 @@ func (c *HTTPClient) postChatRetrying(ctx context.Context, payload []byte, timeo
 			return out, nil
 		}
 
-		var status *StatusError
-		if !errors.As(err, &status) || !status.Temporary() || attempt >= len(transcribeBackoff) {
+		if attempt >= len(transcribeBackoff) || !retryable(ctx, err) {
 			return "", err
 		}
 
@@ -163,7 +210,7 @@ func (c *HTTPClient) postChatRetrying(ctx context.Context, payload []byte, timeo
 		// scoperto che il modello vision non è configurato, dormire qui
 		// terrebbe in vita una richiesta che non interessa più a nessuno.
 		select {
-		case <-time.After(retryDelay(attempt, status)):
+		case <-time.After(retryDelay(attempt, err)):
 		case <-ctx.Done():
 			return "", ctx.Err()
 		}

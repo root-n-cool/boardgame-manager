@@ -2,8 +2,13 @@ package ai
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -114,5 +119,105 @@ func TestStatusErrorTemporary(t *testing.T) {
 		if (&StatusError{Status: status}).Temporary() {
 			t.Errorf("lo status %d è definitivo: riprovarlo spreca token per lo stesso esito", status)
 		}
+	}
+}
+
+// TestRetryable fissa cosa merita un altro tentativo. Il caso che ha
+// motivato questa funzione è il terzo: sul manuale reale del club due
+// pagine su quattro sono morte con "context deadline exceeded" — il
+// provider non aveva risposto affatto — e il retry di allora, che
+// guardava solo lo StatusError, non le ha riprovate nemmeno una volta.
+// Erano due pagine perse in silenzio dall'indice.
+func TestRetryable(t *testing.T) {
+	// Un contesto già annullato serve al caso in cui a essere finito è il
+	// NOSTRO contesto, non il tentativo.
+	cancelled, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	cases := []struct {
+		name string
+		ctx  context.Context
+		err  error
+		want bool
+	}{
+		{
+			name: "rate limit: il provider passerà",
+			ctx:  context.Background(),
+			err:  &StatusError{Status: http.StatusTooManyRequests},
+			want: true,
+		},
+		{
+			name: "chiave sbagliata: darà lo stesso esito ogni volta",
+			ctx:  context.Background(),
+			err:  &StatusError{Status: http.StatusUnauthorized},
+			want: false,
+		},
+		{
+			// La forma esatta in cui l'errore arriva da http.Client.Do
+			// quando scade il contesto del singolo tentativo.
+			name: "tentativo scaduto: il provider non ha risposto, non ha risposto no",
+			ctx:  context.Background(),
+			err:  &url.Error{Op: "Post", URL: "https://example.invalid", Err: context.DeadlineExceeded},
+			want: true,
+		},
+		{
+			// Distinzione che conta: se è il contesto del CHIAMANTE a
+			// essere finito, riprovare vorrebbe dire insistere su una
+			// richiesta che non interessa più a nessuno — l'admin ha
+			// chiuso la pagina, o un'altra pagina ha già scoperto che il
+			// modello vision non è configurato e ha annullato tutto.
+			name: "contesto del chiamante annullato: non c'è niente da riprovare",
+			ctx:  cancelled,
+			err:  &url.Error{Op: "Post", URL: "https://example.invalid", Err: context.DeadlineExceeded},
+			want: false,
+		},
+		{
+			// Un host sbagliato o un servizio spento non guariscono
+			// riprovando: è lo stesso argomento del 4xx, e su trenta
+			// pagine costerebbe trenta attese prima dell'errore che
+			// l'admin deve vedere.
+			name: "connessione rifiutata: è configurazione, non un guasto passeggero",
+			ctx:  context.Background(),
+			err:  &url.Error{Op: "Post", URL: "https://example.invalid", Err: errors.New("connect: connection refused")},
+			want: false,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := retryable(tc.ctx, tc.err); got != tc.want {
+				t.Fatalf("retryable(%v) = %v, atteso %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestPostChatRetrying_RetriesATimedOutAttempt esercita il retry sul
+// timeout da capo a fondo, non solo il predicato. Passa un timeout
+// minuscolo invece di transcribeTimeout — postChatRetrying lo prende
+// come argomento proprio per questo — così il test dimostra il
+// comportamento vero in millisecondi invece che in minuti.
+func TestPostChatRetrying_RetriesATimedOutAttempt(t *testing.T) {
+	var attempts atomic.Int64
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if attempts.Add(1) == 1 {
+			// Più lungo del timeout passato sotto: il primo tentativo
+			// muore senza che il provider abbia risposto.
+			time.Sleep(300 * time.Millisecond)
+			return
+		}
+		io.WriteString(w, `{"choices":[{"message":{"content":"## Preparazione\n\nMescola il mazzo."}}]}`)
+	}))
+	defer srv.Close()
+
+	c := &HTTPClient{BaseURL: srv.URL, APIKey: "sk-test", Model: "m", HTTPClient: &http.Client{}}
+	out, err := c.postChatRetrying(context.Background(), []byte(`{}`), 50*time.Millisecond)
+	if err != nil {
+		t.Fatalf("un tentativo scaduto va riprovato, non restituito: %v", err)
+	}
+	if !strings.Contains(out, "Mescola") {
+		t.Fatalf("risposta inattesa: %q", out)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attesi 2 tentativi (lo scaduto più quello riuscito), fatti %d", got)
 	}
 }

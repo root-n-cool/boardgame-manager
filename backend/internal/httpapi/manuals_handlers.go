@@ -39,16 +39,21 @@ const minAvgUsableCharsPerPage = 100
 // transcribeConcurrency è quante pagine di un manuale scansionato si
 // mandano al modello vision contemporaneamente. Un manuale di trenta
 // pagine trascritto in sequenza sono minuti d'attesa dentro una singola
-// request HTTP; cinque alla volta lo riducono di altrettanto.
+// request HTTP; due alla volta li dimezzano.
 //
-// Il tetto esiste perché il costo di sbagliare in eccesso è alto: una
-// goroutine per pagina manderebbe trenta richieste vision insieme e
-// prenderebbe 429 da qualunque provider a tariffa gratuita. Cinque è
-// sotto il limite di concorrenza di tutti i provider che questo progetto
-// prevede, e comunque la trascrizione riprova sugli errori temporanei
-// (vedi il retry in ai/ask.go), quindi un 429 occasionale costa un ritardo,
-// non un buco nell'indice.
-const transcribeConcurrency = 5
+// Due e non cinque, che era il primo valore, per una misura e non per una
+// stima: sul manuale reale del club (4 pagine, tutte ~2110x3100 e ~0,5 MB)
+// con quattro richieste in volo il provider ne ha servite DUE e ha lasciato
+// le altre due morire nel timeout. Una concorrenza che il provider non
+// serve non è throughput: sono pagine perse dall'indice più il tempo del
+// timeout buttato. Meglio due che tornano di cinque che stallano — e il
+// guadagno non è lineare comunque: da 1 a 2 si dimezza, da 2 a 5 si
+// aggiunge solo se il provider risponde davvero.
+//
+// Il numero giusto è una proprietà del provider configurato, non di questo
+// codice: se un domani si vuole spingere, questa costante è il punto da
+// rendere configurabile nelle impostazioni.
+const transcribeConcurrency = 2
 
 // pageAnchorChars è la lunghezza dell'ancora usata per ritrovare l'inizio
 // di una pagina dentro il testo segmentato (vedi pageStartsInSegmented):
