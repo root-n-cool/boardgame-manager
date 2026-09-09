@@ -64,12 +64,15 @@ esterno obbligatorio.
   Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio
   resta legato al codice di prenotazione: un gioco mai prenotabile non
   entra in classifica, anche se in prestito è passato di mano più volte.
-- **Domande sul manuale**: sulla scheda pubblica di un gioco con manuale
-  preparato compare una chat — a parole proprie, tipo "quando finisce la
-  partita?" — che risponde citando la pagina del PDF. Per prepararlo:
-  carica il PDF fra i media del gioco, premi «Prepara per le domande»
-  nella scheda di modifica, rivedi il testo estratto pagina per pagina
-  (corregge quel che il modello ha letto storto) e salva. Dettagli sotto.
+- **Domande sul manuale**: sulla scheda pubblica di un gioco con una fonte
+  preparata compare una chat — a parole proprie, tipo "quando finisce la
+  partita?" — che risponde citando il documento e la pagina da cui viene
+  la risposta. Si prepara un PDF, un file di testo, un markdown o un
+  docx fra i media del gioco premendo «Prepara per le domande» nella
+  scheda di modifica: una sola richiesta legge il file e lo spezza in
+  sezioni cercabili, senza altro da rivedere o correggere a mano.
+  Richiede un provider AI configurato, per qualunque formato. Dettagli
+  sotto.
 - **Amministrazione**: bootstrap del primo admin al primo avvio (come
   n8n); dopo, un admin ne invita un altro inserendo solo l'email — il
   sistema genera un link di invito che chi lo riceve apre per scegliere la
@@ -283,14 +286,25 @@ prenota.
 
 ### Domande sul manuale (opzionale)
 
-Usa lo stesso "Provider AI" configurato sopra (indirizzo, chiave, modello):
-niente da aggiungere per attivare la chat, se già configurato per le
-traduzioni. Per prepararlo, dalla scheda di modifica di un gioco: carica
-il PDF del regolamento fra i media, premi «Prepara per le domande», rivedi
-il testo estratto pagina per pagina — corregge quel che il modello ha
-letto storto, specie su uno scan — e salva. Senza un manuale preparato la
-scheda pubblica del gioco non mostra nessuna chat: nessun errore, solo
-l'assenza del comando.
+Richiede lo stesso "Provider AI" configurato sopra (indirizzo, chiave,
+modello): senza provider la preparazione **non è disponibile per nessun
+formato** — il bottone «Prepara per le domande» non compare nella scheda
+di modifica, con scritto il motivo (senza chat non serve indicizzare
+niente), e la rotta risponde 404 anche chiamata direttamente. Vale anche
+per un `.md`, che tecnicamente non avrebbe bisogno del modello: è
+un'unica regola invece di un'eccezione per formato.
+
+Formati accettati: **PDF, txt, md, docx**, fino a 20 MB. Per prepararne
+uno, dalla scheda di modifica di un gioco: carica il file fra i media,
+premi «Prepara per le domande». Una sola richiesta lo legge e lo spezza
+in sezioni cercabili — non c'è un testo estratto da rivedere o correggere,
+perché l'app non lo conserva: solo le sezioni cercabili restano. Un
+`.md` è già la rappresentazione interna, un `.docx` viene convertito con
+la sola libreria standard, un `.txt` o un PDF con testo selezionabile
+passano dal modello che vi inserisce i titoli, uno scan passa per l'OCR
+di un modello multimodale una pagina alla volta. Senza una fonte
+preparata la scheda pubblica del gioco non mostra nessuna chat: nessun
+errore, solo l'assenza del comando.
 
 - **Modello per i manuali scansionati (`ai_vision_model`, opzionale)**:
   quando il PDF caricato è la scansione di un libretto (niente testo
@@ -299,19 +313,17 @@ l'assenza del comando.
   configurato sopra spesso non ne è capace: per esempio
   `deepseek-v4-flash` è solo testo, mentre la sua variante
   `deepseek-v4-flash-vision-exp` legge anche le pagine. Senza questo
-  campo, i manuali scansionati si trascrivono a mano nella stessa
-  schermata di revisione — tutto il resto (chat, citazioni di pagina)
-  funziona comunque una volta salvato il testo.
+  campo, un PDF scansionato non si può preparare: la richiesta fallisce
+  con un errore che nomina il campo mancante, invece di procedere a metà.
 
   **Dietro un reverse proxy, alza il timeout di lettura su questa rotta.**
   Preparare un manuale scansionato è **una sola richiesta HTTP** che dentro
   fa una chiamata al modello **per ogni pagina**: su una scansione di 40
   pagine la richiesta può restare aperta molti minuti. nginx chiude a 60
   secondi di default (`proxy_read_timeout`), e la connessione tagliata
-  butta via un lavoro già pagato al provider — le pagine trascritte fino a
-  quel momento non sono ancora state salvate. Un valore generoso
+  butta via un lavoro già pagato al provider. Un valore generoso
   (`proxy_read_timeout 1800s;`, o l'equivalente del tuo proxy) sulla rotta
-  `/api/games/{id}/languages/{lang}/media/{mediaId}/extract` evita il
+  `/api/games/{id}/languages/{lang}/media/{mediaId}/index` evita il
   problema.
 - **La dettatura richiede HTTPS.** Il campo domanda della chat offre un
   microfono basato sulla Web Speech API del browser, che i browser

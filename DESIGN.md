@@ -527,34 +527,37 @@ questa scheda.
   nella cartella dei download, quindi va troncato lui, non la riga di
   metadati che gli sta accanto.
 
-#### Preparazione di un manuale (`ManualPrepPanel.vue`, `.manual-prep`)
-In coda alla sezione Media, oltre un filetto, un pannello per ogni PDF della
-lingua attiva: titolo, stato in mono ("3 pagine indicizzate." / "Non
-preparato per le domande."), le azioni, e — dopo una preparazione — la
-bozza da correggere.
+#### Preparazione di una fonte (`ManualPrepPanel.vue`, `.manual-prep`)
+In coda alla sezione Media, oltre un filetto, un pannello per ogni fonte
+indicizzabile della lingua attiva (PDF, txt, md o docx): titolo, stato in
+mono ("3 sezioni indicizzate." / "Non preparato per le domande."), le
+azioni, e gli errori. Niente più bozza da correggere: il pannello dice
+quante sezioni cercabili esistono, non il testo che le compone — il testo
+estratto non si conserva da nessuna parte, per scelta.
 
 - **Rosso pieno solo la prima volta.** "Prepara per le domande" è l'azione
-  della sezione finché un indice non c'è; su un manuale già indicizzato
+  della sezione finché un indice non c'è; su una fonte già indicizzata
   "Prepara di nuovo" passa a `.btn-secondary`: rifà una lettura lunga e
   sostituisce quel che c'è, e da bottone più acceso della card pesava più
   del "Salva" della scheda accanto.
-- **Le pagine restano in ordine di documento, una casella per pagina**, in
-  un contenitore con scroll proprio: chi corregge una trascrizione la legge
-  contro il PDF, dalla prima all'ultima, e un accordion l'avrebbe costretto
-  ad aprire quaranta pannelli per fare il suo lavoro normale. Quel che
-  cambia è la finestra in cui lo fa: il tetto è `min(70vh, 48rem)` e non
-  32rem fissi (su un laptop metà schermo restava inutilizzato mentre la
-  finestra di lettura era una fessura), **l'etichetta della pagina è
-  `sticky`** in cima al contenitore — scorrendo dentro una pagina lunga il
-  numero non deve uscire di scena, perché è la sola cosa che dice a quale
-  pagina del PDF confrontarla — e la casella prende l'altezza del suo testo
-  dove `field-sizing: content` è supportato, con `rows="8"` a fare da
-  ripiego altrove.
-- **La pagina uscita vuota è oro, non rossa** (`.manual-prep-page-empty`):
-  è la cosa attesa quando nessun modello di visione è configurato — è la via
-  dell'inserimento a mano — e quando una pagina sola di uno scan non riesce.
-  Non c'è niente di rotto, c'è una casella da riempire. Stessa scelta di
-  `.loan-warning`, dove `--danger` avrebbe detto "non puoi".
+- **Senza provider AI il pannello non offre "Prepara".** La segmentazione
+  di un txt/PDF testuale, la conversione di un docx e l'OCR di uno scan
+  passano tutte dal modello configurato nelle impostazioni — anche il caso
+  che tecnicamente non ne avrebbe bisogno, un `.md` già segmentato, per
+  restare a una sola regola invece che un'eccezione per formato. Senza
+  provider la rotta di indicizzazione risponde 404 e il pannello mostra
+  solo il motivo: senza chat non c'è niente da preparare, non un errore da
+  correggere.
+- **Perché non c'è più una bozza da correggere a mano.** Fino alla fase
+  precedente il pannello mostrava una casella di testo per pagina — la
+  trascrizione di uno scan, da rileggere contro il PDF e correggere prima
+  di salvare. È stata **rimossa per scelta di prodotto**, non
+  semplificata via: l'app ha smesso di conservare il testo estratto (solo
+  i chunk cercabili restano), quindi non esiste più niente da mostrare in
+  una casella. La revisione umana pagina per pagina è sostituita da un
+  controllo lato server che rifiuta la risposta del modello quando somiglia
+  a una riscrittura invece che a una segmentazione col solo aggiunta di
+  titoli.
 
 ### Amministratori (`/admin/users`)
 - **La riga admin** (`.admin-row`, dentro `.admin-list` in un `.panel-card`):
