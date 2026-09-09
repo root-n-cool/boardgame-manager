@@ -411,7 +411,7 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 				out, err := req.Search(ctx, keywords)
 				if err != nil {
 					log.Printf("ask: manual search failed: %v", err)
-					result = "La ricerca nel manuale non è disponibile in questo momento."
+					result = "La ricerca nelle fonti non è disponibile in questo momento."
 				} else {
 					result = out
 				}

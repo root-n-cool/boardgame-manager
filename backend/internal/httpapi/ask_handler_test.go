@@ -18,14 +18,28 @@ import (
 
 // fakeAsker cattura la AskRequest che l'handler costruisce: è lì che si
 // verifica che il corpus, l'indice e la ricerca siano stati agganciati.
+//
+// searchQueries simula il modello che chiama lo strumento di ricerca prima
+// di rispondere: ogni voce è le parole chiave di UNA chiamata, eseguita
+// davvero contro req.Search. Serve perché la mappa reference → percorso che
+// linkifyCitations usa si popola SOLO dalle hit che una ricerca restituisce
+// (vedi ask_handler.go): senza simulare la chiamata, un test che imposta
+// solo `answer` non troverebbe mai nessun link, qualunque sia il testo
+// della risposta.
 type fakeAsker struct {
-	got    ai.AskRequest
-	answer string
-	err    error
+	got           ai.AskRequest
+	answer        string
+	err           error
+	searchQueries [][]string
 }
 
 func (f *fakeAsker) Ask(ctx context.Context, req ai.AskRequest) (string, error) {
 	f.got = req
+	for _, keywords := range f.searchQueries {
+		if req.Search != nil {
+			_, _ = req.Search(ctx, keywords)
+		}
+	}
 	if f.err != nil {
 		return "", f.err
 	}
@@ -118,10 +132,13 @@ func TestAskHandler_AnswersInTheShapeDeepChatExpects(t *testing.T) {
 	if len(asker.got.Turns) != 1 || asker.got.Turns[0].Text != "finite le carte che si fa?" {
 		t.Fatalf("storico non passato: %+v", asker.got.Turns)
 	}
-	// CorpusIndex resta vuoto per adesso: l'indice per fonte è il Task 7
-	// (vedi il TODO in ask_handler.go), che non è ancora stato fatto.
-	if asker.got.CorpusIndex != "" {
-		t.Fatalf("CorpusIndex doveva restare vuoto (Task 7 non ancora fatto), è %q", asker.got.CorpusIndex)
+	// L'indice per fonte deve arrivare pieno: senza di esso il modello perde
+	// l'unica cosa che gli evita la ricerca esplorativa (vedi
+	// askSystemPrompt in internal/ai/ask.go). Si verifica un titolo di
+	// sezione vero e proprio, non una sottostringa generica che potrebbe
+	// comparire per un altro motivo.
+	if !strings.Contains(asker.got.CorpusIndex, "Fase di Upkeep") {
+		t.Fatalf("CorpusIndex non contiene i titoli di sezione delle fonti: %q", asker.got.CorpusIndex)
 	}
 	if asker.got.Search == nil {
 		t.Fatal("Search non agganciata: con un manuale lungo il modello non avrebbe come cercare")
@@ -130,7 +147,14 @@ func TestAskHandler_AnswersInTheShapeDeepChatExpects(t *testing.T) {
 
 func TestAskHandler_TurnsPageCitationsIntoLinksToThePDF(t *testing.T) {
 	server, conn := newTestServerWithDB(t)
-	server.Asker = &fakeAsker{answer: "La partita finisce subito. Regolamento base, pag. 7."}
+	server.Asker = &fakeAsker{
+		answer: "La partita finisce subito. Regolamento base, pagina 7.",
+		// Il modello ha chiamato lo strumento di ricerca e "pesca" ha
+		// trovato il chunk di pagina 7 ("...pila di pesca si esaurisce"):
+		// è questa hit vera a popolare la mappa reference → percorso che
+		// linkifyCitations usa.
+		searchQueries: [][]string{{"pesca"}},
+	}
 	router := httpapi.NewRouter(server)
 	gameID := seedGameWithPreparedManual(t, conn)
 
@@ -142,7 +166,7 @@ func TestAskHandler_TurnsPageCitationsIntoLinksToThePDF(t *testing.T) {
 
 	// È il pezzo che rende verificabile la risposta: si apre il manuale a
 	// quella pagina invece di fidarsi.
-	if !strings.Contains(body.Text, "[pag. 7](/api/uploads/manuale.pdf#page=7)") {
+	if !strings.Contains(body.Text, "[Regolamento base, pagina 7](/api/uploads/manuale.pdf#page=7)") {
 		t.Fatalf("la citazione non è diventata un link al PDF: %q", body.Text)
 	}
 }
@@ -192,17 +216,27 @@ func addSecondManual(t *testing.T, conn *sql.DB, gameID int64) {
 	}
 }
 
-func TestAskHandler_DoesNotLinkCitationsWhenThereIsMoreThanOneManual(t *testing.T) {
-	// Con due manuali la riscrittura non sa a quale dei due si riferisce
-	// "pag. 12": applicherebbe a entrambe le citazioni lo stesso file, e
-	// "il regolamento inglese, pag. 12" diventerebbe un link a pagina 12 di
-	// quello ITALIANO. Chi lo apre per verificare trova un'altra regola e
-	// conclude che la risposta è inventata — peggio che non avere il link.
+func TestAskHandler_LinksEachCitationToItsOwnManual(t *testing.T) {
+	// È il test che dimostra che il bug è chiuso: prima, con due manuali,
+	// la riscrittura non sapeva a quale dei due si riferisse una citazione
+	// e non linkava NIENTE (vedi il commit "fix: do not link page
+	// citations when a game has several manuals"). Ora l'handler conosce
+	// la fonte di ogni hit davvero ricevuta, quindi linka CIASCUNA
+	// citazione al proprio file — e l'asserzione che conta è che la prima
+	// vada al primo file e la seconda al secondo, non solo che un link
+	// qualunque compaia.
 	server, conn := newTestServerWithDB(t)
-	server.Asker = &fakeAsker{answer: "Sì: il regolamento inglese, pag. 12, lo dice."}
-	router := httpapi.NewRouter(server)
 	gameID := seedGameWithPreparedManual(t, conn)
 	addSecondManual(t, conn, gameID)
+
+	server.Asker = &fakeAsker{
+		answer: "Sì: vedi Regolamento base, pagina 7, e anche English rulebook, pagina 12.",
+		// Due chiamate al tool, una per manuale: "pesca" trova solo il
+		// chunk italiano (pagina 7, manuale.pdf), "coin" solo quello
+		// inglese (pagina 12, rules-en.pdf).
+		searchQueries: [][]string{{"pesca"}, {"coin"}},
+	}
+	router := httpapi.NewRouter(server)
 
 	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
 	var body struct {
@@ -210,11 +244,34 @@ func TestAskHandler_DoesNotLinkCitationsWhenThereIsMoreThanOneManual(t *testing.
 	}
 	json.Unmarshal(rec.Body.Bytes(), &body)
 
-	if strings.Contains(body.Text, "/api/uploads/") {
-		t.Fatalf("con più manuali la citazione deve restare testo semplice: %q", body.Text)
+	// L'asserzione da evitare è "la risposta contiene /api/uploads/": è
+	// vera anche se entrambi i link puntassero al primo file, che è
+	// esattamente il bug. Si verifica invece l'href ESATTO di ciascuna
+	// citazione.
+	if !strings.Contains(body.Text, "[Regolamento base, pagina 7](/api/uploads/manuale.pdf#page=7)") {
+		t.Fatalf("la prima citazione non punta al suo manuale: %q", body.Text)
 	}
-	if !strings.Contains(body.Text, "pag. 12") {
-		t.Fatalf("la citazione deve restare leggibile: %q", body.Text)
+	if !strings.Contains(body.Text, "[English rulebook, pagina 12](/api/uploads/rules-en.pdf#page=12)") {
+		t.Fatalf("la seconda citazione non punta al suo manuale: %q", body.Text)
+	}
+}
+
+func TestAskHandler_BuildsTheCorpusIndexGroupedBySource(t *testing.T) {
+	// Senza l'indice il modello perde l'unica cosa che gli evita la
+	// ricerca esplorativa (vedi askSystemPrompt in internal/ai/ask.go).
+	// Deve arrivare raggruppato per fonte, coi titoli nell'ordine di seq
+	// che manuals.Store.Summary già restituisce — non un elenco piatto.
+	server, conn := newTestServerWithDB(t)
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+
+	want := "Regolamento base — Fase di Upkeep · Fine partita"
+	if !strings.Contains(asker.got.CorpusIndex, want) {
+		t.Fatalf("CorpusIndex non raggruppa i titoli per fonte nell'ordine atteso: %q", asker.got.CorpusIndex)
 	}
 }
 

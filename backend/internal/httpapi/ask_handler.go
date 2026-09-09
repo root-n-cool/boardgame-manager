@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"sort"
 	"strings"
 
 	"boardgames-manager/internal/ai"
@@ -139,7 +140,11 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hasChunks, err := s.Manuals.HasChunks(r.Context(), gameID)
+	// Summary porta insieme, in una lettura sola, se il gioco ha fonti
+	// indicizzate e i titoli raggruppati per fonte: il secondo dato
+	// costruisce l'indice del prompt (sotto), quindi non serve una seconda
+	// query solo per sapere se hasChunks è vero.
+	summary, err := s.Manuals.Summary(r.Context(), gameID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not load the manual")
 		return
@@ -147,35 +152,30 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	// Nessuna fonte indicizzata: la rotta si comporta come inesistente,
 	// esattamente come senza provider AI. Non c'è nulla da spiegare a un
 	// partecipante — la chat, in quel caso, non è nemmeno comparsa.
-	if !hasChunks {
+	if !summary.HasChunks {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
 
 	// La lingua preferita è quella base del gioco: è quella in cui la
-	// scheda pubblica mostra tutto il resto. Nella stessa lettura si
-	// raccolgono anche i percorsi dei manuali PDF del gioco (in ogni
-	// lingua): linkifyCitations ne ha bisogno per il suo link "pag. N",
-	// ed è la stessa informazione che prima veniva da manuals.Corpus,
-	// tipo cancellato dal Task 1.
+	// scheda pubblica mostra tutto il resto.
 	preferLang := "it"
-	var pdfPaths []string
 	if langs, err := s.Games.ListLanguages(r.Context(), gameID); err == nil {
 		for _, l := range langs {
 			if l.IsBaseLanguage {
 				preferLang = l.LanguageCode
-			}
-			media, err := s.Games.ListMedia(r.Context(), l.ID)
-			if err != nil {
-				continue
-			}
-			for _, m := range media {
-				if m.Type == games.MediaTypeFile && strings.HasSuffix(strings.ToLower(m.URLOrPath), ".pdf") {
-					pdfPaths = append(pdfPaths, m.URLOrPath)
-				}
+				break
 			}
 		}
 	}
+
+	// citations accumula, mentre la ricerca gira, la mappa reference →
+	// bersaglio del link, presa SOLO dalle hit che il modello ha davvero
+	// ricevuto in questa richiesta (mai da un elenco di media letto a
+	// parte): è quel che rende il link corretto anche con due manuali
+	// dello stesso gioco, dove la reference è già disambiguata dal Task 5
+	// e non corrisponde più a game_media.title.
+	citations := map[string]citationTarget{}
 
 	// La closure di ricerca è legata al gioco: il game_id NON è un
 	// parametro del tool, così il modello non può leggere il manuale di un
@@ -185,17 +185,24 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			return "", err
 		}
+		for _, h := range hits {
+			if h.Reference == "" {
+				continue
+			}
+			if _, ok := citations[h.Reference]; !ok {
+				citations[h.Reference] = citationTarget{
+					referenceType: h.ReferenceType,
+					mediaPath:     h.MediaPath,
+				}
+			}
+		}
 		return manuals.MarshalHits(hits, missing)
 	}
 
 	answer, err := s.asker(r.Context()).Ask(r.Context(), ai.AskRequest{
-		GameName: game.Name,
-		Turns:    turns,
-		// CorpusIndex resta vuoto: l'indice per fonte (i titoli di
-		// sezione, raggruppati per manuale) è il Task 7, che ha anche
-		// l'accesso a manuals.Store.Summary per costruirlo.
-		// TODO(task-7): l'indice per fonte.
-		CorpusIndex: "",
+		GameName:    game.Name,
+		Turns:       turns,
+		CorpusIndex: formatCorpusIndex(summary.Sources),
 		Search:      search,
 	})
 	if errors.Is(err, ai.ErrNotConfigured) {
@@ -210,57 +217,126 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// deep-chat legge {"text": ...}.
-	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, pdfPaths)})
+	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, citations)})
 }
 
-// citationRe trova le citazioni di pagina nella risposta del modello.
-var citationRe = regexp.MustCompile(`pag\.\s*(\d+)`)
+// formatCorpusIndex costruisce l'indice per fonte che finisce in
+// AskRequest.CorpusIndex: è quel che evita al modello la chiamata
+// esplorativa al tool quando l'indice già basta a scegliere le parole
+// chiave giuste. Raggruppato per reference (fonte), coi titoli
+// nell'ordine di seq che Summary già restituisce.
+//
+// Esempio con una sola fonte:
+//
+//	Fonti: Carcassonne_Base_&_Fiume_ITA.pdf — Preparazione · Turno del giocatore · Fase di Upkeep
+//
+// Con più fonti le voci si accodano separate da "; ". Una fonte senza
+// titoli (nessun heading rilevato) non produce una voce vuota.
+func formatCorpusIndex(sources []manuals.SourceHeadings) string {
+	var parts []string
+	for _, src := range sources {
+		if len(src.Headings) == 0 {
+			continue
+		}
+		parts = append(parts, src.Reference+" — "+strings.Join(src.Headings, " · "))
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Fonti: " + strings.Join(parts, "; ")
+}
 
-// linkifyCitations trasforma "pag. 7" in un link markdown al PDF aperto a
-// quella pagina. È il pezzo che chiude il cerchio: una risposta generata
-// non va creduta sulla fiducia, si apre il manuale e si verifica — e in una
+// citationTarget è dove porta il link di una reference conosciuta:
+// referenceType decide la forma dell'URL (documento vs FAQ), mediaPath è
+// game_media.url_or_path per un documento ("" per una FAQ, la cui
+// reference è già l'URL).
+type citationTarget struct {
+	referenceType string
+	mediaPath     string
+}
+
+// linkifyCitations trasforma le citazioni della risposta in link markdown,
+// usando SOLO la mappa reference → bersaglio costruita dalle hit
+// EFFETTIVAMENTE restituite al modello in questa richiesta (vedi search()
+// sopra). È il pezzo che chiude il cerchio: una risposta generata non va
+// creduta sulla fiducia, si apre la fonte giusta e si verifica — e in una
 // discussione sulle regole è la differenza fra un aiuto e un oracolo.
 //
 // La riscrittura è nostra e non del modello: chiedere a un modello
 // economico di costruire URL corretti è un modo affidabile di ottenere URL
-// sbagliati. Il fragment #page=N è onorato dalla quasi totalità dei viewer.
+// sbagliati. Il modello cita "reference, reference_detail" esattamente
+// come richiesto dal prompt di sistema (vedi askSystemPrompt in
+// internal/ai/ask.go): qui si cercano le occorrenze letterali di ogni
+// reference conosciuta, opzionalmente seguite da ", pagina N", e si
+// sostituiscono con un link.
 //
-// Con PIÙ di un manuale PDF non si linka niente, e la citazione resta testo
-// semplice. Il motivo, prima che qualcuno lo "aggiusti" al contrario: la
-// riscrittura è cieca al manuale a cui la citazione si riferisce — sostituisce
-// ogni "pag. N" della risposta con lo stesso file. La ricerca però restituisce
-// davvero risultati da entrambe le lingue, e il modello scrive frasi come
-// "il regolamento inglese, pag. 12". Un link così porterebbe a pagina 12 del
-// manuale ITALIANO: chi lo apre per verificare trova un'altra regola e
-// conclude che la risposta è inventata. Un link sbagliato è peggio di nessun
-// link, perché distrugge esattamente la fiducia per cui il link esiste.
-// Legare la citazione al manuale giusto vorrebbe dire far dichiarare al
-// modello quale manuale sta citando (o riconoscerne il titolo nel testo): è
-// la strada giusta, ma è una feature, non una correzione.
+// Prima (con la regex "pag. N") la riscrittura era cieca al manuale a cui
+// la citazione si riferiva: con due manuali sostituiva ogni "pag. N" con lo
+// stesso file, e "il regolamento inglese, pag. 12" diventava un link a
+// pagina 12 di quello ITALIANO — un link sbagliato, peggio di nessun link.
+// Ora la mappa viene dalle hit vere: ogni reference porta il proprio
+// mediaPath, quindi due manuali distinti non collidono più.
 //
-// pdfPaths sostituisce quello che prima veniva da manuals.Corpus (tipo
-// cancellato dal Task 1): i percorsi di tutti i manuali PDF del gioco, in
-// qualunque lingua. La funzione stessa non cambia: brutta e sbagliata con
-// due manuali come lo era prima — sistemarla è il Task 7, un rifacimento a
-// metà qui sarebbe peggio di nessuno.
-func linkifyCitations(answer string, pdfPaths []string) string {
+// Le reference più lunghe si provano per prime: un'alternanza regex sceglie
+// la prima che combacia, e senza quest'ordine una reference che è prefisso
+// letterale di un'altra (raro, ma non impossibile) troncherebbe il link a
+// metà nome.
+func linkifyCitations(answer string, citations map[string]citationTarget) string {
 	// Se il modello ha già prodotto un link, non si raddoppia.
 	if strings.Contains(answer, "](/api/uploads/") {
 		return answer
 	}
-
-	path := ""
-	pdfs := 0
-	for _, p := range pdfPaths {
-		pdfs++
-		path = p
-	}
-	if path == "" || pdfs > 1 {
+	if len(citations) == 0 {
 		return answer
 	}
 
-	return citationRe.ReplaceAllStringFunc(answer, func(match string) string {
-		page := citationRe.FindStringSubmatch(match)[1]
-		return fmt.Sprintf("[%s](/api/uploads/%s#page=%s)", match, path, page)
+	references := make([]string, 0, len(citations))
+	for r := range citations {
+		if r != "" {
+			references = append(references, r)
+		}
+	}
+	if len(references) == 0 {
+		return answer
+	}
+	sort.Slice(references, func(i, j int) bool { return len(references[i]) > len(references[j]) })
+
+	quoted := make([]string, len(references))
+	for i, r := range references {
+		quoted[i] = regexp.QuoteMeta(r)
+	}
+	pattern := regexp.MustCompile(`(?:` + strings.Join(quoted, "|") + `)(?:, pagina (\d+))?`)
+
+	return pattern.ReplaceAllStringFunc(answer, func(match string) string {
+		page := pattern.FindStringSubmatch(match)[1]
+
+		var reference string
+		for _, r := range references {
+			if strings.HasPrefix(match, r) {
+				reference = r
+				break
+			}
+		}
+		target, ok := citations[reference]
+		if !ok {
+			return match
+		}
+
+		switch target.referenceType {
+		case "document":
+			if target.mediaPath == "" {
+				return match
+			}
+			href := "/api/uploads/" + target.mediaPath
+			if page != "" {
+				href += "#page=" + page
+			}
+			return fmt.Sprintf("[%s](%s)", match, href)
+		case "faq":
+			// La reference di una FAQ è già l'URL della discussione.
+			return fmt.Sprintf("[%s](%s)", match, reference)
+		default:
+			return match
+		}
 	})
 }
