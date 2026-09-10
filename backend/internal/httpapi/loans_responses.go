@@ -36,13 +36,23 @@ func toOpenLoanResponse(l events.LoanWithGame) map[string]any {
 
 // toReturnedLoanResponse è una riga del log della serata, che si legge da
 // sola: il gioco ce l'ha dentro perché il log non è raggruppato per copia.
-func toReturnedLoanResponse(l events.LoanWithGame) map[string]any {
+// issues è ciò che non è tornato intero — quasi sempre vuoto, ed è il punto:
+// una riga con qualcosa dentro va guardata.
+func toReturnedLoanResponse(l events.LoanWithGame, issues []events.MaterialIssue) map[string]any {
+	rows := make([]map[string]any, 0, len(issues))
+	for _, iss := range issues {
+		row := map[string]any{"name": iss.Name, "expected": iss.Expected, "returned": nil}
+		if iss.Returned != nil {
+			row["returned"] = *iss.Returned
+		}
+		rows = append(rows, row)
+	}
 	return map[string]any{
 		"id": l.ID, "eventGameId": l.EventGameID, "gameId": l.GameID,
 		"gameName": l.GameName, "copyIndex": l.CopyIndex,
 		"borrowerName": l.BorrowerName, "borrowerPhone": l.BorrowerPhone,
 		"lentAt": l.LentAt.Format(isoTime), "returnedAt": l.ReturnedAt.Format(isoTime),
-		"notes": l.Notes,
+		"notes": l.Notes, "materialIssues": rows,
 	}
 }
 
@@ -67,12 +77,22 @@ func (s *Server) toLoanDeskResponse(ctx context.Context, eventID int64) (map[str
 
 	openByCopy := map[int64]events.LoanWithGame{}
 	returned := []map[string]any{}
+	closedIDs := []int64{}
+	closed := []events.LoanWithGame{}
 	for _, l := range loans {
 		if l.ReturnedAt == nil {
 			openByCopy[l.EventGameID] = l
 			continue
 		}
-		returned = append(returned, toReturnedLoanResponse(l))
+		closed = append(closed, l)
+		closedIDs = append(closedIDs, l.ID)
+	}
+	issuesByLoan, err := s.Events.ListMaterialIssues(ctx, closedIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range closed {
+		returned = append(returned, toReturnedLoanResponse(l, issuesByLoan[l.ID]))
 	}
 
 	bookingsByCopy := map[int64][]map[string]any{}
@@ -92,6 +112,9 @@ func (s *Server) toLoanDeskResponse(ctx context.Context, eventID int64) (map[str
 	// Un gioco si legge una volta anche se ha più copie, come in
 	// toEventDetail.
 	gameCache := map[int64]games.Game{}
+	// I materiali si leggono una volta per gioco, non una per copia: una
+	// serata con quattro copie di Carcassonne farebbe quattro query uguali.
+	materialsCache := map[int64][]map[string]any{}
 	copies := make([]map[string]any, 0, len(eventGames))
 	for _, eg := range eventGames {
 		game, ok := gameCache[eg.GameID]
@@ -102,12 +125,27 @@ func (s *Server) toLoanDeskResponse(ctx context.Context, eventID int64) (map[str
 			}
 			gameCache[eg.GameID] = game
 		}
+		materials, cached := materialsCache[eg.GameID]
+		if !cached {
+			ms, err := s.Games.ListMaterials(ctx, eg.GameID)
+			if err != nil {
+				return nil, err
+			}
+			materials = make([]map[string]any, 0, len(ms))
+			for _, m := range ms {
+				materials = append(materials, map[string]any{
+					"id": m.ID, "name": m.Name, "quantity": m.Quantity,
+				})
+			}
+			materialsCache[eg.GameID] = materials
+		}
 		row := map[string]any{
 			"eventGameId": eg.ID, "gameId": eg.GameID, "name": game.Name,
 			"coverPath": game.CoverPath, "copyIndex": eg.CopyIndex,
 			"copies": copiesPerGame[eg.GameID], "bookable": eg.Bookable,
 			"seats": eg.Seats, "openLoan": nil,
 			"activeBookings": orEmptyRows(bookingsByCopy[eg.ID]),
+			"materials":      materials,
 		}
 		if l, out := openByCopy[eg.ID]; out {
 			row["openLoan"] = toOpenLoanResponse(l)
