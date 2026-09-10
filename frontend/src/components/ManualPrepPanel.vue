@@ -120,6 +120,14 @@ async function remove() {
   <div class="admin-row manual-doc-row">
     <span class="manual-doc-title">{{ mediaTitle }}</span>
     <span class="lang-chip">{{ formatLabel }}</span>
+    <!-- La lingua sta sulla RIGA e non sulla testata della sezione: la
+         sezione elenca le fonti di tutte le lingue, perche' la chat cerca
+         per gioco e non per lingua. Senza questa chip due manuali intitolati
+         entrambi "Regolamento", uno IT e uno EN, sarebbero due righe
+         identiche. Il server fa la stessa distinzione da sempre: quando due
+         fonti condividono il titolo, `sourceReference` disambigua la
+         citazione aggiungendo la lingua. -->
+    <span class="lang-chip">{{ lang }}</span>
     <span class="manual-doc-state">{{ stateLabel }}</span>
 
     <div class="admin-row-actions">

@@ -75,9 +75,24 @@ function activeLanguage(): GameLanguageInfo | undefined {
 // preparazione, perché indicizzarlo fallirebbe comunque.
 const indexableExtensions = ['.pdf', '.txt', '.md', '.docx']
 
+// Le fonti indicizzabili di TUTTE le lingue, non della sola lingua attiva.
+// La ricerca della chat filtra su `game_id` e nient'altro (vedi `searchOne`
+// in internal/manuals/store.go): una domanda pesca da ogni fonte del gioco,
+// in qualunque lingua sia. Mostrare qui solo i file della lingua attiva
+// faceva credere il contrario, e cambiando tab la sezione cambiava come se
+// la chat fosse a scope di lingua.
+//
+// La lingua resta accanto a ogni voce per due ragioni concrete: la rotta di
+// indicizzazione è per lingua (`/languages/{lang}/media/{id}/index`), e due
+// manuali possono chiamarsi allo stesso modo in due lingue diverse.
 const indexableMedia = computed(() =>
-  (activeLanguage()?.media || []).filter(
-    (m) => m.type === 'file' && indexableExtensions.some((ext) => m.url.toLowerCase().endsWith(ext)),
+  (game.value?.languages || []).flatMap((l) =>
+    l.media
+      .filter(
+        (m) =>
+          m.type === 'file' && indexableExtensions.some((ext) => m.url.toLowerCase().endsWith(ext)),
+      )
+      .map((m) => ({ media: m, lang: l.code })),
   ),
 )
 
@@ -559,10 +574,14 @@ onMounted(async () => {
         motivo per cui manca il bottone senza provider AI stanno una volta
         sola qui, non ripetuti a ogni riga.
       -->
+      <!--
+        Nessuna `lang-chip` qui: questa sezione elenca le fonti di tutte le
+        lingue, perché la chat cerca per gioco (vedi `indexableMedia`). La
+        lingua vive su ogni riga, dove è vera.
+      -->
       <section class="panel-card">
         <div class="section-head">
           <h2>Chatbot</h2>
-          <span class="lang-chip">{{ activeLangCode }}</span>
         </div>
 
         <template v-if="indexableMedia.length > 0">
@@ -582,14 +601,18 @@ onMounted(async () => {
           </p>
 
           <ul role="list" class="admin-list">
-            <li v-for="media in indexableMedia" :key="media.id">
+            <!-- La chiave porta anche la lingua: lo stesso id di media non si
+                 ripete fra lingue diverse, ma la coppia e' l'identita' vera
+                 di una riga qui, e la rotta che il pannello chiama la usa
+                 tutta. -->
+            <li v-for="row in indexableMedia" :key="`${row.lang}-${row.media.id}`">
               <ManualPrepPanel
                 :game-id="game.id"
-                :lang="activeLangCode"
-                :media-id="media.id"
-                :media-title="media.title || 'Manuale'"
-                :media-url="media.url"
-                :indexed-chunks="media.indexedChunks"
+                :lang="row.lang"
+                :media-id="row.media.id"
+                :media-title="row.media.title || 'Manuale'"
+                :media-url="row.media.url"
+                :indexed-chunks="row.media.indexedChunks"
                 :ai-configured="aiConfigured"
                 @changed="onIndexChanged"
               />
@@ -598,7 +621,7 @@ onMounted(async () => {
         </template>
         <p v-else class="empty-note">
           Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
-          sezione Media qui sopra.
+          sezione Media di una delle lingue del gioco.
         </p>
       </section>
 
