@@ -2,13 +2,82 @@ package manuals_test
 
 import (
 	"bytes"
+	"image"
+	"image/color"
 	"image/jpeg"
+	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"boardgames-manager/internal/manuals"
 )
+
+// testPNG è il gemello PNG di manuals.NewTestJPEG: serve solo qui, perché
+// il PNG entra nel percorso vision da una sola porta — la foto caricata a
+// mano dall'admin — mentre le pagine estratte da un PDF sono sempre JPEG.
+func testPNG(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 8), G: uint8(y * 8), B: 90, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("build fixture png: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// isJPEG riconosce i byte dal marker SOI, che è l'unica cosa che conta per
+// il chiamante: Transcribe li annuncia al modello come "data:image/jpeg".
+func isJPEG(b []byte) bool {
+	return len(b) >= 2 && b[0] == 0xFF && b[1] == 0xD8
+}
+
+// TestDownscale_ConverteUnPNGPiccoloInJPEG è il caso della foto caricata
+// come PNG (uno screenshot del regolamento, tipicamente già piccolo).
+// Il ramo "già sotto soglia" restituiva i byte originali, che per un PNG
+// significa mandare al modello dei byte PNG etichettati "image/jpeg":
+// la conversione non è un'ottimizzazione, è ciò che rende la richiesta
+// onesta.
+func TestDownscale_ConverteUnPNGPiccoloInJPEG(t *testing.T) {
+	src := testPNG(t, 24, 32)
+
+	out, err := manuals.Downscale(src, 1500)
+	if err != nil {
+		t.Fatalf("Downscale: %v", err)
+	}
+	if !isJPEG(out) {
+		t.Fatalf("attesi byte JPEG, ottenuti %x...", out[:4])
+	}
+	if _, err := jpeg.Decode(bytes.NewReader(out)); err != nil {
+		t.Fatalf("il risultato non è un JPEG decodificabile: %v", err)
+	}
+}
+
+// TestDownscale_RiduceEConverteUnPNGGrande copre l'altra metà: sopra
+// soglia il PNG va sia ridotto sia convertito.
+func TestDownscale_RiduceEConverteUnPNGGrande(t *testing.T) {
+	src := testPNG(t, 2110, 3100)
+
+	out, err := manuals.Downscale(src, 1500)
+	if err != nil {
+		t.Fatalf("Downscale: %v", err)
+	}
+	if !isJPEG(out) {
+		t.Fatalf("attesi byte JPEG, ottenuti %x...", out[:4])
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(out))
+	if err != nil {
+		t.Fatalf("DecodeConfig: %v", err)
+	}
+	if cfg.Height != 1500 {
+		t.Fatalf("lato lungo atteso 1500, ottenuto %dx%d", cfg.Width, cfg.Height)
+	}
+}
 
 // TestDownscale_RimpiccioliscePaginaScansionata esercita la misura reale:
 // le quattro pagine del manuale del club sono ~2110x3100 e 0,43-0,52 MB,

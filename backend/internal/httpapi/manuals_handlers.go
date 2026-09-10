@@ -123,6 +123,20 @@ var errPDFNoContent = errors.New("index: il pdf non ha né testo né pagine legg
 // nessun bisogno di esserlo.
 var errPDFTranscriptionFailed = errors.New("index: la trascrizione di ogni pagina è fallita per un errore del modello")
 
+// errPhotoNoText è l'esito di una foto che il modello ha letto senza
+// trovarci testo: il gemello di errPDFNoContent per il formato a pagina
+// singola. Sta a parte perché il consiglio da dare all'admin è opposto:
+// un PDF illeggibile si converte, una foto sfocata si riscatta.
+var errPhotoNoText = errors.New("index: la foto non contiene testo leggibile")
+
+// photoExts sono le estensioni che ManualCategory accetta come FOTO di una
+// pagina di regolamento (vedi storage.ManualCategory): il .jpeg non
+// compare perché lo storage lo normalizza a .jpg prima di scrivere il
+// file, quindi nessun media può averlo.
+var photoExts = map[string]bool{".jpg": true, ".png": true}
+
+func isPhotoExt(ext string) bool { return photoExts[ext] }
+
 // transcriber restituisce il trascrittore per questa richiesta: quello
 // iniettato se c'è (i test), altrimenti uno costruito dalle impostazioni.
 // Stesso schema di translator() in translate.go, e per la stessa ragione:
@@ -293,6 +307,7 @@ type pdfPageStats struct {
 //	.docx  → DocxToMarkdown
 //	.txt   → Segment(testo)
 //	.pdf   → percorso testo o percorso vision, vedi buildPDFChunks
+//	.jpg/.png → photoChunks (una foto è una pagina sola)
 func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) ([]detailedChunk, pdfPageStats, error) {
 	switch ext {
 	case ".md":
@@ -311,6 +326,8 @@ func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) 
 		return sectionDetails(manuals.ChunkSections(manuals.ParseSections(segmented))), pdfPageStats{}, nil
 	case ".pdf":
 		return s.buildPDFChunks(ctx, raw)
+	case ".jpg", ".png":
+		return s.photoChunks(ctx, raw)
 	default:
 		return nil, pdfPageStats{}, fmt.Errorf("index: estensione non supportata %q", ext)
 	}
@@ -528,6 +545,39 @@ func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage
 	return chunks, stats, nil
 }
 
+// photoChunks è il percorso di una foto: l'admin fotografa la pagina di un
+// regolamento col telefono e la carica come manuale. È pdfVisionChunks
+// senza il ciclo — una foto è una pagina sola, quindi niente parallelismo,
+// niente isolamento guasti per pagina, niente conteggi da riportare.
+//
+// Come per le pagine di un PDF scansionato, Transcribe restituisce già
+// markdown con i titoli conservati: passare quel testo anche da Segment
+// sarebbe una seconda chiamata al provider per rifare un lavoro fatto.
+//
+// Il reference_detail è quello "a sezione" (sectionDetails) e non
+// "pagina 1": la foto non ha una numerazione di cui l'admin possa fidarsi
+// — la pagina 1 di questo media è la 14 del regolamento — e un numero
+// falso in citazione è peggio di nessun numero.
+func (s *Server) photoChunks(ctx context.Context, raw []byte) ([]detailedChunk, pdfPageStats, error) {
+	// Stessa regola di pdfVisionChunks: su errore Downscale restituisce
+	// byte inviabili comunque, quindi si logga e si prosegue.
+	jpg, err := manuals.Downscale(raw, visionMaxLongSide)
+	if err != nil {
+		log.Printf("index: foto: riduzione fallita, mando l'originale: %v", err)
+	}
+
+	text, err := s.transcriber(ctx).Transcribe(ctx, jpg, 1)
+	if err != nil {
+		// ai.ErrNotConfigured compreso: indexErrorResponse lo racconta
+		// nominando il campo delle impostazioni da riempire.
+		return nil, pdfPageStats{}, err
+	}
+	if strings.TrimSpace(text) == "" {
+		return nil, pdfPageStats{}, errPhotoNoText
+	}
+	return sectionDetails(manuals.ChunkSections(manuals.ParseSections(text))), pdfPageStats{}, nil
+}
+
 // chunksWithPageDetail applica ReferenceDetail = "pagina N" a ogni chunk,
 // trovando N con pageForOffset.
 func chunksWithPageDetail(chunks []manuals.SectionChunk, pageNumbers, starts []int) []detailedChunk {
@@ -717,8 +767,19 @@ func sourceReference(title, langCode string, used map[string]bool) string {
 // Ogni caso dice una cosa diversa e vera, mai un guasto generico — è
 // l'unica cosa che sta fra l'admin e un vicolo cieco quando l'ingestione
 // non riesce.
-func indexErrorResponse(err error) (int, string) {
+func indexErrorResponse(err error, ext string) (int, string) {
 	switch {
+	case errors.Is(err, ai.ErrNotConfigured) && isPhotoExt(ext):
+		// Stesso campo delle impostazioni del PDF scansionato — è lo
+		// stesso modello vision — ma detto per quel che l'admin ha
+		// caricato davvero: mandarlo a cercare un PDF che non ha
+		// caricato lo farebbe solo dubitare del messaggio.
+		return http.StatusUnprocessableEntity,
+			`Per leggere una foto serve un modello che legga le immagini. ` +
+				`Configuralo nel campo "Modello per i manuali scansionati" nelle impostazioni.`
+	case errors.Is(err, errPhotoNoText):
+		return http.StatusUnprocessableEntity,
+			"In questa foto non si legge nessun testo: riprova a scattarla più vicina, a fuoco e con la pagina ben illuminata."
 	case errors.Is(err, ai.ErrNotConfigured):
 		// Il gate all'inizio dell'handler garantisce che il provider di
 		// TESTO sia configurato: se ai.ErrNotConfigured emerge comunque da
@@ -752,7 +813,7 @@ func indexErrorResponse(err error) (int, string) {
 			"Questo file .docx non contiene testo: se sono pagine scansionate o immagini incollate nel documento, salvalo come PDF invece di .docx — quel formato legge anche le immagini."
 	default:
 		return http.StatusUnprocessableEntity,
-			"Non è stato possibile leggere questo file: riprova, oppure prova a salvarlo in un altro formato tra quelli supportati (PDF, txt, md, docx)."
+			"Non è stato possibile leggere questo file: riprova, oppure prova a salvarlo in un altro formato tra quelli supportati (PDF, txt, md, docx, foto JPG o PNG)."
 	}
 }
 
@@ -784,7 +845,7 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 
 	ext := strings.ToLower(filepath.Ext(media.URLOrPath))
 	switch ext {
-	case ".md", ".docx", ".txt", ".pdf":
+	case ".md", ".docx", ".txt", ".pdf", ".jpg", ".png":
 	default:
 		writeError(w, http.StatusConflict, "formato non supportato per l'indicizzazione")
 		return
@@ -806,7 +867,7 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 
 	chunks, pageStats, err := s.buildSourceChunks(r.Context(), ext, raw)
 	if err != nil {
-		status, msg := indexErrorResponse(err)
+		status, msg := indexErrorResponse(err, ext)
 		writeError(w, status, msg)
 		return
 	}

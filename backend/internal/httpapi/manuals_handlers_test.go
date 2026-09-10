@@ -5,7 +5,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/color"
 	"image/jpeg"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1403,4 +1406,127 @@ func TestIndexMedia_CompressedTextLayerPDFUsesTheTextPath(t *testing.T) {
 	if !strings.Contains(text, "Fase di Upkeep") {
 		t.Fatalf("atteso il testo del layer testo nel chunk, ottenuto %q", text)
 	}
+}
+
+// --- La foto di una pagina di regolamento: un'immagine caricata come
+// media è una pagina sola, letta dal modello vision come una pagina di PDF
+// scansionato.
+
+func TestIndexMedia_PhotoIsTranscribedByVision(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	seg := &fakeSegmenter{}
+	vis := &pageTranscriber{byPage: map[int]string{
+		1: "## Preparazione\n\nOgni giocatore pesca cinque carte dal mazzo comune.",
+	}}
+	server.Segmenter = seg
+	server.Vision = vis
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewTestJPEG(24, 32), "pagina.jpg", "Regolamento base")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if vis.calls.Load() != 1 {
+		t.Fatalf("una foto è una pagina sola: attesa 1 chiamata a Transcribe, ottenute %d", vis.calls.Load())
+	}
+	// Transcribe restituisce già markdown con i titoli: segmentare quel
+	// testo una seconda volta sarebbe una chiamata sprecata al provider.
+	if seg.calls != 0 {
+		t.Fatalf("una foto non deve chiamare Segment, chiamato %d volte", seg.calls)
+	}
+
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"pesca"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("la foto doveva essere indicizzata: la ricerca non trova nulla")
+	}
+	if hits[0].ReferenceDetail != `sezione «Preparazione»` {
+		t.Fatalf("una foto non ha pagine: atteso 'sezione «Preparazione»', ottenuto %q", hits[0].ReferenceDetail)
+	}
+}
+
+// TestIndexMedia_PNGPhotoIsAccepted: lo screenshot di un regolamento
+// arriva in PNG, non in JPEG, e deve passare per la stessa strada — è il
+// caso che rompeva prima che Downscale sapesse convertire.
+func TestIndexMedia_PNGPhotoIsAccepted(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	server.Vision = &pageTranscriber{byPage: map[int]string{
+		1: "## Fine partita\n\nVince chi ha totalizzato più punti vittoria.",
+	}}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, testPNGBytes(t, 24, 32), "schermata.png", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	hits, _, err := server.Manuals.Search(context.Background(), gameID, "it", []string{"vittoria"})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) == 0 {
+		t.Fatal("lo screenshot PNG doveva essere indicizzato")
+	}
+}
+
+func TestIndexMedia_PhotoWithoutVisionModelNamesTheSetting(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	server.Vision = &erroringTranscriber{err: ai.ErrNotConfigured}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewTestJPEG(24, 32), "pagina.jpg", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "Modello per i manuali scansionati") {
+		t.Fatalf("il messaggio deve nominare il campo delle impostazioni: %s", rec.Body.String())
+	}
+}
+
+// TestIndexMedia_PhotoWithoutReadableTextIsAClearError: il modello ha
+// risposto "pagina vuota". Per un PDF il consiglio è convertire il file;
+// per una foto l'unica cosa utile è riscattarla, e il messaggio deve dire
+// quella.
+func TestIndexMedia_PhotoWithoutReadableTextIsAClearError(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	server.Vision = &pageTranscriber{} // byPage nil: nessun testo, nessun errore
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, manuals.NewTestJPEG(24, 32), "pagina.jpg", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("atteso 422, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "foto") {
+		t.Fatalf("il messaggio deve parlare della foto, non di un PDF: %s", rec.Body.String())
+	}
+}
+
+// testPNGBytes costruisce uno screenshot finto: il PNG entra
+// nell'ingestione solo da questa porta, quindi la fixture sta qui e non
+// accanto a NewTestJPEG (che serve alle pagine estratte dai PDF).
+func testPNGBytes(t *testing.T, w, h int) []byte {
+	t.Helper()
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		for x := 0; x < w; x++ {
+			img.Set(x, y, color.RGBA{R: uint8(x * 8), G: uint8(y * 8), B: 90, A: 255})
+		}
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatalf("build fixture png: %v", err)
+	}
+	return buf.Bytes()
 }

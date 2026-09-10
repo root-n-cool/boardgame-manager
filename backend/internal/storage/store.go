@@ -41,6 +41,15 @@ type Category struct {
 	MaxBytes int64
 }
 
+// ManualCategory accetta, oltre ai quattro formati di documento, le due
+// codifiche in cui arriva una FOTO di una pagina di regolamento: il
+// telefono scatta in JPEG, uno screenshot esce in PNG. Non è un allegato
+// qualsiasi — l'indicizzazione la manda al modello vision come fa con la
+// pagina di un PDF scansionato (vedi photoChunks in httpapi).
+//
+// Il .webp resta fuori di proposito: lo stdlib non lo decodifica, quindi
+// non potremmo né ridurlo né convertirlo prima di mandarlo al modello
+// senza aggiungere golang.org/x/image.
 var ManualCategory = Category{
 	Name: "manual",
 	Types: map[string]string{
@@ -48,6 +57,8 @@ var ManualCategory = Category{
 		".txt":  "text/plain",
 		".md":   "text/plain",
 		".docx": "application/zip",
+		".jpg":  "image/jpeg",
+		".png":  "image/png",
 	},
 	MaxBytes: 20 << 20, // 20 MB
 }

@@ -53,7 +53,7 @@ func (s *Server) createFileMediaHandler(w http.ResponseWriter, r *http.Request, 
 
 	path, err := s.Storage.Save(storage.ManualCategory, file, header.Filename)
 	if errors.Is(err, storage.ErrUnsupportedType) {
-		writeError(w, http.StatusBadRequest, "only PDF, TXT, MD or DOCX files are allowed")
+		writeError(w, http.StatusBadRequest, "only PDF, TXT, MD, DOCX or JPG/PNG photo files are allowed")
 		return
 	}
 	if errors.Is(err, storage.ErrTooLarge) {

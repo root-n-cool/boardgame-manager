@@ -70,10 +70,12 @@ function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
 }
 
-// Gli stessi quattro formati che il server accetta per l'indicizzazione
-// (vedi indexMediaHandler): un file di un altro tipo non ha un pannello di
-// preparazione, perché indicizzarlo fallirebbe comunque.
-const indexableExtensions = ['.pdf', '.txt', '.md', '.docx']
+// Gli stessi formati che il server accetta per l'indicizzazione (vedi
+// indexMediaHandler): un file di un altro tipo non ha un pannello di
+// preparazione, perché indicizzarlo fallirebbe comunque. Le foto ci sono
+// perché una pagina fotografata la legge il modello vision, come una
+// pagina di PDF scansionato.
+const indexableExtensions = ['.pdf', '.txt', '.md', '.docx', '.jpg', '.png']
 
 // Le fonti indicizzabili di TUTTE le lingue, non della sola lingua attiva.
 // La ricerca della chat filtra su `game_id` e nient'altro (vedi `searchOne`
@@ -231,6 +233,13 @@ function onFileSelected(event: Event) {
   const target = event.target as HTMLInputElement
   uploadFile.value = target.files?.[0] || null
 }
+
+// Una foto ha bisogno di un titolo scritto a mano, un documento no. Senza
+// titolo il server ricade sul nome del file, ed è un ripiego che regge per
+// "regolamento.pdf" e non per "IMG_4821.JPG": quel nome diventa il titolo
+// della tessera nei media E la citazione che la chat pubblica mostra sotto
+// la risposta. Da qui il campo obbligatorio solo in questo caso.
+const photoSelected = computed(() => /\.(jpe?g|png)$/i.test(uploadFile.value?.name ?? ''))
 
 function pickCover() {
   coverError.value = ''
@@ -593,7 +602,8 @@ onMounted(async () => {
           La preparazione di una fonte è un'azione da admin: GameMediaList è
           condiviso con la scheda pubblica, quindi la sezione vive qui e non
           lì. Una riga per ogni file indicizzabile del gioco (PDF, txt, md,
-          docx — gli unici formati che l'indicizzazione accetta), non più un
+          docx, foto JPG o PNG — gli unici formati che l'indicizzazione
+          accetta), non più un
           pannello alto per file: l'avviso sui tempi lunghi e il motivo per
           cui manca il bottone senza provider AI stanno una volta sola qui,
           non ripetuti a ogni riga.
@@ -639,8 +649,8 @@ onMounted(async () => {
             </ul>
           </template>
           <p v-else class="empty-note">
-            Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
-            sezione Media di una delle lingue del gioco.
+            Nessun documento da preparare: carica un PDF, un file di testo (txt o md), un docx o la
+            foto di una pagina nella sezione Media di una delle lingue del gioco.
           </p>
         </section>
 
@@ -726,15 +736,26 @@ onMounted(async () => {
             File del manuale
             <input
               type="file"
-              accept=".pdf,.txt,.md,.docx,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".pdf,.txt,.md,.docx,.jpg,.jpeg,.png,application/pdf,text/plain,text/markdown,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
               @change="onFileSelected"
             />
           </label>
-          <p class="field-hint">PDF, txt, md o docx, massimo 20MB.</p>
+          <p class="field-hint">
+            PDF, txt, md, docx o la foto di una pagina (JPG, PNG), massimo 20MB.
+          </p>
           <label>
             Titolo
-            <input v-model="fileTitle" placeholder="Regolamento" />
+            <input
+              v-model="fileTitle"
+              :placeholder="photoSelected ? 'Regolamento, pagina 3' : 'Regolamento'"
+              :required="photoSelected"
+              :aria-describedby="photoSelected ? 'file-title-hint' : undefined"
+            />
           </label>
+          <p v-if="photoSelected" id="file-title-hint" class="field-hint">
+            Il titolo di una foto va scritto: è quello che la chat cita sotto la risposta, e
+            «IMG_4821.JPG» non dice a nessuno da dove viene la regola.
+          </p>
           <!--
             Il contenuto della modale sta nel DOM anche a modale chiusa (è
             `<dialog>`, non un `v-if`): senza `mediaModalOpen` il picker si

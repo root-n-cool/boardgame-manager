@@ -245,3 +245,37 @@ func TestSave_NormalisesAJpegExtensionToJpg(t *testing.T) {
 		t.Fatalf("attesa estensione .jpg, ottenuto %q", name)
 	}
 }
+
+// TestSave_AcceptsAPhotoOfARulebookPage: l'admin fotografa una pagina di
+// regolamento col telefono e la carica come manuale. JPEG e PNG entrano
+// in ManualCategory accanto ai quattro formati di documento.
+func TestSave_AcceptsAPhotoOfARulebookPage(t *testing.T) {
+	dir := t.TempDir()
+	store := storage.NewStore(dir)
+
+	for _, tc := range []struct{ filename, content, wantExt string }{
+		{"pagina.jpg", "\xFF\xD8\xFF\xE0\x00\x10JFIF foto della pagina 3", ".jpg"},
+		{"pagina.jpeg", "\xFF\xD8\xFF\xE0\x00\x10JFIF foto della pagina 4", ".jpg"},
+		{"schermata.png", "\x89PNG\r\n\x1a\n schermata del regolamento", ".png"},
+	} {
+		name, err := store.Save(storage.ManualCategory, strings.NewReader(tc.content), tc.filename)
+		if err != nil {
+			t.Fatalf("save %s: %v", tc.filename, err)
+		}
+		if !strings.HasSuffix(name, tc.wantExt) {
+			t.Fatalf("%s: attesa estensione %s, ottenuto %q", tc.filename, tc.wantExt, name)
+		}
+	}
+}
+
+// TestSave_RejectsAnExecutableRenamedAsAPhoto: le foto non allentano il
+// controllo sul contenuto, allo stesso modo del PDF.
+func TestSave_RejectsAnExecutableRenamedAsAPhoto(t *testing.T) {
+	dir := t.TempDir()
+	store := storage.NewStore(dir)
+
+	elfMagic := "\x7FELF\x02\x01\x01 non sono una foto"
+	if _, err := store.Save(storage.ManualCategory, strings.NewReader(elfMagic), "pagina.jpg"); err != storage.ErrUnsupportedType {
+		t.Fatalf("atteso ErrUnsupportedType, ottenuto %v", err)
+	}
+}

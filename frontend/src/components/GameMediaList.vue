@@ -3,7 +3,8 @@ import { ref } from 'vue'
 import { fileExtensionLabel, type GameMediaInfo } from '../utils/game'
 
 /**
- * La griglia dei materiali di una lingua: manuali (PDF, txt, md o docx),
+ * La griglia dei materiali di una lingua: manuali (PDF, txt, md, docx o
+ * la foto di una pagina),
  * link e tutorial YouTube. In sola lettura sulla scheda pubblica, con
  * rimozione e tessera "aggiungi" su quella di modifica.
  */
@@ -24,7 +25,7 @@ const mediaKindLabels: Record<string, string> = {
   youtube: 'YouTube',
 }
 
-// Un file può essere PDF, txt, md o docx: l'etichetta legge l'estensione
+// Un file può essere PDF, txt, md, docx o una foto: l'etichetta legge l'estensione
 // vera invece di dare per scontato "PDF" come quando l'unico formato
 // accettato era quello. `fileExtensionLabel` è condivisa con la sezione
 // Chatbot della scheda di modifica: stessa domanda, stessa risposta.

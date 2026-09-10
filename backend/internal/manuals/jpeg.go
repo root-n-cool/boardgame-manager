@@ -7,6 +7,10 @@ import (
 	"image/color"
 	"image/draw"
 	"image/jpeg"
+	// Registra il decoder PNG per image.Decode/DecodeConfig: una foto di
+	// regolamento può arrivare come screenshot, e senza questo import
+	// image.Decode conoscerebbe il solo JPEG importato qui sopra.
+	_ "image/png"
 	"math"
 )
 
@@ -17,8 +21,8 @@ import (
 // risparmio viene dai pixel, non dalla quantizzazione.
 const downscaleQuality = 80
 
-// Downscale riduce a maxLongSide il lato lungo di un JPEG, mantenendo le
-// proporzioni, e lo ricodifica. Serve al percorso vision: gli image token
+// Downscale riduce a maxLongSide il lato lungo di un'immagine, mantenendo
+// le proporzioni, e la ricodifica SEMPRE in JPEG. Serve al percorso vision: gli image token
 // che il modello conta in ingresso dipendono dai pixel, quindi ridurli è
 // la leva che accorcia davvero la risposta — non il peso del file, che
 // pesa solo sull'upload.
@@ -29,6 +33,13 @@ const downscaleQuality = 80
 // in ExtractPageImages, dove una singola immagine guasta non fa fallire
 // tutto il manuale.
 //
+// L'uscita è JPEG anche quando l'ingresso non lo era e non c'era niente da
+// ridurre: una foto di regolamento può arrivare come PNG (uno screenshot),
+// e Transcribe annuncia al modello quei byte come "data:image/jpeg". Un
+// PNG restituito intatto sarebbe una richiesta che mente sul proprio
+// contenuto. Un JPEG già sotto soglia, invece, torna intatto com'è sempre
+// stato: ricodificarlo sarebbe solo una perdita generazionale gratuita.
+//
 // Non usa golang.org/x/image/draw, che sarebbe una dipendenza nuova:
 // boxDownscale è la media a box, che per una riduzione è il filtro
 // corretto e non un ripiego (vedi il suo commento).
@@ -36,16 +47,16 @@ func Downscale(src []byte, maxLongSide int) ([]byte, error) {
 	// DecodeConfig legge solo l'header: se l'immagine è già sotto la
 	// soglia si esce senza pagare la decodifica completa, che sul caso
 	// più comune (i fixture dei test, le pagine piccole) è tutto il costo.
-	cfg, _, err := image.DecodeConfig(bytes.NewReader(src))
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(src))
 	if err != nil {
 		return src, fmt.Errorf("manuals: header immagine illeggibile: %w", err)
 	}
 	w, h := fitLongSide(cfg.Width, cfg.Height, maxLongSide)
-	if w == cfg.Width && h == cfg.Height {
+	if w == cfg.Width && h == cfg.Height && format == "jpeg" {
 		return src, nil
 	}
 
-	img, err := jpeg.Decode(bytes.NewReader(src))
+	img, _, err := image.Decode(bytes.NewReader(src))
 	if err != nil {
 		return src, fmt.Errorf("manuals: immagine illeggibile: %w", err)
 	}
@@ -54,10 +65,14 @@ func Downscale(src []byte, maxLongSide int) ([]byte, error) {
 	if err := jpeg.Encode(&buf, boxDownscale(img, w, h), &jpeg.Options{Quality: downscaleQuality}); err != nil {
 		return src, fmt.Errorf("manuals: ricodifica JPEG: %w", err)
 	}
-	if buf.Len() >= len(src) {
+	if format == "jpeg" && buf.Len() >= len(src) {
 		// Patologico ma possibile: una scansione compressa fino
 		// all'osso può ricrescere in ricodifica. Mandare byte in più E
 		// pixel in meno sarebbe il peggio di entrambi.
+		//
+		// Vale solo se l'originale era già JPEG: restituire dei byte PNG
+		// perché "pesano meno" li manderebbe al modello sotto
+		// l'etichetta sbagliata, che è il guasto e non il risparmio.
 		return src, nil
 	}
 	return buf.Bytes(), nil
