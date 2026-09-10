@@ -439,3 +439,46 @@ func TestSegment_DoesNotRetry(t *testing.T) {
 		t.Fatalf("Segment non deve riprovare: fatti %d tentativi", got)
 	}
 }
+
+// TestTranscribe_TreatsAChattyVUOTAAsAnEmptyPage è un guasto visto in
+// produzione. Il prompt chiede la sola parola VUOTA per una pagina senza
+// testo; il modello del club ha risposto con un paragrafo di commento, poi
+// VUOTA su una riga sua, poi due parole lette sul logo. Con il confronto
+// esatto di prima quella risposta non era "VUOTA", quindi il commento del
+// modello è finito nella knowledge base come se fosse testo di
+// regolamento — l'unico chunk di un manuale, quello che l'admin ha letto
+// nella scheda.
+func TestTranscribe_TreatsAChattyVUOTAAsAnEmptyPage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"choices":[{"message":{"content":"L'immagine non contiene testo leggibile, ma solo il logo del gioco.\n\nVUOTA\n\nMARKET\n\n+1 Card"}}]}`)
+	}))
+	defer srv.Close()
+
+	client := ai.NewHTTPClientWithVision(srv.URL, "sk-test", "m", "mv")
+	out, err := client.Transcribe(context.Background(), []byte{0xFF, 0xD8}, 11)
+	if err != nil {
+		t.Fatalf("una pagina dichiarata vuota non è un errore: %v", err)
+	}
+	if out != "" {
+		t.Fatalf("atteso nessun testo per una pagina che il modello dichiara vuota, ottenuto %q", out)
+	}
+}
+
+// Il contrario: VUOTA dentro una frase è testo di regolamento (una pila
+// vuota, una casella vuota), non il segnale di pagina bianca. Solo una
+// riga che è *soltanto* quella parola conta come segnale.
+func TestTranscribe_KeepsAPageThatMerelyMentionsTheWord(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"choices":[{"message":{"content":"## Rifornimento\n\nQuando una pila e VUOTA, la partita continua."}}]}`)
+	}))
+	defer srv.Close()
+
+	client := ai.NewHTTPClientWithVision(srv.URL, "sk-test", "m", "mv")
+	out, err := client.Transcribe(context.Background(), []byte{0xFF, 0xD8}, 3)
+	if err != nil {
+		t.Fatalf("transcribe: %v", err)
+	}
+	if !strings.Contains(out, "Rifornimento") {
+		t.Fatalf("atteso il testo della pagina, ottenuto %q", out)
+	}
+}

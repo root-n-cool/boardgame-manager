@@ -832,6 +832,24 @@ func newTwoPageTextPDF(page1, page2 string) []byte {
 	})
 }
 
+// assertHasRealTextLayer è il presupposto dei test sul percorso testo: se
+// il fixture non ha testo estraibile, quei test esercitano vision senza
+// dirlo. Guarda quel che ExtractText restituisce, non i byte del file —
+// vedi buildPDFChunks per il perché un'occhiata ai byte non basta.
+func assertHasRealTextLayer(t *testing.T, raw []byte) {
+	t.Helper()
+	pages, err := manuals.ExtractText(raw)
+	if err != nil {
+		t.Fatalf("il fixture deve avere un vero layer testo, ExtractText: %v", err)
+	}
+	for _, p := range pages {
+		if strings.TrimSpace(p.Text) != "" {
+			return
+		}
+	}
+	t.Fatal("il fixture deve avere un vero layer testo, altrimenti il test esercita vision, non il percorso testo")
+}
+
 // TestIndexMedia_TextLayerPDFChunkThatBeginsOnSecondPageGetsThatPage è il
 // finding 1 del primo giro di review: il percorso PDF-con-layer-testo
 // (pdfTextChunks/pageStartsInSegmented) condivide con quello vision solo
@@ -862,9 +880,7 @@ func TestIndexMedia_TextLayerPDFChunkThatBeginsOnSecondPageGetsThatPage(t *testi
 	page2 := "Se un giocatore non puo pagare, scarta l'edificio invece di pagarlo. Poi si passa alla fase successiva."
 
 	raw := newTwoPageTextPDF(page1, page2)
-	if !manuals.HasTextLayer(raw) {
-		t.Fatal("il fixture deve avere un vero layer testo, altrimenti il test esercita vision, non il percorso testo")
-	}
+	assertHasRealTextLayer(t, raw)
 
 	router := httpapi.NewRouter(server)
 	cookie := loginAsAdmin(t, router)
@@ -935,9 +951,7 @@ func TestIndexMedia_TextLayerPDFAnchorFailureFallsBackToThePreviousPage(t *testi
 	page1 := "## Sezione\n\n" + "Questo e il testo vero della prima pagina, che non compare nel sostituito."
 	page2 := "Questo e il testo vero della seconda pagina, anche lui assente dal sostituito."
 	raw := newTwoPageTextPDF(page1, page2)
-	if !manuals.HasTextLayer(raw) {
-		t.Fatal("il fixture deve avere un vero layer testo")
-	}
+	assertHasRealTextLayer(t, raw)
 
 	router := httpapi.NewRouter(server)
 	cookie := loginAsAdmin(t, router)
@@ -1344,5 +1358,49 @@ func TestIndexMedia_ScannedPageIsDownscaledBeforeTranscription(t *testing.T) {
 	// Le proporzioni devono restare: 1800 × 1500 / 2400 = 1125.
 	if cfg.Width != 1125 {
 		t.Fatalf("larghezza %d, attesa 1125: le proporzioni non sono conservate", cfg.Width)
+	}
+}
+
+// TestIndexMedia_CompressedTextLayerPDFUsesTheTextPath è il bug visto in
+// produzione: il manuale italiano di Dominion (8 pagine, 3.223 caratteri
+// utili per pagina, misurati) è finito sul percorso vision e ha prodotto
+// UN chunk, il commento del modello su un logo. La causa era la decisione
+// presa sui byte grezzi del file: i suoi operatori `Tj` stanno dentro
+// content stream compressi con Flate — come in ogni PDF impaginato vero —
+// quindi invisibili a un'occhiata ai byte, mentre ExtractText li legge
+// benissimo. Tutti i fixture di questa suite scrivevano i content stream
+// in chiaro, ed è per questo che il difetto non si vedeva.
+//
+// Il PDF porta anche un XObject JPEG, come ogni manuale impaginato (loghi,
+// icone): il percorso vision avrebbe quindi qualcosa da trascrivere, e la
+// scelta fra i due percorsi conta davvero.
+func TestIndexMedia_CompressedTextLayerPDFUsesTheTextPath(t *testing.T) {
+	server, db := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{} // identità: il testo passa invariato
+	server.Vision = &pageTranscriber{}  // se viene chiamato, il test lo scopre
+
+	raw := manuals.NewCompressedTextPDF(
+		"Fase di Upkeep: ogni giocatore paga una moneta per ciascun edificio che possiede.",
+		"Se un giocatore non puo pagare, scarta l'edificio invece di pagarlo.",
+	)
+
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, raw, "manuale.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if v, ok := server.Vision.(*pageTranscriber); ok && v.calls.Load() != 0 {
+		t.Fatalf("un PDF con layer testo usabile non deve chiamare Transcribe, chiamato %d volte", v.calls.Load())
+	}
+
+	var text string
+	if err := db.QueryRow(`SELECT text FROM game_source_chunk WHERE game_id = ?`, gameID).Scan(&text); err != nil {
+		t.Fatalf("nessun chunk indicizzato: %v", err)
+	}
+	if !strings.Contains(text, "Fase di Upkeep") {
+		t.Fatalf("atteso il testo del layer testo nel chunk, ottenuto %q", text)
 	}
 }

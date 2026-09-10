@@ -12,46 +12,6 @@ import (
 	"boardgames-manager/internal/manuals"
 )
 
-func TestHasTextLayer(t *testing.T) {
-	if manuals.HasTextLayer(manuals.NewScannedPDF()) {
-		t.Fatal("una scansione non ha layer testo, ma HasTextLayer ha detto sì")
-	}
-	if !manuals.HasTextLayer(manuals.NewTextPDF()) {
-		t.Fatal("un PDF con operatori Tj ha layer testo, ma HasTextLayer ha detto no")
-	}
-}
-
-// TestHasTextLayer_IsNotFooledByBinaryImageData codifica la lezione del
-// manuale reale: dentro i byte binari di un JPEG le sequenze `)'` e `)"`
-// compaiono per puro caso, e un tempo bastavano da sole a far dire "ha
-// layer testo" a una scansione pura. Qui non c'è nessun /Font: deve
-// vincere l'assenza del font, non la coincidenza sui byte.
-func TestHasTextLayer_IsNotFooledByBinaryImageData(t *testing.T) {
-	binaryImageData := []byte(
-		"%PDF-1.4\n1 0 obj\n<< /Type /XObject /Subtype /Image /Filter /DCTDecode >>\n" +
-			"stream\n\xff\xd8\xff\xe0\x00\x10JFIF)'\x00\x01\x02)\"\xff\xd9\nendstream\nendobj\n")
-	if manuals.HasTextLayer(binaryImageData) {
-		t.Fatal("byte binari con )' e )\" ma senza /Font non hanno layer testo, ma HasTextLayer ha detto sì")
-	}
-}
-
-// TestHasTextLayer_RequiresBothConditions pinna la congiunzione: ogni
-// fixture usata altrove nel file ha o entrambe le condizioni o nessuna
-// delle due, quindi da sola la suite passerebbe anche se HasTextLayer
-// degradasse silenziosamente a una sola delle due condizioni. Qui invece
-// ciascun caso ne ha esattamente una.
-func TestHasTextLayer_RequiresBothConditions(t *testing.T) {
-	fontOnly := []byte("%PDF-1.4\n1 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
-	if manuals.HasTextLayer(fontOnly) {
-		t.Fatal("/Font senza Tj/TJ non ha layer testo, ma HasTextLayer ha detto sì")
-	}
-
-	tjOnly := []byte("%PDF-1.4\n1 0 obj\n<< /Length 10 >>\nstream\n(ciao) Tj\nendstream\nendobj\n")
-	if manuals.HasTextLayer(tjOnly) {
-		t.Fatal("Tj senza /Font non ha layer testo, ma HasTextLayer ha detto sì")
-	}
-}
-
 func TestExtractText_ReadsOnePageOfRealText(t *testing.T) {
 	pages, err := manuals.ExtractText(manuals.NewTextPDF())
 	if err != nil {
@@ -408,8 +368,17 @@ func TestExtractPageImages_OnTheRealManual(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read %s: %v", p, err)
 		}
-		hasText := manuals.HasTextLayer(raw)
-		t.Logf("%s: HasTextLayer=%v", filepath.Base(p), hasText)
+		// Il segnale è quel che ExtractText restituisce davvero, non
+		// un'occhiata ai byte: era HasTextLayer, che su un PDF impaginato
+		// con i content stream compressi rispondeva "niente testo" (vedi
+		// buildPDFChunks in internal/httpapi).
+		pages, _ := manuals.ExtractText(raw)
+		usable := 0
+		for _, pg := range pages {
+			usable += len(strings.TrimSpace(pg.Text))
+		}
+		hasText := usable > 0
+		t.Logf("%s: testo estratto=%d caratteri", filepath.Base(p), usable)
 		if hasText {
 			// Un PDF con un vero layer testo va sull'altro percorso
 			// (ExtractText) ed è un input perfettamente supportato: qui si
@@ -433,7 +402,7 @@ func TestExtractPageImages_OnTheRealManual(t *testing.T) {
 			// Stessa ragione del ramo sopra: qui dentro c'è la cartella dati
 			// di un'installazione vera, dove finisce qualunque cosa sia stata
 			// caricata — compreso un file di prova da 49 byte che non è né
-			// una scansione né un PDF con testo. HasTextLayer=false non
+			// una scansione né un PDF con testo. Nessun testo estratto non
 			// significa "è una scansione", significa solo "non ha un layer
 			// testo", e un PDF vuoto o rotto lo soddisfa. Un t.Errorf qui
 			// rendeva rossa la suite per il contenuto della cartella upload
@@ -454,5 +423,31 @@ func TestExtractPageImages_OnTheRealManual(t *testing.T) {
 					filepath.Base(p), img.Number, err)
 			}
 		}
+	}
+}
+
+// TestExtractText_ReadsACompressedContentStream pinna il canale su cui il
+// manuale reale del club si è rotto: i PDF veri comprimono i content
+// stream, quindi gli operatori di disegno testo NON sono visibili nei byte
+// grezzi del file. ExtractText li legge comunque, ed è per questo che
+// l'estrazione tentata sempre — e giudicata sul testo che restituisce — è
+// più affidabile di qualunque euristica sui byte.
+func TestExtractText_ReadsACompressedContentStream(t *testing.T) {
+	raw := manuals.NewCompressedTextPDF("Fase di Upkeep", "Ogni giocatore paga una moneta.")
+
+	// Il presupposto del test: nei byte grezzi non si vede nessun Tj.
+	if bytes.Contains(raw, []byte(") Tj")) {
+		t.Fatal("il fixture deve avere il content stream compresso, ma i Tj si vedono in chiaro")
+	}
+
+	pages, err := manuals.ExtractText(raw)
+	if err != nil {
+		t.Fatalf("extract text: %v", err)
+	}
+	if len(pages) != 1 {
+		t.Fatalf("attesa 1 pagina, ottenute %d", len(pages))
+	}
+	if !strings.Contains(pages[0].Text, "Fase di Upkeep") {
+		t.Fatalf("atteso il testo della pagina, ottenuto %q", pages[0].Text)
 	}
 }

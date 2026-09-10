@@ -107,7 +107,7 @@ func (c *HTTPClient) Transcribe(ctx context.Context, jpeg []byte, pageNumber int
 	if err != nil {
 		return "", err
 	}
-	if strings.EqualFold(strings.TrimSpace(out), "VUOTA") {
+	if declaresEmptyPage(out) {
 		// Una pagina di sole illustrazioni: non è un errore, ma non è
 		// nemmeno testo. Il chiamante la salva vuota.
 		return "", nil
@@ -118,6 +118,28 @@ func (c *HTTPClient) Transcribe(ctx context.Context, jpeg []byte, pageNumber int
 		return "", fmt.Errorf("il modello non ha restituito testo per la pagina %d", pageNumber)
 	}
 	return strings.TrimSpace(out), nil
+}
+
+// declaresEmptyPage dice se il modello ha dichiarato la pagina senza
+// testo. Il prompt chiede la sola parola VUOTA, ma un modello che ragiona
+// male l'ubbidienza ci mette intorno del suo: in produzione ha risposto un
+// paragrafo di commento («L'immagine non contiene testo leggibile, ma solo
+// il logo del gioco»), poi VUOTA su una riga, poi due parole lette sul
+// logo. Con un confronto esatto quella risposta contava come testo di
+// regolamento ed è finita nella knowledge base — l'unico chunk di un
+// manuale.
+//
+// Basta quindi che UNA riga sia soltanto quella parola. Non un
+// `strings.Contains` su tutta la risposta: "quando una pila è VUOTA" è
+// testo di regolamento vero, e scartare quella pagina sarebbe il guasto
+// opposto, silenzioso e peggiore.
+func declaresEmptyPage(out string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.EqualFold(strings.TrimSpace(line), "VUOTA") {
+			return true
+		}
+	}
+	return false
 }
 
 // transcribeBackoff è l'attesa fra i tentativi di trascrizione di UNA

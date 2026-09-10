@@ -31,40 +31,6 @@ type PageImage struct {
 	Height int
 }
 
-// textShowingOperator trova gli operatori PDF che disegnano testo:
-// `(...) Tj` e `[...] TJ`. Sono volutamente esclusi `'` e `"`: sono rari nei
-// content stream reali e, dentro un flusso binario JPEG, la sequenza
-// `)'` o `)"` compare per puro caso — è così che un manuale scansionato
-// reale di questo progetto veniva letto come "ha layer testo".
-var textShowingOperator = regexp.MustCompile(`\)\s*Tj|\]\s*TJ`)
-
-// fontResource trova un riferimento a `/Font` nel documento. Un content
-// stream che disegna testo deve appoggiarsi a una risorsa Font dichiarata
-// nel dizionario delle risorse della pagina: uno scan puro non ne ha
-// nessuna, quindi la sua assenza è una seconda prova indipendente
-// dall'operatore di disegno, che da solo può capitare per caso nei byte di
-// un'immagine.
-var fontResource = regexp.MustCompile(`/Font\b`)
-
-// HasTextLayer dice se vale la pena provare l'estrazione testo. Richiede
-// **sia** un operatore di disegno testo **sia** un riferimento a /Font,
-// perché il solo operatore basta a produrre falsi positivi: dentro un
-// flusso JPEG (dati binari) le sequenze `)'` o `)"` compaiono per caso, e
-// così un manuale scansionato del club risultava "con layer testo".
-//
-// La sbilanciatura è deliberata e va nella direzione sicura: quando è
-// incerto, HasTextLayer risponde false e il PDF va sul percorso vision, che
-// funziona su qualsiasi PDF (scansione o no) e nel peggiore dei casi costa
-// solo una chiamata al modello in più. Rispondere true per errore è invece
-// il guasto grave: l'estrazione testo su una scansione restituisce stringa
-// vuota, il percorso vision non parte mai, e la funzione tace — nessun
-// errore, nessuna citazione, il manuale è muto. Un PDF con vero layer testo
-// che nasconde il suo /Font dentro un object stream compresso finirà anche
-// lui sul percorso vision: costa una chiamata in più, non rompe niente.
-func HasTextLayer(pdf []byte) bool {
-	return fontResource.Match(pdf) && textShowingOperator.Match(pdf)
-}
-
 // dctImage individua un XObject immagine con filtro DCTDecode. I JPEG
 // dentro un PDF non sono ricodificati: il flusso è il file JPEG, quindi
 // estrarlo è una copia. I due gruppi fra /Subtype e /Filter e fra /Filter

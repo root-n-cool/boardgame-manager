@@ -320,11 +320,10 @@ func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) 
 // l'estrazione di un PDF (era in extractManualHandler, prima che questo
 // task sostituisse le quattro rotte a pagina con l'indicizzazione unica):
 //
-//  1. Se HasTextLayer dice che c'è un layer testo, si prova ExtractText.
-//     Se il risultato è buono in media (vedi minAvgUsableCharsPerPage) si
-//     segmenta quel testo (percorso testo).
-//  2. Altrimenti (nessun layer testo, ExtractText fallito, o testo troppo
-//     debole in media) si prova il percorso vision.
+//  1. Si prova SEMPRE ExtractText. Se il risultato è buono in media (vedi
+//     minAvgUsableCharsPerPage) si segmenta quel testo (percorso testo).
+//  2. Altrimenti (ExtractText fallito, o testo troppo debole in media) si
+//     prova il percorso vision.
 //  3. Se il percorso vision non trova nemmeno un'immagine da trascrivere
 //     ma il passo 1 aveva comunque estratto del testo, per quanto debole
 //     in media, quel testo diventa comunque la base del percorso testo
@@ -332,18 +331,36 @@ func (s *Server) buildSourceChunks(ctx context.Context, ext string, raw []byte) 
 //     corto (un cartoncino di riferimento di una pagina). Un errore
 //     (errPDFNoContent) si restituisce solo quando *nessuno* dei due
 //     percorsi ha prodotto niente.
+//
+// **Il passo 1 non ha più un pre-controllo sui byte del file**, ed è la
+// correzione di un guasto visto in produzione. C'era un HasTextLayer che
+// decideva a monte guardando i byte grezzi: `/Font` più un operatore di
+// disegno testo (`) Tj`, `] TJ`) visibili nel file. Ma in ogni PDF
+// impaginato vero i content stream sono compressi con Flate, quindi quegli
+// operatori NON si vedono: il manuale italiano di Dominion — 8 pagine,
+// 3.223 caratteri utili per pagina, trentadue volte la soglia — è stato
+// giudicato "senza testo", è finito sul percorso vision, e lì
+// ExtractPageImages gli ha restituito 80 XObject (loghi e icone delle
+// carte, 0-36 KB l'uno) che il modello ha trascritto uno per uno: un solo
+// chunk salvato, contenente il commento del modello su un logo. Niente
+// titoli, quindi nemmeno le domande suggerite (che li richiedono).
+//
+// Il giudice affidabile è la media dei caratteri utili di quel che
+// ExtractText restituisce davvero: una scansione dà zero e va su vision
+// come prima, un PDF impaginato dà migliaia e va sul testo. È anche
+// immune al falso positivo per cui HasTextLayer era nato (i byte di un
+// JPEG che per caso contengono `)'`), perché non guarda più i byte: se
+// l'estrazione non produce testo, il testo non c'è. Costa un tentativo di
+// estrazione locale — nessuna chiamata al modello — su ogni PDF.
 func (s *Server) buildPDFChunks(ctx context.Context, raw []byte) ([]detailedChunk, pdfPageStats, error) {
 	var extractedPages []manuals.Page
-	if manuals.HasTextLayer(raw) {
-		pages, textErr := manuals.ExtractText(raw)
-		if textErr != nil {
-			log.Printf("index: extract text: %v", textErr)
-		} else {
-			extractedPages = pages
-			if averageUsableTextChars(pages) >= minAvgUsableCharsPerPage {
-				chunks, err := s.pdfTextChunks(ctx, pages)
-				return chunks, pdfPageStats{}, err
-			}
+	if pages, textErr := manuals.ExtractText(raw); textErr != nil {
+		log.Printf("index: extract text: %v", textErr)
+	} else {
+		extractedPages = pages
+		if averageUsableTextChars(pages) >= minAvgUsableCharsPerPage {
+			chunks, err := s.pdfTextChunks(ctx, pages)
+			return chunks, pdfPageStats{}, err
 		}
 	}
 

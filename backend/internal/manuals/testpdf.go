@@ -2,6 +2,7 @@ package manuals
 
 import (
 	"bytes"
+	"compress/zlib"
 	"fmt"
 	"image"
 	"image/color"
@@ -67,6 +68,51 @@ func ImageObject(jpg []byte, w, h int) string {
 		"<< /Type /XObject /Subtype /Image /Width %d /Height %d "+
 			"/ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n%s\nendstream",
 		w, h, len(jpg), jpg)
+}
+
+// NewCompressedTextPDF restituisce un PDF con un vero layer testo il cui
+// content stream è compresso con Flate — cioè la forma in cui i PDF veri
+// arrivano, e quella che nessun fixture di questo file copriva: tutti gli
+// altri scrivono il content stream in chiaro, e con gli operatori `Tj`
+// visibili nei byte grezzi ogni euristica a colpo d'occhio li riconosce.
+// Un manuale reale (il Dominion italiano del club, 8 pagine, 3.223
+// caratteri utili per pagina) è finito sul percorso vision proprio perché
+// i suoi `Tj` erano dentro flussi compressi.
+//
+// Porta anche un XObject JPEG, come ogni manuale impaginato vero (loghi,
+// icone delle carte): serve a esercitare il caso in cui *entrambe* le
+// strade hanno qualcosa da offrire e la decisione conta.
+func NewCompressedTextPDF(lines ...string) []byte {
+	if len(lines) == 0 {
+		lines = []string{"Fase di Upkeep", "Ogni giocatore paga una moneta."}
+	}
+	var content strings.Builder
+	content.WriteString("BT /F1 12 Tf 20 240 Td ")
+	for _, line := range lines {
+		fmt.Fprintf(&content, "(%s) Tj 0 -20 Td ", line)
+	}
+	content.WriteString("ET")
+
+	var compressed bytes.Buffer
+	zw := zlib.NewWriter(&compressed)
+	if _, err := zw.Write([]byte(content.String())); err != nil {
+		panic("manuals: compress fixture content stream: " + err.Error())
+	}
+	if err := zw.Close(); err != nil {
+		panic("manuals: close fixture compressor: " + err.Error())
+	}
+
+	jpg := NewTestJPEG(40, 40)
+	return BuildTestPDF([]string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " +
+			"/Resources << /Font << /F1 5 0 R >> /XObject << /Im1 6 0 R >> >> /Contents 4 0 R >>",
+		fmt.Sprintf("<< /Length %d /Filter /FlateDecode >>\nstream\n%s\nendstream",
+			compressed.Len(), compressed.String()),
+		"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+		ImageObject(jpg, 40, 40),
+	})
 }
 
 // NewScannedPDF restituisce un manuale scansionato di due pagine, ognuna un
