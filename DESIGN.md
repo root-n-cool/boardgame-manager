@@ -1095,6 +1095,17 @@ l'azione sta in basso a destra, dove il pollice la trova.
   riga di "Fuori" (`.loan-row-notes`, corsivo nel font di corpo). La
   stessa nota in due font avrebbe fatto sembrare due cose diverse la
   stessa frase.
+- **Riga della checklist materiali** (`.material-check-list li`, nella
+  modale di restituzione): nome elastico (`.material-check-name`, `flex:
+  1`), quantità attesa in mono (`.material-check-expected`, è un dato),
+  campo numerico stretto quanto basta a quattro cifre
+  (`.material-check-input`) e casella di spunta. La casella nativa in
+  Chrome **ignora il `padding`**: gonfiarla per portare l'area di tocco a
+  44px lasciava il bersaglio reale a ~20px. La soluzione è avvolgere
+  l'`<input>` in un `<label>` (`.material-check-box-wrap`) di 44×44px che
+  centra al suo interno una casella piccola quanto il resto della riga
+  (`.material-check-box`, 1.35rem): l'area di tocco cresce sul
+  contenitore, il disegno del controllo resta fedele alla riga.
 
 ### Aggiungi gioco (`/admin/games/new`)
 - **Un form solo, due fogli** (`.panel-form` + `.panel-card`): *Gioco* e
