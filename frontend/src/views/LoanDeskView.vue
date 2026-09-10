@@ -105,6 +105,36 @@ type MaterialCheckRow = { material: Material; complete: boolean; returned: strin
 
 const materialChecks = ref<MaterialCheckRow[]>([])
 
+/**
+ * Il campo accetta solo cifre. `inputmode="numeric"` è un suggerimento alla
+ * tastiera, non un vincolo: senza questo filtro "abc" diventava NaN e finiva
+ * nel payload come `null`, cioè "non verificata" — l'organizzatore credeva di
+ * aver contato qualcosa e nel registro non risultava.
+ */
+function onReturnedInput(row: MaterialCheckRow, event: Event) {
+  const el = event.target as HTMLInputElement
+  const digits = el.value.replace(/\D/g, '')
+  row.returned = digits
+  // Rimette a posto il campo quando il filtro ha scartato qualcosa: senza,
+  // il DOM resterebbe con il testo rifiutato perché il valore legato non è
+  // cambiato e Vue non ha niente da ridisegnare.
+  if (el.value !== digits) {
+    el.value = digits
+  }
+}
+
+/**
+ * Spuntare significa "tornata tutta", quindi il numero digitato prima non ha
+ * più senso e sparisce. Non è solo cosmetica: se resta lì, chi toglie la
+ * spunta per correggersi se lo ritrova come se l'avesse appena scritto.
+ */
+function onCompleteToggle(row: MaterialCheckRow, event: Event) {
+  row.complete = (event.target as HTMLInputElement).checked
+  if (row.complete) {
+    row.returned = ''
+  }
+}
+
 /** Verificata = spuntata, oppure con una quantità scritta. */
 const verifiedCount = computed(
   () => materialChecks.value.filter((r) => r.complete || r.returned.trim() !== '').length,
@@ -432,9 +462,9 @@ onMounted(async () => {
                   non il mono di `.row-meta`, riservato a telefono e orari.
                 -->
                 <span v-if="row.notes" class="loan-row-notes">{{ row.notes }}</span>
-                <p v-if="row.materialIssues.length" class="row-meta material-issues">
+                <span v-if="row.materialIssues.length" class="material-issues">
                   {{ issuesLabel(row.materialIssues) }}
-                </p>
+                </span>
               </span>
             </div>
           </li>
@@ -511,7 +541,8 @@ onMounted(async () => {
           <legend>
             Materiali
             <span class="material-check-progress">
-              {{ verifiedCount }} di {{ materialChecks.length }} verificate
+              {{ verifiedCount }} di {{ materialChecks.length }}
+              {{ materialChecks.length === 1 ? 'verificata' : 'verificate' }}
             </span>
           </legend>
           <ul class="material-check-list">
@@ -519,20 +550,23 @@ onMounted(async () => {
               <span class="material-check-name">{{ row.material.name }}</span>
               <span class="material-check-expected">{{ row.material.quantity }}</span>
               <input
-                v-model="row.returned"
+                :value="row.returned"
                 class="material-check-input"
                 type="text"
                 inputmode="numeric"
+                maxlength="4"
                 :disabled="row.complete"
                 :placeholder="row.complete ? '—' : ''"
                 :aria-label="`${row.material.name}: quantità tornata`"
+                @input="onReturnedInput(row, $event)"
               />
               <label class="material-check-box-wrap">
                 <input
-                  v-model="row.complete"
+                  :checked="row.complete"
                   type="checkbox"
                   class="material-check-box"
                   :aria-label="`${row.material.name}: tutte tornate`"
+                  @change="onCompleteToggle(row, $event)"
                 />
               </label>
             </li>

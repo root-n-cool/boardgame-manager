@@ -3996,6 +3996,18 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--ink-muted);
 }
 
+/* Quel che non è tornato è l'unica riga del registro che chiede di essere
+   notata: colore d'allarme (5.15:1 sul cartoncino, sopra la soglia AA) e non
+   il grigio delle altre meta. In `Body` e non nel mono di `.row-meta`: è una
+   frase con dentro dei numeri, non un dato da ricopiare. */
+.material-issues {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
 .loan-row-action {
   flex-shrink: 0;
   font-family: 'Body', system-ui, sans-serif;
@@ -4780,11 +4792,29 @@ form.game-materials {
   text-align: right;
 }
 
+/* Griglia a tre caselle fisse e non una fila di bottoni: su una riga senza
+   la freccia in su — la prima — o senza quella in giù — l'ultima — la casella
+   resta vuota invece di far scivolare le altre. Senza questo, la freccia in su
+   dell'ultima riga si siede dove tutte le altre hanno quella in giù, e chi
+   risale una voce a colpi di clic trova un bottone diverso sotto il dito. */
 .game-materials-row-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
   flex: none;
   gap: 0.3rem;
   margin-left: auto;
+}
+
+.game-materials-move-up {
+  grid-column: 1;
+}
+
+.game-materials-move-down {
+  grid-column: 2;
+}
+
+.game-materials-remove {
+  grid-column: 3;
 }
 
 /* Bottoni icona-soli: il testo è solo nell'`aria-label`, quindi il quadrato

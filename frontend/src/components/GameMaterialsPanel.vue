@@ -234,7 +234,7 @@ onMounted(load)
             <button
               v-if="i > 0"
               type="button"
-              class="btn-secondary"
+              class="btn-secondary game-materials-move-up"
               :disabled="busy"
               :aria-label="`Sposta ${rowLabel(row, i)} in su`"
               @click="moveUp(i)"
@@ -252,7 +252,7 @@ onMounted(load)
             <button
               v-if="i < rows.length - 1"
               type="button"
-              class="btn-secondary"
+              class="btn-secondary game-materials-move-down"
               :disabled="busy"
               :aria-label="`Sposta ${rowLabel(row, i)} in giù`"
               @click="moveDown(i)"
@@ -269,7 +269,7 @@ onMounted(load)
             </button>
             <button
               type="button"
-              class="btn-danger"
+              class="btn-danger game-materials-remove"
               :disabled="busy"
               :aria-label="`Rimuovi ${rowLabel(row, i)}`"
               @click="removeRow(i)"
