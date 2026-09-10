@@ -56,11 +56,33 @@ var CoverCategory = Category{
 	Name: "cover",
 	Types: map[string]string{
 		".jpg":  "image/jpeg",
-		".jpeg": "image/jpeg",
 		".png":  "image/png",
 		".webp": "image/webp",
 	},
 	MaxBytes: 5 << 20, // 5 MB
+}
+
+// extAliases riporta alla forma canonica le estensioni che nominano lo
+// stesso identico formato. Serve perché Types deve avere UNA sola
+// estensione per tipo sniffato: quando Save non riceve un filename (il
+// download della copertina da BGG) l'estensione si ricava dal solo tipo
+// sniffato, e due chiavi ".jpg"/".jpeg" con lo stesso "image/jpeg"
+// rendevano quel ripiego ambiguo — cioè rifiutavano ogni copertina JPEG
+// scaricata da BGG.
+//
+// Non va confuso con l'ambiguità che extensionFor rifiuta apposta: .txt e
+// .md sniffano entrambi "text/plain" ma sono formati diversi, che
+// l'ingestione tratta in due modi diversi. .jpg e .jpeg sono lo stesso
+// formato scritto in due modi, quindi sceglierne uno non indovina niente.
+var extAliases = map[string]string{
+	".jpeg": ".jpg",
+}
+
+func canonicalExt(ext string) string {
+	if canonical, ok := extAliases[ext]; ok {
+		return canonical
+	}
+	return ext
 }
 
 var ErrUnsupportedType = errors.New("unsupported file type")
@@ -100,15 +122,17 @@ func sniffContentType(data []byte) string {
 // io.Reader dal corpo della risposta HTTP): si ripiega sul tipo sniffato,
 // cercando fra le estensioni della categoria l'UNICA il cui tipo atteso
 // coincide. Se più di un'estensione condivide lo stesso tipo sniffato
-// (come .txt e .md in ManualCategory) il ripiego è ambiguo e si rifiuta,
-// invece di indovinare: nessun chiamante di produzione senza filename usa
-// oggi una categoria ambigua, quindi rifiutare qui non toglie nulla di
-// reale e resta il comportamento sicuro se un giorno qualcuno ci provasse.
+// (come .txt e .md in ManualCategory, formati diversi che l'ingestione
+// tratta in due modi diversi) il ripiego è ambiguo e si rifiuta, invece
+// di indovinare. Due nomi dello STESSO formato non sono questo caso:
+// li appiattisce extAliases prima che arrivino qui, altrimenti ".jpg" e
+// ".jpeg" avrebbero reso ambigua CoverCategory — cioè irraggiungibile il
+// solo chiamante di produzione senza filename.
 func extensionFor(category Category, data []byte, filename string) (string, error) {
 	sniffed := sniffContentType(data)
 
 	if filename != "" {
-		ext := strings.ToLower(filepath.Ext(filename))
+		ext := canonicalExt(strings.ToLower(filepath.Ext(filename)))
 		expected, ok := category.Types[ext]
 		if !ok || expected != sniffed {
 			return "", ErrUnsupportedType

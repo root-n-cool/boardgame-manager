@@ -208,3 +208,40 @@ func TestSave_WithoutAFilenameRejectsAnAmbiguousSniffedType(t *testing.T) {
 		t.Fatalf("expected ErrUnsupportedType for an ambiguous sniff without a filename, got %v", err)
 	}
 }
+
+// TestSave_StoresABGGCoverDownloadedWithoutAFilename riproduce il percorso
+// del download della copertina da BGG (games_handlers.go: Save con
+// filename ""), l'unico chiamante di produzione che si affida al solo
+// tipo sniffato. Una copertina JPEG deve essere salvata, non rifiutata
+// perché CoverCategory elenca due estensioni per lo stesso tipo.
+func TestSave_StoresABGGCoverDownloadedWithoutAFilename(t *testing.T) {
+	dir := t.TempDir()
+	store := storage.NewStore(dir)
+
+	jpeg := "\xFF\xD8\xFF\xE0\x00\x10JFIF copertina scaricata da BGG"
+	name, err := store.Save(storage.CoverCategory, strings.NewReader(jpeg), "")
+	if err != nil {
+		t.Fatalf("save cover senza filename: %v", err)
+	}
+	if !strings.HasSuffix(name, ".jpg") {
+		t.Fatalf("attesa estensione .jpg, ottenuto %q", name)
+	}
+}
+
+// TestSave_NormalisesAJpegExtensionToJpg fissa l'altra metà del fix: un
+// upload chiamato .jpeg resta accettato, e finisce su disco come .jpg —
+// una sola estensione per formato, che è ciò che rende non ambiguo il
+// ripiego senza filename.
+func TestSave_NormalisesAJpegExtensionToJpg(t *testing.T) {
+	dir := t.TempDir()
+	store := storage.NewStore(dir)
+
+	jpeg := "\xFF\xD8\xFF\xE0\x00\x10JFIF copertina caricata a mano"
+	name, err := store.Save(storage.CoverCategory, strings.NewReader(jpeg), "copertina.jpeg")
+	if err != nil {
+		t.Fatalf("save copertina.jpeg: %v", err)
+	}
+	if !strings.HasSuffix(name, ".jpg") {
+		t.Fatalf("attesa estensione .jpg, ottenuto %q", name)
+	}
+}
