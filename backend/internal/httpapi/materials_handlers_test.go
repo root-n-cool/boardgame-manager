@@ -1,6 +1,8 @@
 package httpapi_test
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -8,7 +10,9 @@ import (
 	"strings"
 	"testing"
 
+	"boardgames-manager/internal/ai"
 	"boardgames-manager/internal/httpapi"
+	"boardgames-manager/internal/manuals"
 )
 
 func TestGetMaterialsStartsEmpty(t *testing.T) {
@@ -148,5 +152,107 @@ func TestMaterialsOnAMissingGameIs404(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("volevo 404, ho %d: %s", rec.Code, rec.Body)
+	}
+}
+
+// indexOneChunk mette una fonte indicizzata sul gioco, il minimo perché la
+// ricerca FTS trovi qualcosa.
+func indexOneChunk(t *testing.T, conn *sql.DB, gameID int64, text string) {
+	t.Helper()
+	store := manuals.NewStore(conn)
+	err := store.ReplaceSource(context.Background(), gameID, nil, []manuals.SourceChunk{{
+		ReferenceType: "faq", Reference: "https://example.test/faq",
+		Heading: "Contenuto della scatola", Seq: 0, Text: text,
+	}})
+	if err != nil {
+		t.Fatalf("index chunk: %v", err)
+	}
+}
+
+func TestSuggestMaterialsNeedsAnIndexedManual(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.MaterialLister = &fakeMaterialLister{
+		out: []ai.SuggestedMaterial{{Name: "tessere", Quantity: 72}},
+	}
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/materials/suggest", gameID), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	// Nessuna fonte indicizzata: 422 con il consiglio giusto, come fa la
+	// rigenerazione delle domande suggerite.
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("volevo 422, ho %d: %s", rec.Code, rec.Body)
+	}
+	if !strings.Contains(rec.Body.String(), "indicizza") {
+		t.Errorf("il messaggio deve dire cosa fare, ho %s", rec.Body)
+	}
+}
+
+func TestSuggestMaterialsProposesWithoutSaving(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	lister := &fakeMaterialLister{out: []ai.SuggestedMaterial{
+		{Name: "tessere", Quantity: 72},
+		{Name: "meeple", Quantity: 40},
+	}}
+	server.MaterialLister = lister
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+	indexOneChunk(t, conn, gameID, "Contenuto della scatola: 72 tessere e 40 meeple.")
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/materials/suggest", gameID), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("volevo 200, ho %d: %s", rec.Code, rec.Body)
+	}
+	if lister.calls != 1 {
+		t.Fatalf("volevo una chiamata al modello, ne ho %d", lister.calls)
+	}
+	if len(lister.lastPassages) == 0 {
+		t.Error("al modello devono arrivare i passaggi del manuale")
+	}
+	var body struct {
+		Materials []map[string]any `json:"materials"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Materials) != 2 {
+		t.Fatalf("volevo 2 voci proposte, ho %+v", body.Materials)
+	}
+
+	// La proposta non tocca il DB: è l'admin a confermare.
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM game_material`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("la proposta ha salvato %d voci: non deve salvare niente", count)
+	}
+}
+
+func TestSuggestMaterialsTellsWhenTheModelIsUseless(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.MaterialLister = &fakeMaterialLister{err: ai.ErrMaterialsRejected}
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+	indexOneChunk(t, conn, gameID, "Contenuto della scatola: tante cose.")
+
+	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/games/%d/materials/suggest", gameID), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("volevo 422, ho %d: %s", rec.Code, rec.Body)
 	}
 }
