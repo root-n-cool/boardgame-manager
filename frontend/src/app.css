@@ -1227,6 +1227,17 @@ button.back-link:active {
   box-shadow: var(--shadow-card);
 }
 
+/* Quando la card va a capo (~520px) la copertina resta da sola sulla sua riga:
+   centrata, non incollata al bordo sinistro. Sopra il punto di wrap la regola
+   è inerte perché `.game-cover-info { flex: 1 }` assorbe lo spazio libero
+   prima dei margini auto — se quel `flex` cambia, va rivisto anche questo. */
+@media (max-width: 560px) {
+  .game-cover-card > .cover,
+  .game-cover-card > .cover-uploader {
+    margin-inline: auto;
+  }
+}
+
 /* Nessuna copertina: il dado sul feltro, come nelle griglie. */
 .cover-empty {
   display: flex;
