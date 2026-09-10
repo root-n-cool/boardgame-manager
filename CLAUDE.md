@@ -153,6 +153,15 @@ risultato di una sessione di brainstorming con l'utente.
   `npm` in locale.
 - Usa il server MCP **Context7** per recuperare documentazione di
   librerie/framework, salvo indicazione diversa.
+- **Claude in Chrome è disponibile** (tool `mcp__claude-in-chrome__*`,
+  skill `claude-in-chrome`): usalo per verificare l'app nel browser
+  reale — screenshot, click, compilazione form, console e network di
+  http://localhost:8080. Prerequisiti: `docker compose up -d --build`
+  attivo, estensione Chrome connessa (se
+  `list_connected_browsers` torna vuoto chiedi all'utente di aprire
+  Chrome e collegare l'estensione) e permesso sul sito concesso.
+  In alternativa è configurato anche il MCP **chrome-devtools** per
+  performance/Lighthouse.
 - Mantieni le dipendenze al minimo: prima di aggiungerne una nuova
   (Go o npm) chiedi — il progetto preferisce stdlib e codice esplicito.
 - Nessun i18n: l'interfaccia è in italiano, stringhe direttamente nei
@@ -191,6 +200,10 @@ risultato di una sessione di brainstorming con l'utente.
   frontend/UI deve prevedere, come **ultimo task della todo list**, il
   lancio di `/impeccable` sulla superficie modificata (es. `polish` /
   `audit` / `critique`) prima di considerare il lavoro concluso.
+- Verifica visiva con Claude in Chrome quando cambi una schermata:
+  apri la pagina su http://localhost:8080, controlla desktop e
+  viewport mobile (le pagine pubbliche sono mobile-first) e leggi la
+  console per errori.
 - Il sistema visivo (colori, tipografia, componenti, tono "dado &
   pedina") è documentato in `DESIGN.md`: rispettalo e aggiornalo quando
   introduci nuovi pattern. I token stanno in `frontend/src/app.css`.
