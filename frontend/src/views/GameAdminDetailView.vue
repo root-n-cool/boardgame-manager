@@ -600,7 +600,21 @@ onMounted(async () => {
           Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
           sezione Media qui sopra.
         </p>
+      </section>
 
+      <!--
+        Sezione propria e non un blocco dentro "Chatbot", per una ragione che
+        non e' di layout: le domande suggerite sono per GIOCO, non per lingua
+        (la chat cerca in tutte le fonti insieme). Dentro una sezione
+        intitolata "Chatbot IT" sembravano a scope di lingua, e chi cambiava
+        tab si aspettava domande diverse trovando le stesse. Qui non c'e'
+        `lang-chip` — l'assenza e' l'informazione.
+
+        Resta fuori da `indexableMedia`: le tre domande si devono poter
+        scrivere a mano anche su un gioco senza documenti, ed e' il motivo per
+        cui il PUT e' un upsert.
+      -->
+      <section class="panel-card">
         <SuggestedQuestionsPanel
           :key="suggestedQuestionsKey"
           :game-id="game.id"

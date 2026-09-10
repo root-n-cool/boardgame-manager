@@ -4302,12 +4302,12 @@ tbody tr:nth-child(3) .rank-medal {
 
 /* Le tre domande di riposo della chat, sotto la lista dei documenti nello
    stesso `.panel-card`: un filetto in alto le separa come farebbe un
-   secondo foglio, senza raddoppiare bordo e ombra.
+   sezione propria (`.panel-card` nella vista), quindi non porta bordo, ombra
+   né separatore suoi: a staccarla dal Chatbot ci pensa lo spazio fra le card.
 
    È un `<form>`, quindi eredita la colonna flex e il `gap` di `form`: qui il
    gap scende a 0.85rem perché separa gruppi già compatti (testata, lista,
-   riga azioni) dentro un foglio che ha altro sopra, non le sezioni di una
-   pagina.
+   riga azioni) dentro una card, non le sezioni di una pagina.
 
    `form.suggested-questions` e non `.suggested-questions`: `.app-page form`
    porta `align-items: flex-start` per non stirare i submit, e `.panel-card
@@ -4321,9 +4321,6 @@ tbody tr:nth-child(3) .rank-medal {
 form.suggested-questions {
   align-items: stretch;
   gap: 0.85rem;
-  margin-top: 1.5rem;
-  padding-top: 1.25rem;
-  border-top: 1px solid var(--card-line);
 }
 
 /* Il ritmo del pannello lo governa il `gap`. La `.field-hint` dell'app porta
@@ -4352,11 +4349,12 @@ form.suggested-questions {
   margin-bottom: 0;
 }
 
-.suggested-questions h3 {
+/* `h2` come i titoli delle sezioni sorelle (Scheda, Media, Chatbot), da cui
+   eredita famiglia e taglia: promuovendolo da `h3` non serve più vestirlo a
+   mano, basta azzerare il margine perché la spaziatura la dà il `gap` del
+   gruppo di testata. */
+.suggested-questions h2 {
   margin: 0;
-  font-family: 'Display', system-ui, sans-serif;
-  font-size: 1rem;
-  font-weight: 600;
 }
 
 /* Spogliata come `.admin-list`: la regola globale delle liste la veste da
