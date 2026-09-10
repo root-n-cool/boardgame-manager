@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"image/jpeg"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1282,5 +1283,66 @@ func TestIndexMedia_SkipsSuggestionWhenAllThreeAreEdited(t *testing.T) {
 	}
 	if got[0].Text != "Mia 1?" {
 		t.Fatalf("le domande scritte a mano devono essere intatte: %v", got)
+	}
+}
+
+// capturingTranscriber conserva i byte JPEG ricevuti per la prima pagina.
+// Gli altri finti trascrittori qui sopra li ignorano tutti: è l'unico modo
+// per verificare che cosa arriva DAVVERO al modello.
+type capturingTranscriber struct {
+	mu       sync.Mutex
+	received map[int][]byte
+}
+
+func (c *capturingTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.received == nil {
+		c.received = map[int][]byte{}
+	}
+	c.received[page] = jpeg
+	return "# Regola\n\nTesto della pagina.", nil
+}
+
+// TestIndexMedia_ScannedPageIsDownscaledBeforeTranscription verifica
+// l'aggancio della riduzione, non la riduzione in sé (quella ha i suoi
+// test in internal/manuals): una pagina sopra la soglia deve arrivare al
+// modello con il lato lungo a visionMaxLongSide, non con i pixel dello
+// scanner. È il test che si rompe se qualcuno toglie la chiamata a
+// manuals.Downscale da pdfVisionChunks — cosa che nessun altro test
+// noterebbe, perché tutti gli altri fixture sono già sotto la soglia.
+func TestIndexMedia_ScannedPageIsDownscaledBeforeTranscription(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.Segmenter = &fakeSegmenter{}
+	vision := &capturingTranscriber{}
+	server.Vision = vision
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+
+	// 1800x2400: sopra la soglia di 1500, ma abbastanza piccola da non
+	// rallentare la suite.
+	scan := manuals.NewScannedPDFPageSized(1800, 2400)
+	gameID, mediaID := seedGameWithFile(t, server, scan, "scansione.pdf", "")
+
+	rec := postIndex(cookie, router, gameID, mediaID)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got, ok := vision.received[1]
+	if !ok {
+		t.Fatal("il modello non ha ricevuto la pagina 1")
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(got))
+	if err != nil {
+		t.Fatalf("i byte ricevuti non sono un JPEG decodificabile: %v", err)
+	}
+	if cfg.Height != 1500 {
+		t.Fatalf("la pagina è arrivata %dx%d: il lato lungo deve essere ridotto a 1500",
+			cfg.Width, cfg.Height)
+	}
+	// Le proporzioni devono restare: 1800 × 1500 / 2400 = 1125.
+	if cfg.Width != 1125 {
+		t.Fatalf("larghezza %d, attesa 1125: le proporzioni non sono conservate", cfg.Width)
 	}
 }

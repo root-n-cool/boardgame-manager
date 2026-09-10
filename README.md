@@ -316,6 +316,17 @@ errore, solo l'assenza del comando.
   campo, un PDF scansionato non si può preparare: la richiesta fallisce
   con un errore che nomina il campo mancante, invece di procedere a metà.
 
+  Prima di mandare una pagina al modello, l'app la **rimpicciolisce** a
+  1500 pixel sul lato lungo (su una A4 sono ~180 dpi, comodi per il corpo
+  del testo di un regolamento). Non è un risparmio di banda: il lavoro che
+  il modello fa su un'immagine dipende dai pixel, e una scansione a
+  2100×3100 sta al limite di quello che molti provider servono entro il
+  timeout — con pagine così, capita che una si perda per strada, e non
+  sempre la stessa. Su un manuale scansionato reale sono 6,5 megapixel per
+  pagina che diventano 1,5. Niente da configurare; se una tabella in corpo
+  minuto dovesse trascriversi male, la soglia è una costante nel codice
+  (`visionMaxLongSide`).
+
   **Dietro un reverse proxy, alza il timeout di lettura su questa rotta.**
   Preparare un manuale scansionato è **una sola richiesta HTTP** che dentro
   fa una chiamata al modello **per ogni pagina**: su una scansione di 40

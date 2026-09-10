@@ -55,6 +55,40 @@ const minAvgUsableCharsPerPage = 100
 // rendere configurabile nelle impostazioni.
 const transcribeConcurrency = 2
 
+// visionMaxLongSide è il lato lungo, in pixel, a cui si riducono le pagine
+// scansionate prima di mandarle al modello.
+//
+// Il numero viene da una misura, come transcribeConcurrency. Sul manuale
+// reale del club (4 pagine, tutte ~2110x3100, 0,43-0,52 MB di JPEG e quindi
+// 0,57-0,69 MB di payload base64 a pagina) due indicizzazioni di fila hanno
+// perso pagine DIVERSE: la prima le pagine 1 e 2, la seconda la pagina 4,
+// che ha bruciato tre tentativi da 60 secondi senza mai tornare. Pagine
+// diverse significa che non ce n'è una difficile: sono tutte e quattro al
+// limite di quello che il provider serve in tempo, e quale si perde è
+// questione di fortuna.
+//
+// Ecco perché la leva non è né la concorrenza né i retry: quelli
+// distribuiscono e ripescano, ma su pagine tutte marginali si continua a
+// perderne una a caso. Gli image token che il modello conta in ingresso
+// dipendono dai PIXEL, quindi ridurli è l'unica cosa che sposta le pagine
+// fuori dalla zona di rischio invece di spostare il rischio.
+//
+// 1500 e non meno: sul lato lungo di una A4 sono ~180 dpi, comodi per il
+// corpo del testo di un regolamento e ben sopra il minimo di un OCR.
+//
+// Misurato sulle stesse quattro pagine (vedi TestDownscale_OnTheRealManual
+// in internal/manuals, che gira solo se il file è in ./data/uploads):
+// 2110x3100 → 1021x1500, cioè 6,5 megapixel che diventano 1,5 — un fattore
+// 4,3 su quello che conta. I byte scendono meno, del 45% circa (0,57-0,69
+// MB di payload base64 a pagina che diventano 0,31-0,39), e va bene così:
+// il peso pesa sull'upload, i pixel sul lavoro del modello. Un'immagine
+// ridotta ha più dettaglio per pixel di quella da cui viene, quindi non si
+// comprime in proporzione — vedi downscaleQuality.
+//
+// Se una tabella in corpo minuto dovesse trascriversi peggio, alzare questa
+// costante è l'unica modifica necessaria.
+const visionMaxLongSide = 1500
+
 // pageAnchorChars è la lunghezza dell'ancora usata per ritrovare l'inizio
 // di una pagina dentro il testo segmentato (vedi pageStartsInSegmented):
 // abbastanza lunga da essere quasi certamente unica nel documento,
@@ -409,7 +443,21 @@ func (s *Server) pdfVisionChunks(ctx context.Context, images []manuals.PageImage
 				results[i] = pageResult{err: err}
 				return
 			}
-			text, err := vision.Transcribe(ctx, img.JPEG, img.Number)
+			// La riduzione sta qui e non in ExtractPageImages per due
+			// ragioni: si paga solo per le pagine che si mandano davvero,
+			// e cade dentro il limite di transcribeConcurrency, quindi due
+			// pagine si riducono in parallelo come si trascrivono. Su
+			// errore Downscale restituisce l'originale, che si manda
+			// comunque: una pagina grande che arriva vale più di una
+			// pagina persa.
+			jpg, err := manuals.Downscale(img.JPEG, visionMaxLongSide)
+			if err != nil {
+				log.Printf("index: page %d: riduzione fallita, mando l'originale: %v", img.Number, err)
+			} else if len(jpg) != len(img.JPEG) {
+				log.Printf("index: page %d: %d → %d byte", img.Number, len(img.JPEG), len(jpg))
+			}
+
+			text, err := vision.Transcribe(ctx, jpg, img.Number)
 			if errors.Is(err, ai.ErrNotConfigured) {
 				// Un modello vision non configurato fallisce identicamente
 				// per ogni pagina: non ha senso provarle tutte per scoprirlo

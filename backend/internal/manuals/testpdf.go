@@ -125,6 +125,24 @@ func NewScannedPDFPages(n int) []byte {
 	return BuildTestPDF(objs)
 }
 
+// NewScannedPDFPageSized restituisce un manuale scansionato di UNA pagina
+// con l'immagine delle dimensioni date. Serve al test che verifica la
+// riduzione delle pagine prima dell'invio al modello (vedi
+// manuals.Downscale): i fixture qui sopra sono volutamente minuscoli — 24x32
+// e giù di lì — e cadono tutti nel ramo "già sotto la soglia", quindi con
+// quelli un aggancio rimosso non si noterebbe.
+func NewScannedPDFPageSized(w, h int) []byte {
+	content := "q 200 0 0 260 0 0 cm /Im0 Do Q"
+	return BuildTestPDF([]string{
+		"<< /Type /Catalog /Pages 2 0 R >>",
+		"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " +
+			"/Resources << /XObject << /Im0 4 0 R >> >> /Contents 5 0 R >>",
+		ImageObject(NewTestJPEG(w, h), w, h),
+		fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(content), content),
+	})
+}
+
 // NewTextPDF restituisce un PDF di una pagina con un vero layer testo: un
 // font standard non embeddato e due righe disegnate con Tj. È il fixture
 // che entrambi i package usano per esercitare il percorso di estrazione
