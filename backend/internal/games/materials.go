@@ -2,6 +2,7 @@ package games
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"strings"
@@ -69,10 +70,23 @@ func (s *Store) ListMaterials(ctx context.Context, gameID int64) ([]Material, er
 // mandare N richieste che possono fallire a metà. Così il DB resta o tutto
 // vecchio o tutto nuovo.
 //
-// Effetto collaterale documentato: gli id cambiano a ogni salvataggio, e
-// loan_material_issue.material_id dei prestiti passati diventa NULL. Il
-// registro storico sopravvive perché nome e quantità attesa sono copiati
-// sulla riga di esito.
+// Totale nel risultato ma non nel modo: è un upsert sulla chiave "nome
+// normalizzato" (lowercase del nome ripulito, la stessa con cui
+// validateMaterials riconosce un duplicato) e non un DELETE seguito da
+// N INSERT. Gli id sono ciò con cui la modale di riconsegna, aperta magari
+// da mezz'ora, ritrova le voci del catalogo: rigenerarli a ogni
+// salvataggio — anche un salvataggio che non cambia niente — significava
+// che al ritorno del gioco nessuna spunta combaciava più e tutte le voci
+// finivano registrate come "non verificate", con un 200 e niente a
+// schermo. Di riflesso resta in piedi anche
+// loan_material_issue.material_id dei prestiti passati.
+//
+// Resta scoperto un caso, ed è accettato: *rinominare* una voce è una
+// cancellazione più un inserimento, quindi una modale di riconsegna già
+// aperta perde la spunta di quella riga e la registra come non
+// verificata. L'errore va sempre dalla parte prudente — non può mai dare
+// per presente qualcosa che nessuno ha guardato — e la finestra è quella
+// di una serata sola.
 func (s *Store) ReplaceMaterials(ctx context.Context, gameID int64, in []MaterialInput) ([]Material, error) {
 	clean, err := validateMaterials(in)
 	if err != nil {
@@ -85,10 +99,38 @@ func (s *Store) ReplaceMaterials(ctx context.Context, gameID int64, in []Materia
 	}
 	defer tx.Rollback()
 
-	if _, err := tx.ExecContext(ctx, `DELETE FROM game_material WHERE game_id = ?`, gameID); err != nil {
+	keep := make(map[string]bool, len(clean))
+	for _, m := range clean {
+		keep[materialKey(m.Name)] = true
+	}
+	reuse, dead, err := splitMaterialRows(ctx, tx, gameID, keep)
+	if err != nil {
 		return nil, err
 	}
+
+	// Le uscite prima di tutto il resto: UNIQUE(game_id, name) conta anche
+	// le righe che stanno per sparire, e un UPDATE che riscrive il nome
+	// nella grafia appena scelta collide con la riga che sta per andarsene
+	// se questa porta lo stesso nome a maiuscole diverse.
+	for _, id := range dead {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM game_material WHERE id = ?`, id); err != nil {
+			return nil, err
+		}
+	}
+
 	for i, m := range clean {
+		if id, ok := reuse[materialKey(m.Name)]; ok {
+			// Il nome si riscrive comunque: la chiave è normalizzata, quindi
+			// "Tessere" e "tessere" sono la stessa voce e vale l'ultima
+			// grafia scelta dall'admin.
+			if _, err := tx.ExecContext(ctx,
+				`UPDATE game_material SET name = ?, quantity = ?, position = ? WHERE id = ?`,
+				m.Name, m.Quantity, i, id,
+			); err != nil {
+				return nil, err
+			}
+			continue
+		}
 		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO game_material (game_id, name, quantity, position) VALUES (?, ?, ?, ?)`,
 			gameID, m.Name, m.Quantity, i,
@@ -100,6 +142,49 @@ func (s *Store) ReplaceMaterials(ctx context.Context, gameID int64, in []Materia
 		return nil, err
 	}
 	return s.ListMaterials(ctx, gameID)
+}
+
+// splitMaterialRows divide le righe già in tabella fra quelle che la nuova
+// lista riusa (per chiave normalizzata) e quelle da cancellare.
+//
+// La chiave viene rivendicata una volta sola: UNIQUE(game_id, name) è
+// case-sensitive, quindi in teoria due righe possono normalizzare allo
+// stesso nome (non dalla nostra scrittura, che le rifiuta, ma da una
+// migrazione o da SQL a mano) — la prima resta, le altre se ne vanno,
+// altrimenti resterebbero in tabella a duplicare una voce.
+func splitMaterialRows(ctx context.Context, tx *sql.Tx, gameID int64, keep map[string]bool) (map[string]int64, []int64, error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, name FROM game_material WHERE game_id = ? ORDER BY position, id`, gameID)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	reuse := map[string]int64{}
+	var dead []int64
+	for rows.Next() {
+		var id int64
+		var name string
+		if err := rows.Scan(&id, &name); err != nil {
+			return nil, nil, err
+		}
+		key := materialKey(name)
+		if _, claimed := reuse[key]; keep[key] && !claimed {
+			reuse[key] = id
+			continue
+		}
+		dead = append(dead, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, nil, err
+	}
+	return reuse, dead, nil
+}
+
+// materialKey è l'identità di una voce agli occhi dell'editor: due grafie
+// che differiscono per spazi o maiuscole sono la stessa riga della scatola.
+func materialKey(name string) string {
+	return strings.ToLower(strings.TrimSpace(name))
 }
 
 // validateMaterials normalizza i nomi e rifiuta ciò che non può stare in
@@ -119,7 +204,7 @@ func validateMaterials(in []MaterialInput) ([]MaterialInput, error) {
 		if m.Quantity < 1 || m.Quantity > MaxMaterialQuantity {
 			return nil, fmt.Errorf("%w: quantità %d per %q", ErrMaterialInvalid, m.Quantity, name)
 		}
-		key := strings.ToLower(name)
+		key := materialKey(name)
 		if seen[key] {
 			return nil, fmt.Errorf("%w: %q", ErrDuplicateMaterial, name)
 		}

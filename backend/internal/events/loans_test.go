@@ -618,3 +618,45 @@ func TestReturnLoanTwiceStillFails(t *testing.T) {
 		t.Fatalf("volevo ErrLoanAlreadyReturned, ho %v", err)
 	}
 }
+
+// Gli id del catalogo cambiano solo quando una voce viene rinominata o
+// tolta (ReplaceMaterials li conserva), ma se accade mentre una modale di
+// riconsegna è aperta le spunte arrivano con id che non esistono più. Il
+// prestito si chiude comunque e ogni voce risulta non verificata: è la
+// direzione prudente dell'errore, l'opposto — dare per presente ciò che
+// nessuno ha guardato — non deve essere possibile.
+func TestReturnLoanWithStaleMaterialIDsRecordsEverythingUnverified(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"tessere", 72}, [2]any{"carte", 40})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	returned := 35
+	checks := []events.MaterialCheck{
+		{MaterialID: ids[0] + 1000, Complete: true},
+		{MaterialID: ids[1] + 1000, Returned: &returned},
+	}
+	closed, err := store.ReturnLoan(context.Background(), loan.ID, nil, checks)
+	if err != nil {
+		t.Fatalf("return: %v", err)
+	}
+	if closed.ReturnedAt == nil {
+		t.Fatal("il prestito doveva chiudersi lo stesso")
+	}
+
+	issues, err := store.ListMaterialIssues(context.Background(), []int64{loan.ID})
+	if err != nil {
+		t.Fatalf("list issues: %v", err)
+	}
+	got := issues[loan.ID]
+	if len(got) != 2 {
+		t.Fatalf("volevo una riga per ogni voce del catalogo, ho %+v", got)
+	}
+	for _, iss := range got {
+		if iss.Returned != nil {
+			t.Errorf("%q doveva risultare non verificata, ho %d", iss.Name, *iss.Returned)
+		}
+	}
+}

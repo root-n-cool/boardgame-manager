@@ -169,3 +169,137 @@ func TestDeletingAGameDeletesItsMaterials(t *testing.T) {
 		t.Fatalf("la cascata non ha portato via le voci: %d rimaste", count)
 	}
 }
+
+// idsByName è il ponte fra due salvataggi: quel che i test seguenti
+// verificano è che la stessa voce, salvata due volte, conservi il suo id —
+// è l'id che la modale di riconsegna ha in mano quando il gioco torna.
+func idsByName(t *testing.T, store *games.Store, gameID int64) map[string]int64 {
+	t.Helper()
+	rows, err := store.ListMaterials(context.Background(), gameID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	out := make(map[string]int64, len(rows))
+	for _, m := range rows {
+		out[m.Name] = m.ID
+	}
+	return out
+}
+
+func TestReplaceMaterialsKeepsIDsOnAnIdenticalSave(t *testing.T) {
+	store := newTestStore(t)
+	gameID := mustGameID(t, store, "Carcassonne")
+	ctx := context.Background()
+	list := []games.MaterialInput{{Name: "tessere", Quantity: 72}, {Name: "meeple", Quantity: 40}}
+
+	if _, err := store.ReplaceMaterials(ctx, gameID, list); err != nil {
+		t.Fatalf("prima replace: %v", err)
+	}
+	before := idsByName(t, store, gameID)
+	// Salvare senza aver cambiato niente è il gesto più comune del pannello,
+	// ed è quello che prima invalidava le spunte di una modale già aperta.
+	if _, err := store.ReplaceMaterials(ctx, gameID, list); err != nil {
+		t.Fatalf("seconda replace: %v", err)
+	}
+	after := idsByName(t, store, gameID)
+	for name, id := range before {
+		if after[name] != id {
+			t.Errorf("%q ha cambiato id: %d -> %d", name, id, after[name])
+		}
+	}
+}
+
+func TestReplaceMaterialsKeepsTheOtherIDsWhenOneIsRenamed(t *testing.T) {
+	store := newTestStore(t)
+	gameID := mustGameID(t, store, "Carcassonne")
+	ctx := context.Background()
+
+	if _, err := store.ReplaceMaterials(ctx, gameID, []games.MaterialInput{
+		{Name: "tessere", Quantity: 72},
+		{Name: "meeple", Quantity: 40},
+		{Name: "dadi", Quantity: 5},
+	}); err != nil {
+		t.Fatalf("prima replace: %v", err)
+	}
+	before := idsByName(t, store, gameID)
+
+	if _, err := store.ReplaceMaterials(ctx, gameID, []games.MaterialInput{
+		{Name: "tessere", Quantity: 72},
+		{Name: "meeple gialli", Quantity: 40},
+		{Name: "dadi", Quantity: 5},
+	}); err != nil {
+		t.Fatalf("seconda replace: %v", err)
+	}
+	after := idsByName(t, store, gameID)
+
+	if after["tessere"] != before["tessere"] || after["dadi"] != before["dadi"] {
+		t.Errorf("una rinomina ha travolto le altre voci: prima %v, dopo %v", before, after)
+	}
+	// La voce rinominata è un'altra riga: accettato, e documentato su
+	// ReplaceMaterials — al più una spunta si perde e la voce risulta non
+	// verificata.
+	if _, ok := after["meeple"]; ok {
+		t.Errorf("il vecchio nome è ancora in tabella: %v", after)
+	}
+	if after["meeple gialli"] == 0 {
+		t.Errorf("il nuovo nome non è stato inserito: %v", after)
+	}
+}
+
+func TestReplaceMaterialsKeepsIDsWhenReordering(t *testing.T) {
+	store := newTestStore(t)
+	gameID := mustGameID(t, store, "Carcassonne")
+	ctx := context.Background()
+
+	if _, err := store.ReplaceMaterials(ctx, gameID, []games.MaterialInput{
+		{Name: "tessere", Quantity: 72},
+		{Name: "meeple", Quantity: 40},
+	}); err != nil {
+		t.Fatalf("prima replace: %v", err)
+	}
+	before := idsByName(t, store, gameID)
+
+	out, err := store.ReplaceMaterials(ctx, gameID, []games.MaterialInput{
+		{Name: "meeple", Quantity: 40},
+		{Name: "tessere", Quantity: 72},
+	})
+	if err != nil {
+		t.Fatalf("seconda replace: %v", err)
+	}
+	if len(out) != 2 || out[0].Name != "meeple" || out[0].Position != 0 || out[1].Name != "tessere" || out[1].Position != 1 {
+		t.Fatalf("il riordino non è stato applicato: %+v", out)
+	}
+	if out[0].ID != before["meeple"] || out[1].ID != before["tessere"] {
+		t.Errorf("il riordino ha rigenerato gli id: prima %v, dopo %+v", before, out)
+	}
+}
+
+func TestReplaceMaterialsDeletesOnlyTheRemovedRow(t *testing.T) {
+	store := newTestStore(t)
+	gameID := mustGameID(t, store, "Carcassonne")
+	ctx := context.Background()
+
+	if _, err := store.ReplaceMaterials(ctx, gameID, []games.MaterialInput{
+		{Name: "tessere", Quantity: 72},
+		{Name: "meeple", Quantity: 40},
+		{Name: "dadi", Quantity: 5},
+	}); err != nil {
+		t.Fatalf("prima replace: %v", err)
+	}
+	before := idsByName(t, store, gameID)
+
+	if _, err := store.ReplaceMaterials(ctx, gameID, []games.MaterialInput{
+		{Name: "tessere", Quantity: 72},
+		{Name: "dadi", Quantity: 5},
+	}); err != nil {
+		t.Fatalf("seconda replace: %v", err)
+	}
+	after := idsByName(t, store, gameID)
+
+	if len(after) != 2 {
+		t.Fatalf("volevo 2 voci, ho %v", after)
+	}
+	if after["tessere"] != before["tessere"] || after["dadi"] != before["dadi"] {
+		t.Errorf("le voci rimaste hanno cambiato id: prima %v, dopo %v", before, after)
+	}
+}
