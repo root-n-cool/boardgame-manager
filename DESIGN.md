@@ -236,6 +236,14 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   bottoni in lista sono "Rimuovi"). Una lista che non è fatta di azioni
   distruttive — i risultati BGG, dove la riga *è* la selezione — non mette
   bottoni nelle righe: si sceglie la riga, non un bottone dentro la riga.
+- **`.btn-with-icon`:** bottone in `inline-flex` con l'icona (1.05rem,
+  tratto 1.7, mai emoji) **prima** dell'etichetta e 0.45rem di respiro. Si
+  combina con le varianti sopra (`.btn-danger.btn-with-icon`). L'icona
+  nomina la conseguenza — dischetto per salvare, cestino per rimuovere,
+  × cerchiata per annullare, lente per cercare — e serve dove l'azione va
+  riconosciuta di colpo, in piedi al tavolo. Diverso da `.is-compact`, che
+  rimpicciolisce un'azione di testa: qui cambia il contenuto, non la
+  misura.
 - **`.link-button`:** nessun fondo né bordo, testo accento sottolineato —
   una deviazione dal percorso principale citata dentro una nota
   ("Inseriscilo a mano"), dove un bottone vero peserebbe quanto l'azione
@@ -960,6 +968,29 @@ precedente, e il titolo passa da "La tua prenotazione" a "Le tue
 prenotazioni". La riga "conservalo per..." si dice **una volta sola** sotto
 tutti i codici (prop `hint` a `false` nel riepilogo): ripetuta identica
 sotto ognuno diventava rumore.
+
+### Gestione prenotazione (`/manage-booking`, `/prenotazione/:code`)
+Pagina da telefono, in piedi al tavolo: due sole scatole, e in ognuna
+l'azione sta in basso a destra, dove il pollice la trova.
+- **Codice e ricerca sulla stessa riga** (`.booking-lookup`): un campo solo
+  e corto, largo quanto la card, con "Cerca" (lente) a filo del fondo del
+  campo. Sotto i 560px la riga si impila e il bottone prende la larghezza.
+- **La disdetta sta dentro la scheda** (`.booking-summary-foot`): stato a
+  sinistra, "Annulla prenotazione" (× cerchiata, `.btn-danger`) a destra
+  sulla stessa riga. Un'azione che annulla *quella* prenotazione non può
+  stare spaiata sotto la scatola che la descrive.
+- **La riga dei punti è larga quanto il foglio** (`.player-score-row`):
+  nome elastico, punteggio 8rem in mono allineato a destra, "Rimuovi"
+  (cestino) in fondo. Le righe non si fermano alla misura dei campi
+  (30rem) — qui la lista *è* il contenuto del form.
+- **"Aggiungi giocatore" continua la riga**: largo dal bordo del nome al
+  bordo di "Rimuovi", come lo slot vuoto in fondo a una lista.
+- **L'invio chiude in basso a destra** (`.form-actions`, senza il tetto di
+  30rem): dischetto e "Invia punteggio"/"Aggiorna punteggio".
+- Su telefono la riga va a capo — nome sopra, punteggio e rimozione sotto —
+  e le due linee si stringono a 0.4rem mentre fra un giocatore e l'altro
+  resta il passo del form: senza quello stacco sei linee sembrano sei
+  righe scollegate invece di tre giocatori.
 
 ### Scheda evento admin (`/admin/events/:id`) e creazione (`/admin/events/new`)
 - **Il titolo dell'evento è il titolo della pagina**, non "Modifica evento":

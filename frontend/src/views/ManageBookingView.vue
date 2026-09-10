@@ -170,12 +170,18 @@ onMounted(async () => {
   <div>
     <h1>Gestisci prenotazione</h1>
 
-    <form v-if="!deepLinked" @submit.prevent="lookup">
+    <form v-if="!deepLinked" class="booking-lookup" @submit.prevent="lookup">
       <label>
         Codice prenotazione
         <input v-model="bookingCode" required />
       </label>
-      <button type="submit">Cerca</button>
+      <button type="submit" class="btn-with-icon">
+        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <circle cx="10.8" cy="10.8" r="6.3" stroke="currentColor" stroke-width="1.7" />
+          <path d="m15.4 15.4 4.1 4.1" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+        </svg>
+        Cerca
+      </button>
     </form>
     <p v-if="error" class="error">{{ error }}</p>
     <p v-if="error && deepLinked">
@@ -199,21 +205,41 @@ onMounted(async () => {
         <p v-if="booking.seats > 1" class="row-meta">
           Tavolo da {{ booking.seats }} posti prenotabili · {{ booking.tableBookings }} prenotati
         </p>
-        <span
-          class="status-badge"
-          :class="booking.status === 'active' ? 'status-active' : 'status-cancelled'"
-        >
-          {{ booking.status === 'active' ? 'Attiva' : 'Annullata' }}
-        </span>
+        <!-- Stato e disdetta sulla stessa riga, in fondo alla scheda: la
+             conseguenza sta sull'oggetto a cui si applica, non spaiata
+             sotto la card. -->
+        <div class="booking-summary-foot">
+          <span
+            class="status-badge"
+            :class="booking.status === 'active' ? 'status-active' : 'status-cancelled'"
+          >
+            {{ booking.status === 'active' ? 'Attiva' : 'Annullata' }}
+          </span>
+          <button
+            v-if="booking.status === 'active'"
+            type="button"
+            class="btn-danger btn-with-icon"
+            @click="cancel"
+          >
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="8.4" stroke="currentColor" stroke-width="1.7" />
+              <path
+                d="m9.2 9.2 5.6 5.6M14.8 9.2l-5.6 5.6"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+              />
+            </svg>
+            Annulla prenotazione
+          </button>
+        </div>
       </div>
-      <button v-if="booking.status === 'active'" type="button" class="btn-danger" @click="cancel">
-        Annulla prenotazione
-      </button>
       <p v-if="cancelMessage" class="success">{{ cancelMessage }}</p>
 
       <form
         v-if="booking.status === 'active'"
         ref="scoreSection"
+        class="score-form"
         @submit.prevent="submitScore"
       >
         <h2>Punteggio finale</h2>
@@ -223,16 +249,72 @@ onMounted(async () => {
           sotto c'è il suo, e salvando lo sostituisci.
         </p>
         <div v-for="(p, index) in players" :key="index" class="player-score-row">
-          <input v-model="p.name" placeholder="Nome giocatore" required />
-          <input v-model.number="p.score" type="number" placeholder="Punteggio" required />
-          <button type="button" class="btn-danger" @click="removePlayerRow(index)">Rimuovi</button>
+          <!-- Il segnaposto sparisce appena si scrive: senza `aria-label` la
+               riga arriva a uno screen reader come due campi senza nome. -->
+          <input
+            v-model="p.name"
+            :aria-label="`Nome giocatore ${index + 1}`"
+            placeholder="Nome giocatore"
+            required
+          />
+          <input
+            v-model.number="p.score"
+            :aria-label="`Punteggio giocatore ${index + 1}`"
+            type="number"
+            placeholder="Punteggio"
+            required
+          />
+          <button
+            type="button"
+            class="btn-danger btn-with-icon player-score-remove"
+            :aria-label="`Rimuovi giocatore ${index + 1}`"
+            @click="removePlayerRow(index)"
+          >
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M5.4 6.9h13.2M9.9 6.9V4.7h4.2v2.2M7.3 6.9l.8 12.4h7.8l.8-12.4"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M10.6 10.3v5.9M13.4 10.3v5.9"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+              />
+            </svg>
+            Rimuovi
+          </button>
         </div>
-        <button type="button" class="btn-secondary" @click="addPlayerRow">Aggiungi giocatore</button>
-        <button type="submit">
-          {{ booking.matchResult ? 'Aggiorna punteggio' : 'Invia punteggio' }}
+        <button type="button" class="btn-secondary btn-with-icon player-score-add" @click="addPlayerRow">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" />
+          </svg>
+          Aggiungi giocatore
         </button>
         <p v-if="scoreMessage" class="success">{{ scoreMessage }}</p>
         <p v-if="scoreError" class="error">{{ scoreError }}</p>
+        <div class="form-actions">
+          <button type="submit" class="btn-with-icon">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path
+                d="M5.2 4.4h9.7l4.3 4.3v10.9H5.2V4.4Z"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M8.6 4.4v4.5h6.1V4.4M8 19.6v-5.5h8v5.5"
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linejoin="round"
+              />
+            </svg>
+            {{ booking.matchResult ? 'Aggiorna punteggio' : 'Invia punteggio' }}
+          </button>
+        </div>
       </form>
     </div>
   </div>

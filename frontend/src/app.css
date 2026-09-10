@@ -681,6 +681,26 @@ button.btn-danger:hover {
   color: var(--danger);
 }
 
+/* Bottone a piena misura con l'icona che precede l'etichetta: l'icona
+   nomina l'azione (salva, cestina, annulla) e sta a filo del testo, non
+   sopra né al posto suo. Diverso da `.is-compact`, che rimpicciolisce
+   un'azione di testa: qui cambia solo il contenuto del bottone. */
+button.btn-with-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  /* 44px: l'icona serve dove si preme col pollice, e un bottone da 42px
+     manca il minimo per un bersaglio da dito. */
+  min-height: 44px;
+}
+
+button.btn-with-icon svg {
+  flex: none;
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
 /* Forms fuori dalla card di auth non devono stirare il bottone submit.
    Il margine sotto è la difesa di base: due card non si toccano mai anche
    quando il markup le mette una dietro l'altra senza nulla in mezzo. */
@@ -2387,6 +2407,60 @@ ul.game-grid {
   margin: 0.2rem 0 0.5rem;
 }
 
+/* Codice e ricerca sulla stessa riga, larghi quanto la card: il campo è
+   uno solo e corto: incolonnarlo sopra un bottone spaiato sprecava una
+   riga e lasciava mezza colonna vuota. Il bottone si allinea al fondo del
+   campo, non alla testa dell'etichetta. */
+.app-page form.booking-lookup {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 0.7rem;
+}
+
+.app-page form.booking-lookup label {
+  align-self: auto;
+  flex: 1;
+}
+
+.app-page form.booking-lookup input {
+  max-width: none;
+  min-height: 44px;
+}
+
+.app-page form.booking-lookup button[type='submit'] {
+  align-self: flex-end;
+}
+
+@media (max-width: 560px) {
+  .app-page form.booking-lookup {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .app-page form.booking-lookup button[type='submit'] {
+    align-self: stretch;
+  }
+}
+
+/* Stato a sinistra, disdetta a destra, in fondo alla scheda: l'azione che
+   annulla la prenotazione sta dentro la scatola che la descrive. */
+.booking-summary-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  margin-top: 0.55rem;
+}
+
+.booking-summary-foot .status-badge {
+  align-self: center;
+}
+
+.booking-summary-foot button {
+  margin-left: auto;
+}
+
 .status-badge {
   display: inline-flex;
   align-self: flex-start;
@@ -2592,24 +2666,65 @@ a.booking-game:focus-visible {
 
 /* ---------- Punteggio finale (ManageBookingView) ---------- */
 
+/* La riga dei punti è larga quanto il foglio: due nomi e un punteggio
+   fermi a metà colonna lasciavano il form sbilanciato, e da telefono il
+   nome del giocatore non ci stava. */
 .player-score-row {
   display: flex;
+  align-self: stretch;
   align-items: center;
   gap: 0.6rem;
 }
 
+.player-score-row input {
+  max-width: none;
+  /* Stessa altezza dei bottoni accanto: la riga si compila da telefono. */
+  min-height: 44px;
+}
+
 .player-score-row input[type='number'] {
-  width: 5.5rem;
+  width: 8rem;
+  flex: none;
   font-family: 'Data', monospace;
   text-align: right;
 }
 
 .player-score-row input:not([type='number']) {
   flex: 1;
+  min-width: 0;
 }
 
 .player-score-row button {
   flex: none;
+}
+
+/* "Aggiungi giocatore" tiene la misura delle righe che continua: dal bordo
+   del nome al bordo di "Rimuovi", come lo slot vuoto in fondo a una lista. */
+.player-score-add {
+  align-self: stretch;
+  width: 100%;
+}
+
+/* La riga d'invio si allinea al bordo destro delle righe, non a una
+   colonna di campi più stretta che qui non esiste. */
+.score-form .form-actions {
+  max-width: none;
+}
+
+@media (max-width: 560px) {
+  /* Da telefono il nome prende la riga e punteggio + rimozione scendono
+     sotto, invece di spremere tre controlli in 320px. Le due linee si
+     stringono (0.4rem) mentre fra un giocatore e l'altro resta il passo
+     del form (1rem): senza quello stacco le sei linee sembrano sei righe
+     scollegate invece di tre giocatori. */
+  .player-score-row {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+
+  .player-score-row input:not([type='number']) {
+    flex: 1 0 100%;
+  }
 }
 
 /* ---------- Tabelle / scoreboard (GameLeaderboardView) ---------- */
