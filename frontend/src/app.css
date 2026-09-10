@@ -4104,6 +4104,47 @@ tbody tr:nth-child(3) .rank-medal {
   overflow-wrap: anywhere;
 }
 
+/* Il gruppo della checklist nella modale di restituzione. Il `fieldset`
+   nasce con `min-width: min-content`, che nella modale stretta lo fa
+   sporgere invece di stringersi; e il conteggio in fondo si stacca
+   dall'ultima riga, che altrimenti se lo prende per una voce sua. */
+.material-check {
+  min-width: 0;
+}
+
+.material-check > .empty-note {
+  margin-top: 0.6rem;
+}
+
+/* Il conteggio vive dentro la `<legend>`, che è maiuscoletto tracciato: la
+   voce dell'etichetta, non quella del dato. Ereditandola la testata si
+   leggeva "MATERIALI 3 DI 7 VERIFICATE"; qui torna frase, in mono come ogni
+   numero da leggere in questo progetto. */
+.material-check-progress {
+  margin-left: 0.35rem;
+  font-family: 'Data', monospace;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Spogliata come `.loan-list`: la regola globale delle liste la vestirebbe
+   da card — fondo, bordo, ombra e 1.75rem di margine sotto — dentro la
+   cornice che il `fieldset` disegna già, col testo delle righe schiacciato
+   contro quel bordo. Il filetto fra le `li` invece resta: sono voci da
+   spuntare una per una, e la riga staccata si perde meno sotto il dito. */
+.material-check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
 /* La riga della checklist si legge e si tocca in piedi, al tavolo: nome
    elastico, quantità attesa in mono perché è un dato, campo stretto quanto
    basta a quattro cifre, casella con l'area di tocco piena. */
