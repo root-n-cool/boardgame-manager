@@ -68,6 +68,18 @@ const saved = computed(
 // bottone si spegne quindi finché una qualunque delle due è in volo.
 const busy = computed(() => saving.value || suggesting.value)
 
+// Quel che l'esito racconta a chi non vede lo schermo: un salvataggio e una
+// generazione dal manuale non hanno altro segnale che il testo del bottone
+// che li ha avviati, e quel testo un lettore di schermo non lo rilegge da
+// solo quando cambia.
+const status = computed(() => {
+  if (saving.value) return 'Salvataggio in corso.'
+  if (suggesting.value) return 'Generazione dal manuale in corso.'
+  if (error.value) return ''
+  if (saved.value) return 'Materiali salvati.'
+  return ''
+})
+
 const path = computed(() => `/games/${props.gameId}/materials`)
 
 function rowLabel(row: MaterialRow, i: number) {
@@ -283,6 +295,11 @@ onMounted(load)
         </svg>
         Aggiungi voce
       </button>
+
+      <!-- L'esito, per chi non vede lo schermo: salvataggio e generazione
+           durano da un attimo a qualche secondo e cambiano campi che uno
+           screen reader non rilegge da solo. -->
+      <p class="visually-hidden" role="status" aria-live="polite">{{ status }}</p>
 
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <p v-else-if="saved" class="empty-note">Materiali salvati.</p>
