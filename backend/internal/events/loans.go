@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -150,10 +151,48 @@ func (s *Store) LendCopy(ctx context.Context, eventID int64, in LoanInput) (Loan
 	return s.getLoanByID(ctx, id)
 }
 
-// ReturnLoan chiude un prestito. `notes` nil lascia quelle scritte alla
-// consegna: la modale manda il campo solo se l'organizzatore l'ha
-// toccato, e un nil non deve cancellare quello che c'era.
-func (s *Store) ReturnLoan(ctx context.Context, id int64, notes *string) (Loan, error) {
+// MaterialCheck è una voce della checklist come la manda la modale di
+// riconsegna.
+type MaterialCheck struct {
+	MaterialID int64
+	// Complete è la spunta: è tornata tutta, e Returned si ignora.
+	Complete bool
+	// Returned ha senso solo con Complete == false: nil significa "non
+	// verificata", un numero quante ne sono tornate.
+	Returned *int
+}
+
+// MaterialIssue è l'esito registrato su una voce che non è tornata intera o
+// non è stata controllata. Nome e quantità attesa sono copie del momento
+// della riconsegna, non join sul catalogo: la lista del gioco può cambiare,
+// il registro di quella sera no.
+type MaterialIssue struct {
+	LoanID   int64
+	Name     string
+	Expected int
+	// Returned nil = voce non verificata.
+	Returned *int
+}
+
+// ErrMaterialCheckInvalid è una quantità resa negativa. Non è un caso da
+// tollerare in silenzio: significa che la modale ha mandato spazzatura, e
+// chiudere il prestito con un esito sbagliato è peggio che non chiuderlo.
+var ErrMaterialCheckInvalid = errors.New("returned quantity cannot be negative")
+
+// ReturnLoan chiude un prestito e registra l'esito del controllo dei
+// materiali. `notes` nil lascia quelle scritte alla consegna: la modale
+// manda il campo solo se l'organizzatore l'ha toccato, e un nil non deve
+// cancellare quello che c'era.
+//
+// `checks` nil significa "nessuna checklist" e lascia il comportamento
+// identico a prima: un gioco senza materiali, o un client vecchio, chiude un
+// prestito senza scrivere nessun esito. Non è la stessa cosa di una
+// checklist con tutte le voci non verificate, che invece le registra.
+//
+// Tutto in una transazione: prima l'UPDATE faceva una riga sola, ora sono
+// una UPDATE più N INSERT, e un prestito chiuso senza il suo esito sarebbe
+// peggio di un prestito rimasto aperto.
+func (s *Store) ReturnLoan(ctx context.Context, id int64, notes *string, checks []MaterialCheck) (Loan, error) {
 	loan, err := s.getLoanByID(ctx, id)
 	if err != nil {
 		return Loan{}, err
@@ -161,11 +200,22 @@ func (s *Store) ReturnLoan(ctx context.Context, id int64, notes *string) (Loan, 
 	if notes == nil {
 		notes = loan.Notes
 	}
+	for _, c := range checks {
+		if c.Returned != nil && *c.Returned < 0 {
+			return Loan{}, fmt.Errorf("%w: %d", ErrMaterialCheckInvalid, *c.Returned)
+		}
+	}
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Loan{}, err
+	}
+	defer tx.Rollback()
 
 	// `AND returned_at IS NULL` fa il lavoro del controllo: una seconda
 	// restituzione non tocca nessuna riga, e lo sappiamo da RowsAffected
 	// invece che da una lettura che potrebbe essere già vecchia.
-	res, err := s.db.ExecContext(ctx,
+	res, err := tx.ExecContext(ctx,
 		`UPDATE game_loans SET returned_at = datetime('now'), notes = ?
 		 WHERE id = ? AND returned_at IS NULL`, notes, id,
 	)
@@ -179,7 +229,116 @@ func (s *Store) ReturnLoan(ctx context.Context, id int64, notes *string) (Loan, 
 	if affected == 0 {
 		return Loan{}, ErrLoanAlreadyReturned
 	}
+
+	if checks != nil {
+		if err := writeMaterialIssues(ctx, tx, id, checks); err != nil {
+			return Loan{}, err
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return Loan{}, err
+	}
 	return s.getLoanByID(ctx, id)
+}
+
+// writeMaterialIssues scrive una riga per ogni voce che non è tornata
+// intera o non è stata verificata. Le voci le rilegge dal catalogo dentro
+// la transazione invece di fidarsi di quelle mandate dal client: la modale
+// può essere aperta da dieci minuti e la lista essere cambiata nel
+// frattempo, e ciò che conta è il contenuto della scatola di adesso.
+func writeMaterialIssues(ctx context.Context, tx *sql.Tx, loanID int64, checks []MaterialCheck) error {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT m.id, m.name, m.quantity
+		 FROM game_material m
+		 JOIN event_games eg ON eg.game_id = m.game_id
+		 JOIN game_loans l ON l.event_game_id = eg.id
+		 WHERE l.id = ?
+		 ORDER BY m.position, m.id`, loanID)
+	if err != nil {
+		return err
+	}
+	type material struct {
+		id       int64
+		name     string
+		quantity int
+	}
+	var materials []material
+	for rows.Next() {
+		var m material
+		if err := rows.Scan(&m.id, &m.name, &m.quantity); err != nil {
+			rows.Close()
+			return err
+		}
+		materials = append(materials, m)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+
+	byID := make(map[int64]MaterialCheck, len(checks))
+	for _, c := range checks {
+		byID[c.MaterialID] = c
+	}
+
+	for _, m := range materials {
+		c, sent := byID[m.id]
+		switch {
+		case sent && c.Complete:
+			continue // spuntata: tornata tutta
+		case sent && c.Returned != nil && *c.Returned >= m.quantity:
+			continue // contata e non manca niente
+		}
+		var returned any
+		if sent && !c.Complete && c.Returned != nil {
+			returned = *c.Returned
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT INTO loan_material_issue (loan_id, material_id, name, expected, returned)
+			 VALUES (?, ?, ?, ?, ?)`,
+			loanID, m.id, m.name, m.quantity, returned,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// ListMaterialIssues legge gli esiti di più prestiti in una query sola: il
+// banco prestiti ne mostra una lista intera, e una query per riga sarebbe
+// una N+1 su una pagina che si ricarica dopo ogni consegna.
+func (s *Store) ListMaterialIssues(ctx context.Context, loanIDs []int64) (map[int64][]MaterialIssue, error) {
+	out := map[int64][]MaterialIssue{}
+	if len(loanIDs) == 0 {
+		return out, nil
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(loanIDs)), ",")
+	args := make([]any, len(loanIDs))
+	for i, id := range loanIDs {
+		args[i] = id
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT loan_id, name, expected, returned FROM loan_material_issue
+		 WHERE loan_id IN (`+placeholders+`) ORDER BY id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var iss MaterialIssue
+		var returned sql.NullInt64
+		if err := rows.Scan(&iss.LoanID, &iss.Name, &iss.Expected, &returned); err != nil {
+			return nil, err
+		}
+		if returned.Valid {
+			v := int(returned.Int64)
+			iss.Returned = &v
+		}
+		out[iss.LoanID] = append(out[iss.LoanID], iss)
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) getLoanByID(ctx context.Context, id int64) (Loan, error) {

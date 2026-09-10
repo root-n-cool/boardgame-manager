@@ -2,6 +2,7 @@ package events_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"testing"
@@ -14,6 +15,15 @@ import (
 
 func newTestStore(t *testing.T) (*events.Store, *games.Store) {
 	t.Helper()
+	store, gameStore, _ := newTestStoreWithConn(t)
+	return store, gameStore
+}
+
+// newTestStoreWithConn è newTestStore più la connessione grezza, per i test
+// che devono scrivere tabelle di altri pacchetti (game_material) senza
+// importarli.
+func newTestStoreWithConn(t *testing.T) (*events.Store, *games.Store, *sql.DB) {
+	t.Helper()
 	conn, err := db.Open(":memory:")
 	if err != nil {
 		t.Fatalf("open: %v", err)
@@ -23,7 +33,7 @@ func newTestStore(t *testing.T) (*events.Store, *games.Store) {
 	if err := db.Migrate(context.Background(), conn); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	return events.NewStore(conn), games.NewStore(conn)
+	return events.NewStore(conn), games.NewStore(conn), conn
 }
 
 func strPtr(v string) *string { return &v }

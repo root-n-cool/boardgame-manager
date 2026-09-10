@@ -92,7 +92,7 @@ func (s *Server) returnLoanHandler(w http.ResponseWriter, r *http.Request) {
 	// non è un errore: si prosegue con Notes nil.
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	loan, err := s.Events.ReturnLoan(r.Context(), id, req.Notes)
+	loan, err := s.Events.ReturnLoan(r.Context(), id, req.Notes, nil)
 	switch {
 	case errors.Is(err, events.ErrNotFound):
 		writeError(w, http.StatusNotFound, "questo prestito non esiste più: ricarica il banco")
