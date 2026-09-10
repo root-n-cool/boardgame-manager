@@ -468,182 +468,196 @@ onMounted(async () => {
         </div>
       </div>
 
-      <nav class="tab-bar language-tabs">
-        <button
-          v-for="l in game.languages"
-          :key="l.code"
-          type="button"
-          :class="{ active: l.code === activeLangCode }"
-          @click="selectLanguage(l.code)"
-        >
-          {{ l.code }}
-          <svg
-            v-if="l.isBaseLanguage"
-            class="base-language-badge"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-label="Lingua base"
-          >
-            <path
-              d="M12 3.5l2.47 5.77 6.24.56-4.73 4.16 1.42 6.1L12 16.9l-5.4 3.2 1.42-6.1-4.73-4.16 6.24-.56L12 3.5Z"
-              fill="currentColor"
-            />
-          </svg>
-        </button>
-        <button type="button" class="language-tab-add" @click="openLanguageModal">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-          </svg>
-          Lingua
-        </button>
-      </nav>
-
-      <section class="panel-card">
-        <div class="section-head">
-          <h2>Scheda</h2>
-          <span class="lang-chip">{{ activeLangCode }}</span>
-        </div>
-
-        <form @submit.prevent="saveLanguage">
-          <label>
-            Nome
-            <input v-model="editName" required />
-          </label>
-          <label>
-            Descrizione
-            <textarea v-model="editDescription" rows="4"></textarea>
-          </label>
-          <p v-if="game.canTranslate && aiConfigured" class="field-hint">
+      <!--
+        Le due card della lingua vivono dentro il gruppo che la barra
+        governa: in fila con le altre sembravano governate dalla barra tanto
+        quanto il gruppo «Chatbot», che con la lingua non c'entra nulla.
+      -->
+      <div class="section-group">
+        <div class="section-group-head">
+          <h2>Lingue</h2>
+          <nav class="tab-bar language-tabs">
             <button
+              v-for="l in game.languages"
+              :key="l.code"
               type="button"
-              class="link-button"
-              :disabled="translating"
-              @click="translateDescription"
+              :class="{ active: l.code === activeLangCode }"
+              @click="selectLanguage(l.code)"
             >
-              {{ translating ? 'Traduzione in corso…' : `Traduci in ${languageName(activeLangCode)} da BoardGameGeek` }}
-            </button>
-            — sostituisce il testo qui sopra con una nuova traduzione della
-            descrizione originale.
-          </p>
-          <p v-if="translateError" class="error">{{ translateError }}</p>
-          <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
-          <div class="form-actions">
-            <button type="submit">
-              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              {{ l.code }}
+              <svg
+                v-if="l.isBaseLanguage"
+                class="base-language-badge"
+                viewBox="0 0 24 24"
+                fill="none"
+                aria-label="Lingua base"
+              >
                 <path
-                  d="m5 12.4 4.6 4.6L19 7.6"
-                  stroke="currentColor"
-                  stroke-width="2.2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
+                  d="M12 3.5l2.47 5.77 6.24.56-4.73 4.16 1.42 6.1L12 16.9l-5.4 3.2 1.42-6.1-4.73-4.16 6.24-.56L12 3.5Z"
+                  fill="currentColor"
                 />
               </svg>
-              Salva
+        </button>
+            <button type="button" class="language-tab-add" @click="openLanguageModal">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              </svg>
+              Lingua
             </button>
-          </div>
-        </form>
-      </section>
-
-      <section class="panel-card">
-        <div class="section-head">
-          <h2>Media</h2>
-          <span class="lang-chip">{{ activeLangCode }}</span>
-          <button type="button" class="btn-secondary" @click="openMediaModal">
-            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-              <path d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
-            </svg>
-            Aggiungi
-          </button>
+          </nav>
         </div>
 
-        <GameMediaList
-          :media="activeLanguage()?.media || []"
-          editable
-          @add="openMediaModal"
-          @remove="removeMedia"
-        />
-        <p v-if="mediaError && !mediaModalOpen" class="error">{{ mediaError }}</p>
-      </section>
+        <section class="panel-card">
+          <div class="section-head">
+            <h3>Scheda</h3>
+            <span class="lang-chip">{{ activeLangCode }}</span>
+          </div>
+
+          <form @submit.prevent="saveLanguage">
+            <label>
+              Nome
+              <input v-model="editName" required />
+            </label>
+            <label>
+              Descrizione
+              <textarea v-model="editDescription" rows="4"></textarea>
+            </label>
+            <p v-if="game.canTranslate && aiConfigured" class="field-hint">
+              <button
+                type="button"
+                class="link-button"
+                :disabled="translating"
+                @click="translateDescription"
+              >
+                {{ translating ? 'Traduzione in corso…' : `Traduci in ${languageName(activeLangCode)} da BoardGameGeek` }}
+              </button>
+              — sostituisce il testo qui sopra con una nuova traduzione della
+              descrizione originale.
+            </p>
+            <p v-if="translateError" class="error">{{ translateError }}</p>
+            <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
+            <div class="form-actions">
+              <button type="submit">
+                <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path
+                    d="m5 12.4 4.6 4.6L19 7.6"
+                    stroke="currentColor"
+                    stroke-width="2.2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                Salva
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel-card">
+          <div class="section-head">
+            <h3>Media</h3>
+            <span class="lang-chip">{{ activeLangCode }}</span>
+            <button type="button" class="btn-secondary" @click="openMediaModal">
+              <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 5.5v13M5.5 12h13" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" />
+              </svg>
+              Aggiungi
+            </button>
+          </div>
+
+          <GameMediaList
+            :media="activeLanguage()?.media || []"
+            editable
+            title-level="h4"
+            @add="openMediaModal"
+            @remove="removeMedia"
+          />
+          <p v-if="mediaError && !mediaModalOpen" class="error">{{ mediaError }}</p>
+        </section>
+      </div>
 
       <!--
-        La preparazione di una fonte è un'azione da admin: GameMediaList è
-        condiviso con la scheda pubblica, quindi la sezione vive qui e non
-        lì. Una riga per ogni file indicizzabile della lingua attiva (PDF,
-        txt, md, docx — gli unici formati che l'indicizzazione accetta),
-        non più un pannello alto per file: l'avviso sui tempi lunghi e il
-        motivo per cui manca il bottone senza provider AI stanno una volta
-        sola qui, non ripetuti a ogni riga.
+        Il gruppo «Chatbot» non porta `lang-chip` da nessuna parte, e
+        l'assenza è l'informazione: quel che sta qui dentro è per GIOCO, non
+        per lingua — la chat cerca in tutte le fonti insieme (vedi
+        `indexableMedia`) e le tre domande suggerite sono uniche. È anche il
+        motivo per cui il gruppo esiste: staccare queste due card dalla barra
+        delle lingue, che prima sembrava governare anche loro.
       -->
-      <!--
-        Nessuna `lang-chip` qui: questa sezione elenca le fonti di tutte le
-        lingue, perché la chat cerca per gioco (vedi `indexableMedia`). La
-        lingua vive su ogni riga, dove è vera.
-      -->
-      <section class="panel-card">
-        <div class="section-head">
+      <div class="section-group">
+        <div class="section-group-head">
           <h2>Chatbot</h2>
         </div>
 
-        <template v-if="indexableMedia.length > 0">
-          <!-- Una scansione passa per un modello di visione, una pagina per
-               chiamata: la richiesta può durare minuti, va detto prima del
-               click — una volta sola, non per ogni riga. -->
-          <p v-if="aiConfigured" class="field-hint">
-            Per un file di testo dura pochi secondi; per una scansione lunga può
-            richiedere alcuni minuti, poche pagine alla volta — resta su questa
-            pagina finché non finisce.
-          </p>
-          <!-- Senza provider il motivo è pratico, non tecnico: qui non c'è
-               ancora una chat con cui indicizzare avrebbe a che fare. -->
+        <!--
+          La preparazione di una fonte è un'azione da admin: GameMediaList è
+          condiviso con la scheda pubblica, quindi la sezione vive qui e non
+          lì. Una riga per ogni file indicizzabile del gioco (PDF, txt, md,
+          docx — gli unici formati che l'indicizzazione accetta), non più un
+          pannello alto per file: l'avviso sui tempi lunghi e il motivo per
+          cui manca il bottone senza provider AI stanno una volta sola qui,
+          non ripetuti a ogni riga.
+        -->
+        <section class="panel-card">
+          <div class="section-head">
+            <h3>Knowledge base</h3>
+          </div>
+
+          <template v-if="indexableMedia.length > 0">
+            <!-- Una scansione passa per un modello di visione, una pagina per
+                 chiamata: la richiesta può durare minuti, va detto prima del
+                 click — una volta sola, non per ogni riga. -->
+            <p v-if="aiConfigured" class="field-hint">
+              Per un file di testo dura pochi secondi; per una scansione lunga può
+              richiedere alcuni minuti, poche pagine alla volta — resta su questa
+              pagina finché non finisce.
+            </p>
+            <!-- Senza provider il motivo è pratico, non tecnico: qui non c'è
+                 ancora una chat con cui indicizzare avrebbe a che fare. -->
+            <p v-else class="empty-note">
+              Senza un provider AI configurato nelle impostazioni la chat con le domande non esiste:
+              indicizzare un documento ora non servirebbe a niente.
+            </p>
+
+            <ul role="list" class="admin-list">
+              <!-- La chiave porta anche la lingua: lo stesso id di media non si
+                   ripete fra lingue diverse, ma la coppia e' l'identita' vera
+                   di una riga qui, e la rotta che il pannello chiama la usa
+                   tutta. -->
+              <li v-for="row in indexableMedia" :key="`${row.lang}-${row.media.id}`">
+                <ManualPrepPanel
+                  :game-id="game.id"
+                  :lang="row.lang"
+                  :media-id="row.media.id"
+                  :media-title="row.media.title || 'Manuale'"
+                  :media-url="row.media.url"
+                  :indexed-chunks="row.media.indexedChunks"
+                  :ai-configured="aiConfigured"
+                  @changed="onIndexChanged"
+                />
+              </li>
+            </ul>
+          </template>
           <p v-else class="empty-note">
-            Senza un provider AI configurato nelle impostazioni la chat con le domande non esiste:
-            indicizzare un documento ora non servirebbe a niente.
+            Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
+            sezione Media di una delle lingue del gioco.
           </p>
+        </section>
 
-          <ul role="list" class="admin-list">
-            <!-- La chiave porta anche la lingua: lo stesso id di media non si
-                 ripete fra lingue diverse, ma la coppia e' l'identita' vera
-                 di una riga qui, e la rotta che il pannello chiama la usa
-                 tutta. -->
-            <li v-for="row in indexableMedia" :key="`${row.lang}-${row.media.id}`">
-              <ManualPrepPanel
-                :game-id="game.id"
-                :lang="row.lang"
-                :media-id="row.media.id"
-                :media-title="row.media.title || 'Manuale'"
-                :media-url="row.media.url"
-                :indexed-chunks="row.media.indexedChunks"
-                :ai-configured="aiConfigured"
-                @changed="onIndexChanged"
-              />
-            </li>
-          </ul>
-        </template>
-        <p v-else class="empty-note">
-          Nessun documento da preparare: carica un PDF, un file di testo (txt o md) o un docx nella
-          sezione Media di una delle lingue del gioco.
-        </p>
-      </section>
-
-      <!--
-        Sezione propria e non un blocco dentro "Chatbot", per una ragione che
-        non e' di layout: le domande suggerite sono per GIOCO, non per lingua
-        (la chat cerca in tutte le fonti insieme). Dentro una sezione
-        intitolata "Chatbot IT" sembravano a scope di lingua, e chi cambiava
-        tab si aspettava domande diverse trovando le stesse. Qui non c'e'
-        `lang-chip` — l'assenza e' l'informazione.
-
-        Resta fuori da `indexableMedia`: le tre domande si devono poter
-        scrivere a mano anche su un gioco senza documenti, ed e' il motivo per
-        cui il PUT e' un upsert.
-      -->
-      <section class="panel-card">
-        <SuggestedQuestionsPanel
-          :key="suggestedQuestionsKey"
-          :game-id="game.id"
-          :ai-configured="aiConfigured"
-        />
-      </section>
+        <!--
+          Card sorella e non un blocco dentro "Knowledge base": le tre domande
+          restano fuori da `indexableMedia` perché si devono poter scrivere a
+          mano anche su un gioco senza documenti — ed e' il motivo per cui il
+          PUT e' un upsert.
+        -->
+        <section class="panel-card">
+          <SuggestedQuestionsPanel
+            :key="suggestedQuestionsKey"
+            :game-id="game.id"
+            :ai-configured="aiConfigured"
+          />
+        </section>
+      </div>
     </template>
 
     <p v-if="error" class="error">{{ error }}</p>

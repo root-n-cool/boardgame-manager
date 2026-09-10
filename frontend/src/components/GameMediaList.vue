@@ -7,7 +7,16 @@ import { fileExtensionLabel, type GameMediaInfo } from '../utils/game'
  * link e tutorial YouTube. In sola lettura sulla scheda pubblica, con
  * rimozione e tessera "aggiungi" su quella di modifica.
  */
-const props = defineProps<{ media: GameMediaInfo[]; editable?: boolean }>()
+/**
+ * `titleLevel`: il titolo di una tessera è un `h3` sotto la sezione «Media»
+ * della scheda pubblica, dove quella sezione è un `h2`, e un `h4` su quella
+ * di modifica, dove «Media» è figlia del gruppo «Lingue» e quindi scende a
+ * `h3`. La griglia non può sceglierlo da sé: dipende da dove è appesa.
+ */
+const props = withDefaults(
+  defineProps<{ media: GameMediaInfo[]; editable?: boolean; titleLevel?: 'h3' | 'h4' }>(),
+  { titleLevel: 'h3' },
+)
 const emit = defineEmits<{ add: []; remove: [id: number, title: string] }>()
 
 const mediaKindLabels: Record<string, string> = {
@@ -116,7 +125,7 @@ function onThumbError(m: GameMediaInfo) {
               />
             </svg>
           </span>
-          <h3>{{ mediaTitle(m) }}</h3>
+          <component :is="props.titleLevel">{{ mediaTitle(m) }}</component>
           <p class="media-kind">{{ mediaKindLabel(m) }}</p>
         </a>
         <button

@@ -4,8 +4,9 @@ import { api } from '../api/client'
 import { fileExtensionLabel } from '../utils/game'
 
 /**
- * Una riga della sezione «Chatbot» (admin): indicizza (o rimuove l'indice
- * di) una fonte per la chat pubblica — una sola richiesta legge il file —
+ * Una riga della card «Knowledge base» (gruppo «Chatbot», admin): indicizza
+ * (o rimuove l'indice di) una fonte per la chat pubblica — una sola
+ * richiesta legge il file —
  * PDF, txt, md o docx — lo spezza in sezioni cercabili e le salva. Niente
  * più bozza da correggere a mano: qui si vede solo quanto è stato
  * indicizzato, non il testo.

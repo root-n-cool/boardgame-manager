@@ -1479,6 +1479,95 @@ button.back-link:active {
   height: 0.85rem;
 }
 
+/* Gruppo di sezioni: un tappeto di feltro che tiene insieme una testata e le
+   card che le appartengono. Non è una card — niente fondo carta, bordo né
+   ombra — perché `.panel-card` dentro `.panel-card` raddoppia bordo e
+   padding, e il sistema la rifiuta ovunque. Serve solo a dire "queste card
+   sono figlie di quella testata", ed è il feltro a dirlo: le tiene come il
+   tavolo tiene le carte di una mano.
+
+   Nasce perché quattro fogli in fila — Scheda, Media, Chatbot, Domande
+   suggerite — non dicevano che i primi due dipendono dalla lingua scelta e
+   gli altri due no: la barra delle lingue sopra sembrava governarli tutti e
+   quattro. */
+.section-group {
+  background: var(--felt);
+  border-radius: var(--radius);
+  padding: 0.4rem;
+  margin: 1.25rem 0 1.75rem;
+}
+
+/* Testata del gruppo: a sinistra il nome del genitore, a destra i comandi che
+   lo governano (le linguette lingua e "Aggiungi lingua"). Stesso passo della
+   `.tab-bar`, che dentro un gruppo *è* questa riga. */
+.section-group-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem 0.7rem;
+  padding: 0.45rem 0.55rem;
+}
+
+/* Il nome del gruppo è un'etichetta, non un titolo di foglio: maiuscoletto
+   mono come ogni etichetta del progetto, e in `--felt-text` pieno perché le
+   linguette accanto restano smorzate finché non sono attive — altrimenti la
+   riga si legge come cinque pastiglie senza un nome. Resta un `h2`: i titoli
+   delle card figlie scendono a `h3`, così l'annidamento visivo è anche
+   l'annidamento del documento. */
+/* `min-height` pari all'altezza di una pastiglia della barra, e non sulla
+   testata: le due testate della pagina devono essere la stessa striscia, ma
+   una porta le linguette e l'altra il solo nome, e senza questo erano alte
+   46px e 31px — due gruppi nella stessa colonna si leggevano come due
+   componenti diversi. Sul figlio invece che sulla scatola perché il padding
+   della testata cambia col breakpoint: fissarla sulla scatola le riallineava
+   a una larghezza sola. */
+.section-group-head h2 {
+  display: flex;
+  align-items: center;
+  min-height: 2.24rem;
+  margin: 0;
+  font-family: 'Data', monospace;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--felt-text);
+}
+
+/* Dentro la testata la barra ha già il feltro del gruppo sotto: ripeterlo
+   disegnava due raggi concentrici sullo stesso verde. Cresce per prendere lo
+   spazio libero, così "Aggiungi lingua" resta appeso al bordo destro. */
+.section-group-head .tab-bar {
+  flex: 1 1 12rem;
+  background: none;
+  border-radius: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* Le figlie stanno strette dentro il gruppo: fra due fogli della stessa mano
+   basta il filo di feltro che li separa, mentre l'aria della colonna (1.75rem
+   fra `.panel-card` di pagina) qui sfonderebbe il gruppo. */
+.section-group > .panel-card {
+  margin: 0;
+}
+
+.section-group > .panel-card + .panel-card {
+  margin-top: 0.4rem;
+}
+
+@media (max-width: 560px) {
+  /* Su telefono ogni millimetro di colonna è del contenuto: il tappeto si
+     assottiglia invece di mangiare larghezza alle card figlie. */
+  .section-group {
+    padding: 0.3rem;
+  }
+
+  .section-group-head {
+    padding: 0.4rem 0.35rem;
+  }
+}
+
 /* Scheda e media della lingua attiva: due fogli distinti, separati dallo
    spazio della pagina. Prima erano due sezioni di una card sola divise da
    un filetto da bordo a bordo, che tagliava il foglio invece di articolarlo.
@@ -1555,8 +1644,22 @@ form.panel-form > .form-actions {
   margin-bottom: 1rem;
 }
 
-.section-head h2 {
+/* Il titolo di una sezione è un `h2` quando la card sta da sola nella colonna
+   e un `h3` quando è figlia di un `.section-group`: la resa è la stessa —
+   cambia il posto nella gerarchia del documento, non il peso sulla pagina —
+   quindi `h3` va vestito a mano, perché la regola globale dei titoli copre
+   solo `h1`/`h2`. */
+.section-head h2,
+.section-head h3 {
   margin: 0;
+}
+
+.section-head h3 {
+  font-family: 'Display', system-ui, sans-serif;
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
 }
 
 /* Quanti elementi ha la sezione: è un dato, quindi mono, e sta all'altro
@@ -1659,9 +1762,13 @@ form button[type='submit']:has(svg) {
   height: 2.2rem;
 }
 
-/* Il titolo del media guarda come quello di una scatola ma è un h3: il
-   livello segue la gerarchia della pagina, non l'aspetto. */
-.media-grid h3 {
+/* Il titolo del media guarda come quello di una scatola ma il suo livello
+   segue la gerarchia della pagina, non l'aspetto: `h3` sotto la sezione
+   «Media» della scheda pubblica, `h4` su quella di modifica, dove «Media» è
+   già figlia del gruppo «Lingue» (prop `titleLevel` di `GameMediaList`). La
+   resa è la stessa: a cambiare è il posto nel documento. */
+.media-grid h3,
+.media-grid h4 {
   margin: 0 0.9rem 0.15rem;
   font-family: 'Display', system-ui, sans-serif;
   font-size: 1rem;
@@ -4300,10 +4407,11 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--ink);
 }
 
-/* Le tre domande di riposo della chat, sotto la lista dei documenti nello
-   stesso `.panel-card`: un filetto in alto le separa come farebbe un
-   sezione propria (`.panel-card` nella vista), quindi non porta bordo, ombra
-   né separatore suoi: a staccarla dal Chatbot ci pensa lo spazio fra le card.
+/* Le tre domande di riposo della chat: card propria dentro il gruppo
+   «Chatbot», sorella di "Knowledge base". Il `.panel-card` che la contiene
+   sta nella vista, quindi il form non porta bordo, ombra né separatore suoi —
+   a staccarla dalla lista dei documenti ci pensa il filo di feltro fra le due
+   card.
 
    È un `<form>`, quindi eredita la colonna flex e il `gap` di `form`: qui il
    gap scende a 0.85rem perché separa gruppi già compatti (testata, lista,
@@ -4349,11 +4457,11 @@ form.suggested-questions {
   margin-bottom: 0;
 }
 
-/* `h2` come i titoli delle sezioni sorelle (Scheda, Media, Chatbot), da cui
-   eredita famiglia e taglia: promuovendolo da `h3` non serve più vestirlo a
-   mano, basta azzerare il margine perché la spaziatura la dà il `gap` del
-   gruppo di testata. */
-.suggested-questions h2 {
+/* `h3` come il titolo della card sorella ("Knowledge base"): entrambe sono
+   figlie del gruppo «Chatbot», che tiene l'`h2`. La resa gliela dà
+   `.section-head h3`; qui basta azzerare il margine, perché la spaziatura la
+   dà il `gap` del gruppo di testata. */
+.suggested-questions h3 {
   margin: 0;
 }
 

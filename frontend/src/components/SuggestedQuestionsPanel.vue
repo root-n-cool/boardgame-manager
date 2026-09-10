@@ -129,7 +129,7 @@ onMounted(load)
   <form class="suggested-questions" @submit.prevent="save">
     <div class="suggested-questions-head">
       <div class="section-head suggested-questions-head-row">
-        <h2>Domande suggerite</h2>
+        <h3>Domande suggerite</h3>
         <button
           type="button"
           class="btn-secondary is-compact"

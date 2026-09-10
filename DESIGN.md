@@ -265,6 +265,20 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   griglia e resta una fascia in basso non cliccabile e fuori dall'anello di
   focus (bug reale trovato in audit). L'`<a>` è la cella, in flex-column,
   con lo slot dell'icona in `flex: 1 1 auto`.
+- **Gruppo di card** (`.section-group`): quando due o più `.panel-card`
+  dipendono dalla stessa cosa — la lingua scelta, la chat — un tappeto di
+  feltro (`--felt`, raggio 10px, padding 0.4rem) le tiene insieme sotto una
+  testata (`.section-group-head`). **Non è una card**: niente cartoncino,
+  bordo né ombra, perché una `.panel-card` dentro una `.panel-card` raddoppia
+  bordo e padding, e il sistema la rifiuta ovunque. Le figlie perdono i
+  margini di colonna e restano separate da 0.4rem: il filo di feltro fra due
+  fogli della stessa mano. Il nome del gruppo è un'etichetta, non un titolo di
+  foglio — maiuscoletto mono in `--felt-text` — e resta un `h2` mentre i
+  titoli delle card figlie scendono a `h3` (`.section-head h3` ha la stessa
+  resa di `h2`: cambia il posto nella gerarchia, non il peso sulla pagina).
+  Serve a rispondere a "di chi è figlia questa card": card in fila non lo
+  dicono, e una barra di linguette in cima sembra governare tutto quel che la
+  segue.
 - **La card d'azione sta fuori dalla lista.** La `<ul>` dei contenuti porta
   `role="list"` e `display: contents` (`.game-grid-items`), così le sue
   `<li>` restano celle della griglia e la card d'azione le sta accanto senza
@@ -589,10 +603,19 @@ questa scheda.
   conseguenza, non anticipa l'oggetto). L'azione distruttiva sta in testa,
   non annegata in una riga di metadati insieme ai rimandi.
 - **`.back-link` verso il catalogo**, come `/admin/games/new`.
-- **Due fogli, non un foglio diviso** (`.panel-card` × 2): "Scheda" e
-  "Media" sono card separate sotto la barra delle lingue, che le governa
-  entrambe. Un filetto full-bleed in mezzo a una card sola tagliava il
-  foglio invece di articolarlo.
+- **Due fogli dentro il gruppo «Lingue»** (`.section-group`): "Scheda" e
+  "Media" sono card separate — un filetto full-bleed in mezzo a una card sola
+  tagliava il foglio invece di articolarlo — ma stanno **dentro** il tappeto
+  di feltro la cui testata porta l'etichetta "Lingue", le linguette e
+  "Aggiungi lingua". La barra, che dentro il gruppo *è* la testata, perde il
+  proprio fondo (`.section-group-head .tab-bar { background: none }`):
+  ripeterlo disegnava due raggi concentrici sullo stesso verde. Prima le
+  quattro sezioni della pagina erano in fila e la barra sembrava governarle
+  tutte e quattro, comprese quelle che con la lingua non c'entrano.
+- **La `.lang-chip` sulle due card resta anche col gruppo.** È ridondante
+  rispetto alla linguetta attiva, ma il form della scheda è lungo: a metà
+  descrizione la barra è fuori schermo, e la pastiglia è l'unica cosa che
+  dice in che lingua si sta scrivendo.
 - **Dentro un `.panel-card` il campo è largo quanto il foglio**: il tetto
   di 30rem sui campi vale nella colonna della pagina, dove i form si
   allineano ad altre card; dentro un pannello dedicato lasciava mezza
@@ -660,12 +683,22 @@ questa scheda.
   nella cartella dei download, quindi va troncato lui, non la riga di
   metadati che gli sta accanto.
 
-#### Sezione Chatbot (`ManualPrepPanel.vue`, sezione «Chatbot»)
-Una `.panel-card` propria, dopo "Media" e non più dentro — le due sezioni
-rispondono a domande diverse ("che materiali ha il gioco" contro "quali
-sono pronti per la chat") e mischiarle confondeva un pannello alto per
-file con la griglia dei media. Una riga per fonte indicizzabile della
-lingua attiva (PDF, txt, md o docx), riuso dello stesso scaffold di
+#### Gruppo «Chatbot»: Knowledge base e Domande suggerite
+Il secondo `.section-group` della pagina, con testata "Chatbot" e due card
+figlie: "Knowledge base" (le fonti indicizzate) e "Domande suggerite".
+**Nel gruppo non compare una sola `.lang-chip`, e l'assenza è
+l'informazione**: quel che sta qui è per gioco, non per lingua — la chat
+cerca in tutte le fonti insieme e le tre domande sono uniche. Prima le due
+card erano in fila sotto la barra delle lingue, che sembrava governare anche
+loro: il gruppo esiste per staccarle, e la testata "Chatbot" dice di chi sono
+figlie.
+
+#### Knowledge base (`ManualPrepPanel.vue`)
+La prima card del gruppo, un tempo la sezione «Chatbot» stessa: sta fuori da
+"Media" perché le due rispondono a domande diverse ("che materiali ha il
+gioco" contro "quali sono pronti per la chat") e mischiarle confondeva un
+pannello alto per file con la griglia dei media. Una riga per fonte
+indicizzabile del gioco (PDF, txt, md o docx), riuso dello stesso scaffold di
 `.admin-list`/`.admin-row` delle righe amministratori (`/admin/users`):
 titolo (`.manual-doc-title`), pastiglia di formato (`.lang-chip`, la
 stessa dell'indice lingua "IT" — l'estensione letta da
@@ -726,12 +759,14 @@ testo estratto non si conserva da nessuna parte, per scelta.
   titoli.
 
 #### Domande suggerite (`SuggestedQuestionsPanel.vue`)
-Il secondo foglio della sezione «Chatbot», staccato dall'elenco dei
-documenti da un filetto (`.suggested-questions`, `border-top`) invece che
-da una card propria: raddoppiare bordo e ombra dentro una card è la
-`.panel-card` dentro `.panel-card` che il sistema rifiuta altrove. È il
-**pattern nuovo di questa fase**: una lista ordinata di campi editabili,
-ciascuno con una pastiglia di stato, dentro un form annidato in un foglio.
+La seconda card del gruppo «Chatbot», sorella di "Knowledge base" e non un
+blocco dentro: le tre domande si devono poter scrivere a mano anche su un
+gioco senza documenti indicizzati, ed è il motivo per cui il PUT è un upsert.
+Il `.panel-card` sta nella vista, quindi il form non porta bordo né ombra
+suoi — raddoppiarli sarebbe la `.panel-card` dentro `.panel-card` che il
+sistema rifiuta altrove. Il pattern del pannello: una lista ordinata di campi
+editabili, ciascuno con una pastiglia di stato, dentro un form annidato in un
+foglio.
 
 - **È un `<form>` e la lista è una `<ol>`.** Tre campi etichettati più un
   "Salva" sono un form, non un `<div>` con dei `@click`: dichiararlo
@@ -1102,7 +1137,8 @@ sotto ognuno diventava rumore.
   feltro, angoli tondi su tutti i lati (mai linguette tagliate in basso).
   La barra è una sola grammatica per casi diversi — le lingue di un gioco
   (`.language-tabs`, che ci aggiunge solo l'azione "Aggiungi lingua" in
-  fondo) e il periodo degli eventi.
+  fondo) e il periodo degli eventi. Dentro un `.section-group` la barra è la
+  testata del gruppo e rinuncia al fondo, che glielo dà già il tappeto.
 
 ### Tabelle / Scoreboard
 - **Header:** feltro verde, testo cartoncino uppercase tracciato — lo

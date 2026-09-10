@@ -99,7 +99,7 @@ export function languageName(code: string): string {
 /**
  * L'etichetta di formato di un file dalla sua estensione (PDF, TXT, MD,
  * DOCX, …): stessa regola in `GameMediaList.vue` (griglia media) e nella
- * sezione Chatbot della scheda di modifica (`GameAdminDetailView.vue`),
+ * card «Knowledge base» della scheda di modifica (`GameAdminDetailView.vue`),
  * perché è la stessa domanda — "che tipo di file è" — posta in due posti.
  * Un'estensione anomala (assente o più lunga di 5 caratteri) torna "File"
  * invece di un'etichetta illeggibile.
