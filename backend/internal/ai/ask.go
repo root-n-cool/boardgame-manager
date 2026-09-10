@@ -50,9 +50,10 @@ type multipartMessage struct {
 }
 
 type visionRequest struct {
-	Model       string            `json:"model"`
-	Temperature float64           `json:"temperature"`
-	Messages    []json.RawMessage `json:"messages"`
+	Model           string            `json:"model"`
+	Temperature     float64           `json:"temperature"`
+	Messages        []json.RawMessage `json:"messages"`
+	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
 }
 
 const transcribeSystemPrompt = "Trascrivi in markdown il testo della pagina di regolamento che ricevi come immagine. " +
@@ -91,7 +92,12 @@ func (c *HTTPClient) Transcribe(ctx context.Context, jpeg []byte, pageNumber int
 		// tentativo, e una che varia tra un retry e l'altro sarebbe
 		// peggio di una semplicemente imperfetta.
 		Temperature: 0,
-		Messages:    []json.RawMessage{system, user},
+		// Anche il modello vision ragiona: misurato, 638 caratteri di
+		// `reasoning_content` per trascrivere due parole, 169 token contro
+		// 4. Su un manuale di trenta pagine è il conto che decide se
+		// l'indicizzazione finisce o va in timeout pagina per pagina.
+		ReasoningEffort: reasoningEffortNone,
+		Messages:        []json.RawMessage{system, user},
 	})
 	if err != nil {
 		return "", err
@@ -232,6 +238,82 @@ func (c *HTTPClient) postRaw(ctx context.Context, payload []byte, timeout time.D
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// Un provider che ha già rifiutato `reasoning_effort` lo rifiuterà
+	// ancora: pagare un 400 di andata e ritorno su ognuna delle trenta
+	// pagine di un manuale sarebbe trenta richieste buttate.
+	if c.reasoningEffortRefused.Load() {
+		if stripped, ok := stripReasoningEffort(payload); ok {
+			payload = stripped
+		}
+	}
+
+	body, err := c.postOnce(ctx, payload)
+	if err == nil {
+		return body, nil
+	}
+	if !refusesReasoningEffort(err) {
+		return nil, err
+	}
+	stripped, ok := stripReasoningEffort(payload)
+	if !ok {
+		// Il provider nomina il campo ma il payload non ce l'ha: non è il
+		// nostro caso, e rifare la richiesta identica non aiuterebbe.
+		return nil, err
+	}
+	c.reasoningEffortRefused.Store(true)
+	return c.postOnce(ctx, stripped)
+}
+
+// refusesReasoningEffort dice se l'errore è "non conosco questo campo".
+// Deve restare STRETTO: un 400 è anche una chiave sbagliata o un modello
+// che non esiste, e rifare quelle richieste senza il campo raddoppierebbe
+// il traffico nascondendo la causa vera. Quindi due condizioni insieme —
+// uno status 4xx e il nome del campo dentro il corpo della risposta, che è
+// come i server OpenAI-compatible segnalano un argomento che non
+// riconoscono ("Unrecognized request argument supplied:
+// reasoning_effort").
+//
+// 429 escluso di proposito: è il rate limit, il campo non c'entra, e
+// riprovare subito senza aspettare è il contrario di quel che serve.
+func refusesReasoningEffort(err error) bool {
+	var se *StatusError
+	if !errors.As(err, &se) {
+		return false
+	}
+	if se.Status < 400 || se.Status > 499 || se.Status == http.StatusTooManyRequests {
+		return false
+	}
+	return strings.Contains(strings.ToLower(se.Body), "reasoning_effort")
+}
+
+// stripReasoningEffort togliere il campo dal payload già serializzato, e
+// restituisce false se non c'era. Passa per una mappa invece di
+// rimarshallare la struct d'origine perché i quattro chiamanti hanno
+// quattro struct diverse (chat, vision, ask, con e senza tool) e questa
+// funzione sta nel punto in cui sono già tutte JSON: un'alternativa
+// tipizzata vorrebbe la stessa logica ripetuta quattro volte.
+//
+// L'ordine delle chiavi cambia (le mappe Go non lo conservano) e non
+// importa: è JSON, non un formato posizionale.
+func stripReasoningEffort(payload []byte) ([]byte, bool) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(payload, &fields); err != nil {
+		return nil, false
+	}
+	if _, ok := fields["reasoning_effort"]; !ok {
+		return nil, false
+	}
+	delete(fields, "reasoning_effort")
+	stripped, err := json.Marshal(fields)
+	if err != nil {
+		return nil, false
+	}
+	return stripped, true
+}
+
+// postOnce è un singolo giro HTTP: nessun retry, nessun timeout suo — li
+// governa il chiamante.
+func (c *HTTPClient) postOnce(ctx context.Context, payload []byte) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(payload))
 	if err != nil {
 		return nil, err
@@ -416,10 +498,11 @@ type toolDef struct {
 }
 
 type askRequestBody struct {
-	Model       string            `json:"model"`
-	Temperature float64           `json:"temperature"`
-	Messages    []json.RawMessage `json:"messages"`
-	Tools       []toolDef         `json:"tools,omitempty"`
+	Model           string            `json:"model"`
+	Temperature     float64           `json:"temperature"`
+	Messages        []json.RawMessage `json:"messages"`
+	Tools           []toolDef         `json:"tools,omitempty"`
+	ReasoningEffort string            `json:"reasoning_effort,omitempty"`
 }
 
 type toolCall struct {
@@ -519,10 +602,11 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 		}
 
 		payload, err := json.Marshal(askRequestBody{
-			Model:       c.Model,
-			Temperature: 0.2,
-			Messages:    messages,
-			Tools:       active,
+			Model:           c.Model,
+			Temperature:     0.2,
+			Messages:        messages,
+			Tools:           active,
+			ReasoningEffort: reasoningEffortNone,
 		})
 		if err != nil {
 			return "", err

@@ -80,7 +80,8 @@ func (c *HTTPClient) SuggestQuestions(ctx context.Context, gameName string, head
 		Model: c.Model,
 		// temperature 0: le domande di un manuale non devono cambiare a
 		// ogni indicizzazione. Se l'admin ne vuole altre, c'è "rigenera".
-		Temperature: 0,
+		Temperature:     0,
+		ReasoningEffort: reasoningEffortNone,
 		Messages: []chatMessage{
 			{Role: "system", Content: suggestSystemPrompt},
 			{Role: "user", Content: user},

@@ -113,8 +113,9 @@ func (c *HTTPClient) segmentWindow(ctx context.Context, window, previousHeading 
 	}
 
 	payload, err := json.Marshal(chatRequest{
-		Model:       c.Model,
-		Temperature: 0,
+		Model:           c.Model,
+		Temperature:     0,
+		ReasoningEffort: reasoningEffortNone,
 		Messages: []chatMessage{
 			{Role: "system", Content: system},
 			{Role: "user", Content: window},
