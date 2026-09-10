@@ -20,6 +20,19 @@ interface OpenLoan {
   notes: string | null
 }
 
+interface Material {
+  id: number
+  name: string
+  quantity: number
+}
+
+interface MaterialIssue {
+  name: string
+  expected: number
+  /** null = voce non verificata al momento della riconsegna. */
+  returned: number | null
+}
+
 interface DeskCopy {
   eventGameId: number
   gameId: number
@@ -32,6 +45,7 @@ interface DeskCopy {
   seats: number
   activeBookings: CopyBooking[]
   openLoan: OpenLoan | null
+  materials: Material[]
 }
 
 interface ReturnedLoan {
@@ -45,6 +59,7 @@ interface ReturnedLoan {
   lentAt: string
   returnedAt: string
   notes: string | null
+  materialIssues: MaterialIssue[]
 }
 
 interface LoanDesk {
@@ -81,6 +96,31 @@ const returnNotes = ref('')
 const returnError = ref('')
 const returnSaving = ref(false)
 
+/**
+ * Una riga della checklist. `returned` resta una stringa: un input numerico
+ * legato a un numero non si può svuotare mentre si digita, e "campo vuoto"
+ * è esattamente uno dei tre stati che dobbiamo poter rappresentare.
+ */
+type MaterialCheckRow = { material: Material; complete: boolean; returned: string }
+
+const materialChecks = ref<MaterialCheckRow[]>([])
+
+/** Verificata = spuntata, oppure con una quantità scritta. */
+const verifiedCount = computed(
+  () => materialChecks.value.filter((r) => r.complete || r.returned.trim() !== '').length,
+)
+
+const shortageCount = computed(
+  () =>
+    materialChecks.value.filter(
+      (r) => !r.complete && r.returned.trim() !== '' && Number(r.returned) < r.material.quantity,
+    ).length,
+)
+
+const uncheckedCount = computed(
+  () => materialChecks.value.filter((r) => !r.complete && r.returned.trim() === '').length,
+)
+
 const logOpen = ref(false)
 
 const out = computed(() =>
@@ -103,6 +143,26 @@ function returnedLabel(row: ReturnedLoan) {
   const copy = desk.value.copies.find((c) => c.eventGameId === row.eventGameId)
   const copies = copy?.copies ?? 2
   return copies > 1 ? `${row.gameName} #${row.copyIndex}` : row.gameName
+}
+
+/**
+ * "mancano: carte 35/40 · non verificate: dadi" — il problema si legge dalla
+ * lista, senza aprire niente. Un prestito pulito non ha esiti e non stampa
+ * nessuna riga.
+ */
+function issuesLabel(issues: MaterialIssue[]) {
+  const missing = issues
+    .filter((i) => i.returned !== null)
+    .map((i) => `${i.name} ${i.returned}/${i.expected}`)
+  const unchecked = issues.filter((i) => i.returned === null).map((i) => i.name)
+  const parts: string[] = []
+  if (missing.length) {
+    parts.push(`mancano: ${missing.join(', ')}`)
+  }
+  if (unchecked.length) {
+    parts.push(`non verificate: ${unchecked.join(', ')}`)
+  }
+  return parts.join(' · ')
 }
 
 /** "da 25 minuti", che al tavolo è più utile di un orario. */
@@ -215,6 +275,13 @@ function startReturning(copy: DeskCopy, loan: OpenLoan) {
   returning.value = { copy, loan }
   returnNotes.value = loan.notes ?? ''
   returnError.value = ''
+  // Tutte da spuntare: il senso della checklist è forzare il controllo voce
+  // per voce, e partire da "tutto a posto" lo annullerebbe.
+  materialChecks.value = copy.materials.map((material) => ({
+    material,
+    complete: false,
+    returned: '',
+  }))
 }
 
 async function submitReturn() {
@@ -227,6 +294,16 @@ async function submitReturn() {
   try {
     await api.post(`/loans/${current.loan.id}/return`, {
       notes: returnNotes.value.trim() || null,
+      // Campo assente quando il gioco non ha materiali: il backend
+      // distingue "nessuna checklist" da "checklist con voci non
+      // verificate", e mandare [] direbbe la seconda cosa.
+      materials: materialChecks.value.length
+        ? materialChecks.value.map((r) => ({
+            materialId: r.material.id,
+            complete: r.complete,
+            returned: r.complete || r.returned.trim() === '' ? null : Number(r.returned),
+          }))
+        : undefined,
     })
     // Stesso ordine di submitLend: se la restituzione va a segno ma il
     // refresh fallisce, la modale resta aperta e l'errore si vede.
@@ -355,6 +432,9 @@ onMounted(async () => {
                   non il mono di `.row-meta`, riservato a telefono e orari.
                 -->
                 <span v-if="row.notes" class="loan-row-notes">{{ row.notes }}</span>
+                <p v-if="row.materialIssues.length" class="row-meta material-issues">
+                  {{ issuesLabel(row.materialIssues) }}
+                </p>
               </span>
             </div>
           </li>
@@ -426,6 +506,48 @@ onMounted(async () => {
           {{ returning.loan.borrowerName }} · {{ returning.loan.borrowerPhone }},
           {{ since(returning.loan.lentAt) }}
         </p>
+
+        <fieldset v-if="materialChecks.length" class="material-check">
+          <legend>
+            Materiali
+            <span class="material-check-progress">
+              {{ verifiedCount }} di {{ materialChecks.length }} verificate
+            </span>
+          </legend>
+          <ul class="material-check-list">
+            <li v-for="row in materialChecks" :key="row.material.id">
+              <span class="material-check-name">{{ row.material.name }}</span>
+              <span class="material-check-expected">{{ row.material.quantity }}</span>
+              <input
+                v-model="row.returned"
+                class="material-check-input"
+                type="text"
+                inputmode="numeric"
+                :disabled="row.complete"
+                :placeholder="row.complete ? '—' : ''"
+                :aria-label="`${row.material.name}: quantità tornata`"
+              />
+              <label class="material-check-box-wrap">
+                <input
+                  v-model="row.complete"
+                  type="checkbox"
+                  class="material-check-box"
+                  :aria-label="`${row.material.name}: tutte tornate`"
+                />
+              </label>
+            </li>
+          </ul>
+          <p v-if="shortageCount || uncheckedCount" class="empty-note">
+            <template v-if="shortageCount">
+              {{ shortageCount }} {{ shortageCount === 1 ? 'voce incompleta' : 'voci incomplete' }}
+            </template>
+            <template v-if="shortageCount && uncheckedCount">, </template>
+            <template v-if="uncheckedCount">
+              {{ uncheckedCount }} non {{ uncheckedCount === 1 ? 'verificata' : 'verificate' }}
+            </template>
+          </p>
+        </fieldset>
+
         <label>
           <span>Note <span class="field-optional">(opzionale)</span></span>
           <textarea v-model="returnNotes"></textarea>

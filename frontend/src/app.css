@@ -4092,6 +4092,57 @@ tbody tr:nth-child(3) .rank-medal {
   overflow-wrap: anywhere;
 }
 
+/* La riga della checklist si legge e si tocca in piedi, al tavolo: nome
+   elastico, quantità attesa in mono perché è un dato, campo stretto quanto
+   basta a quattro cifre, casella con l'area di tocco piena. */
+.material-check-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+}
+
+.material-check-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.material-check-expected {
+  font-family: 'Data', monospace;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.material-check-input {
+  width: 4.5rem;
+  flex: none;
+  font-family: 'Data', monospace;
+  text-align: right;
+}
+
+/* Chrome ignora il padding sui checkbox nativi (verificato dal vivo: con
+   `padding` e margine negativo il target restava ~20px, non 44), quindi
+   l'area di tocco si ottiene avvolgendo l'input in questo `<label>` di 44px
+   invece che gonfiando il controllo — il disegno della casella resta
+   piccolo quanto il resto della riga. */
+.material-check-box-wrap {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+
+.material-check-box {
+  flex: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+}
+
 /* ---------- Chiedi al manuale ---------- */
 
 /* Una colonna sola per default: la barra della chat entra solo dove c'è
