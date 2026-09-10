@@ -4657,3 +4657,121 @@ form.suggested-questions {
   gap: 0.6rem;
 }
 
+/* ---------- Materiali del gioco ---------- */
+/* Stesso scheletro di `.suggested-questions`: colonna con `gap`, testata e
+   didascalie senza margine proprio perché la spaziatura fra i gruppi la dà
+   già il form. */
+form.game-materials {
+  align-items: stretch;
+  gap: 0.85rem;
+}
+
+.game-materials > .empty-note,
+.game-materials > .error,
+.game-materials-head > .empty-note {
+  margin: 0;
+}
+
+.game-materials-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.game-materials-head .section-head {
+  margin-bottom: 0;
+}
+
+.game-materials h3 {
+  margin: 0;
+}
+
+/* Spogliata come `.admin-list`: la regola globale delle liste la vestirebbe
+   da card e darebbe a ogni riga un filetto proprio, mentre qui la card è già
+   il `.panel-card` che contiene il pannello. */
+.game-materials-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.game-materials-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+}
+
+.game-materials-row input {
+  min-height: 44px;
+}
+
+.game-materials-row input:not(.game-materials-qty) {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.game-materials-qty {
+  flex: none;
+  width: 6rem;
+  max-width: 6rem;
+  font-family: 'Data', monospace;
+  text-align: right;
+}
+
+.game-materials-row-actions {
+  display: flex;
+  flex: none;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+/* Bottoni icona-soli: il testo è solo nell'`aria-label`, quindi il quadrato
+   deve restare un bersaglio da dito (44px) anche senza l'etichetta che negli
+   altri `.btn-with-icon` fa da imbottitura. */
+.game-materials-row-actions button {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-materials-row-actions button svg {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* Stessa misura piena di `.player-score-add`: lo slot vuoto in fondo alla
+   lista continua il bordo delle righe sopra invece di restare un bottone
+   sospeso a sinistra. */
+.game-materials-add {
+  align-self: stretch;
+  width: 100%;
+}
+
+@media (max-width: 560px) {
+  /* Da telefono il nome prende la riga intera e quantità + azioni scendono
+     sotto, come `.player-score-row`. */
+  .game-materials-row input:not(.game-materials-qty) {
+    flex: 1 0 100%;
+  }
+
+  .game-materials-row-actions {
+    margin-left: 0;
+  }
+}
+

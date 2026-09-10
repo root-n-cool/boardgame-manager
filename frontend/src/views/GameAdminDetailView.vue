@@ -7,6 +7,7 @@ import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import BggFilesPicker, { type BggFile } from '../components/BggFilesPicker.vue'
 import ManualPrepPanel from '../components/ManualPrepPanel.vue'
+import GameMaterialsPanel from '../components/GameMaterialsPanel.vue'
 import SuggestedQuestionsPanel from '../components/SuggestedQuestionsPanel.vue'
 import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
 
@@ -666,6 +667,16 @@ onMounted(async () => {
             :game-id="game.id"
             :ai-configured="aiConfigured"
           />
+        </section>
+
+        <!--
+          Card sorella delle due sopra e non un blocco dentro "Knowledge
+          base": l'elenco dei materiali serve a chi presta il gioco, non a chi
+          prepara il manuale, e può esistere anche su un gioco senza documenti
+          indicizzati (si scrive a mano).
+        -->
+        <section class="panel-card">
+          <GameMaterialsPanel :game-id="game.id" :ai-configured="aiConfigured" />
         </section>
       </div>
     </template>
