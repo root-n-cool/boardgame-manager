@@ -32,6 +32,14 @@ const props = defineProps<{
 }>()
 
 interface MaterialRow {
+  /**
+   * Identità della riga lato client, non l'id del catalogo: serve solo come
+   * `:key` del `v-for`. Con la chiave sull'indice, spostare una voce in su
+   * lasciava il focus sull'indice — cioè sulla riga scesa — e il secondo
+   * Invio la riportava giù: dalla tastiera una voce non poteva salire di due
+   * posti. Un contatore basta: vive quanto il pannello.
+   */
+  uid: number
   name: string
   quantity: string
 }
@@ -40,6 +48,12 @@ interface MaterialDTO {
   id?: number
   name: string
   quantity: number
+}
+
+let nextUid = 0
+function newRow(name: string, quantity: string): MaterialRow {
+  nextUid += 1
+  return { uid: nextUid, name, quantity }
 }
 
 const rows = ref<MaterialRow[]>([])
@@ -86,16 +100,68 @@ function rowLabel(row: MaterialRow, i: number) {
   return row.name.trim() || `voce ${i + 1}`
 }
 
+/**
+ * La quantità accetta solo cifre, come il campo della modale di riconsegna
+ * (`onReturnedInput` in `LoanDeskView`): `inputmode="numeric"` è un
+ * suggerimento alla tastiera, non un vincolo, e "abc" diventava `NaN`, cioè
+ * `null` nel JSON e 0 per il server, che rifiutava tutta la lista.
+ */
+function onQuantityInput(row: MaterialRow, event: Event) {
+  const el = event.target as HTMLInputElement
+  const digits = el.value.replace(/\D/g, '')
+  row.quantity = digits
+  // Rimette a posto il campo quando il filtro ha scartato qualcosa: il
+  // valore legato non è cambiato, quindi Vue non ridisegnerebbe niente e nel
+  // DOM resterebbe il testo rifiutato.
+  if (el.value !== digits) {
+    el.value = digits
+  }
+}
+
+// Il server rifiuta la lista *intera* se una riga ha il nome vuoto o la
+// quantità sotto 1, e il messaggio non dice quale riga: dopo "Aggiungi voce"
+// bastava premere Salva per perdere tutto il pannello in un errore muto. Le
+// righe si nominano una per una — con sessanta voci "manca qualcosa"
+// costringerebbe a ricontrollarle tutte.
+const incompleteLabels = computed(() =>
+  rows.value
+    .map((row, i) => ({
+      label: rowLabel(row, i),
+      bad: row.name.trim() === '' || Number(row.quantity) < 1,
+    }))
+    .filter((r) => r.bad)
+    .map((r) => r.label),
+)
+const incomplete = computed(() => incompleteLabels.value.length > 0)
+
 // Ref sull'ultimo input "nome" per portarci il focus dopo "Aggiungi voce".
 // Pattern da elenco dinamico: l'array si azzera prima di ogni patch e lo
 // ripopolano le callback `:ref` del v-for, altrimenti dopo una rimozione o
 // un riordino resterebbero indici rivolti a input non più in quella riga.
 let nameInputs: (HTMLInputElement | null)[] = []
+// Le due frecce, per rimettere il focus dov'era finita la riga: il bottone
+// premuto si sposta con lei, e quando arriva in cima o in fondo sparisce del
+// tutto — senza questo il focus tornerebbe al `<body>` a metà di un
+// riordino fatto da tastiera.
+let upButtons: (HTMLButtonElement | null)[] = []
+let downButtons: (HTMLButtonElement | null)[] = []
 onBeforeUpdate(() => {
   nameInputs = []
+  upButtons = []
+  downButtons = []
 })
+// I `null` non si scrivono: quando una riga cambia posto Vue chiama la
+// callback della vecchia riga con `null` e l'indice *vecchio*, che dopo lo
+// spostamento appartiene già a un altro bottone. Gli array si azzerano a ogni
+// patch, quindi ignorare i `null` non lascia comunque niente di stantio.
 function setNameInputRef(el: Element | null, i: number) {
-  nameInputs[i] = el as HTMLInputElement | null
+  if (el) nameInputs[i] = el as HTMLInputElement
+}
+function setUpButtonRef(el: Element | null, i: number) {
+  if (el) upButtons[i] = el as HTMLButtonElement
+}
+function setDownButtonRef(el: Element | null, i: number) {
+  if (el) downButtons[i] = el as HTMLButtonElement
 }
 
 async function load() {
@@ -105,7 +171,7 @@ async function load() {
   proposal.value = false
   try {
     const res = await api.get<{ materials: MaterialDTO[] }>(path.value)
-    rows.value = res.materials.map((m) => ({ name: m.name, quantity: String(m.quantity) }))
+    rows.value = res.materials.map((m) => newRow(m.name, String(m.quantity)))
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Impossibile leggere i materiali.'
   } finally {
@@ -115,7 +181,7 @@ async function load() {
 
 async function addRow() {
   if (busy.value) return
-  rows.value.push({ name: '', quantity: '' })
+  rows.value.push(newRow('', ''))
   await nextTick()
   nameInputs[rows.value.length - 1]?.focus()
 }
@@ -125,27 +191,37 @@ function removeRow(i: number) {
   rows.value.splice(i, 1)
 }
 
+async function move(from: number, to: number) {
+  if (busy.value || to < 0 || to >= rows.value.length) return
+  const [row] = rows.value.splice(from, 1)
+  rows.value.splice(to, 0, row)
+  await nextTick()
+  // Il focus segue la voce, non la posizione: si riprende la stessa freccia
+  // all'indice nuovo. Se la voce è arrivata al capo della lista quella
+  // freccia non c'è più, e allora prende l'altra della stessa riga —
+  // l'unico bottone da cui il riordino può continuare.
+  const same = to < from ? upButtons : downButtons
+  const other = to < from ? downButtons : upButtons
+  ;(same[to] ?? other[to])?.focus()
+}
+
 function moveUp(i: number) {
-  if (busy.value || i === 0) return
-  const [row] = rows.value.splice(i, 1)
-  rows.value.splice(i - 1, 0, row)
+  void move(i, i - 1)
 }
 
 function moveDown(i: number) {
-  if (busy.value || i === rows.value.length - 1) return
-  const [row] = rows.value.splice(i, 1)
-  rows.value.splice(i + 1, 0, row)
+  void move(i, i + 1)
 }
 
 async function save() {
-  if (busy.value) return
+  if (busy.value || incomplete.value) return
   saving.value = true
   error.value = ''
   try {
     const res = await api.put<{ materials: MaterialDTO[] }>(path.value, {
       materials: rows.value.map((r) => ({ name: r.name.trim(), quantity: Number(r.quantity) })),
     })
-    rows.value = res.materials.map((m) => ({ name: m.name, quantity: String(m.quantity) }))
+    rows.value = res.materials.map((m) => newRow(m.name, String(m.quantity)))
     savedRows.value = rows.value.map((r) => ({ ...r }))
     proposal.value = false
   } catch (e) {
@@ -161,7 +237,7 @@ async function suggest() {
   error.value = ''
   try {
     const res = await api.post<{ materials: MaterialDTO[] }>(`${path.value}/suggest`)
-    rows.value = res.materials.map((m) => ({ name: m.name, quantity: String(m.quantity) }))
+    rows.value = res.materials.map((m) => newRow(m.name, String(m.quantity)))
     proposal.value = true
     savedRows.value = null
   } catch (e) {
@@ -208,7 +284,7 @@ onMounted(load)
       </p>
 
       <ol v-else class="game-materials-list" role="list" :aria-busy="suggesting">
-        <li v-for="(row, i) in rows" :key="i" class="game-materials-row">
+        <li v-for="(row, i) in rows" :key="row.uid" class="game-materials-row">
           <label :for="`gm-name-${i}`" class="visually-hidden">Nome materiale {{ i + 1 }}</label>
           <input
             :id="`gm-name-${i}`"
@@ -222,17 +298,19 @@ onMounted(load)
           <label :for="`gm-qty-${i}`" class="visually-hidden">Quantità materiale {{ i + 1 }}</label>
           <input
             :id="`gm-qty-${i}`"
-            v-model="row.quantity"
+            :value="row.quantity"
             type="text"
             inputmode="numeric"
             maxlength="4"
             placeholder="Quantità"
             class="game-materials-qty"
             :disabled="busy"
+            @input="onQuantityInput(row, $event)"
           />
           <div class="game-materials-row-actions">
             <button
               v-if="i > 0"
+              :ref="(el) => setUpButtonRef(el as Element | null, i)"
               type="button"
               class="btn-secondary game-materials-move-up"
               :disabled="busy"
@@ -251,6 +329,7 @@ onMounted(load)
             </button>
             <button
               v-if="i < rows.length - 1"
+              :ref="(el) => setDownButtonRef(el as Element | null, i)"
               type="button"
               class="btn-secondary game-materials-move-down"
               :disabled="busy"
@@ -304,8 +383,21 @@ onMounted(load)
       <p v-if="error" class="error" role="alert">{{ error }}</p>
       <p v-else-if="saved" class="empty-note">Materiali salvati.</p>
 
+      <!-- Un solo messaggio per lo stato della lista, ed è anche il motivo
+           per cui "Salva" è spento: il server rifiuta tutta la lista se una
+           riga è incompleta, e prima la regola si scopriva solo dall'errore
+           dopo il click, che per giunta non dice quale riga. -->
+      <p v-if="incomplete" id="gm-save-note" class="empty-note">
+        Da completare prima di salvare: {{ incompleteLabels.join(', ') }}. Ogni voce vuole un nome e
+        una quantità di almeno 1.
+      </p>
+
       <div class="form-actions">
-        <button type="submit" :disabled="busy">
+        <button
+          type="submit"
+          :disabled="busy || incomplete"
+          :aria-describedby="incomplete ? 'gm-save-note' : undefined"
+        >
           {{ saving ? 'Salvataggio…' : 'Salva materiali' }}
         </button>
       </div>
