@@ -31,6 +31,12 @@ type Game struct {
 	// (D&D, giochi di ruolo). In UI si chiama "posti prenotabili".
 	Seats     int
 	CreatedAt time.Time
+	// MaterialsCheckedAt è quando un admin ha dichiarato che la scatola è
+	// di nuovo completa; nil se non è mai successo. Non dice che il gioco è
+	// a posto adesso — lo stato "incompleto" si deriva confrontando questa
+	// data con le mancanze registrate dopo (vedi events.GamesMissingPieces).
+	MaterialsCheckedAt *time.Time
+	MaterialsCheckedBy *int64
 }
 
 type GameLanguage struct {
@@ -88,10 +94,12 @@ func (s *Store) CreateGame(ctx context.Context, g Game) (Game, error) {
 func (s *Store) GetGame(ctx context.Context, id int64) (Game, error) {
 	var g Game
 	var createdAt string
+	var checkedAt sql.NullString
+	var checkedBy sql.NullInt64
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at
+		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at, materials_checked_at, materials_checked_by
 		 FROM games WHERE id = ?`, id,
-	).Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt)
+	).Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt, &checkedAt, &checkedBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Game{}, ErrNotFound
 	}
@@ -99,12 +107,13 @@ func (s *Store) GetGame(ctx context.Context, id int64) (Game, error) {
 		return Game{}, err
 	}
 	g.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+	applyCheckedColumns(&g, checkedAt, checkedBy)
 	return g, nil
 }
 
 func (s *Store) ListGames(ctx context.Context) ([]Game, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at
+		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at, materials_checked_at, materials_checked_by
 		 FROM games ORDER BY id`,
 	)
 	if err != nil {
@@ -116,13 +125,30 @@ func (s *Store) ListGames(ctx context.Context) ([]Game, error) {
 	for rows.Next() {
 		var g Game
 		var createdAt string
-		if err := rows.Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt); err != nil {
+		var checkedAt sql.NullString
+		var checkedBy sql.NullInt64
+		if err := rows.Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt, &checkedAt, &checkedBy); err != nil {
 			return nil, err
 		}
 		g.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
+		applyCheckedColumns(&g, checkedAt, checkedBy)
 		out = append(out, g)
 	}
 	return out, rows.Err()
+}
+
+// applyCheckedColumns traduce le due colonne nullable nei campi della
+// struct. Le date le scrive SQLite con datetime('now'), che è UTC — lo
+// stesso formato che scanLoan legge in internal/events.
+func applyCheckedColumns(g *Game, at sql.NullString, by sql.NullInt64) {
+	if at.Valid {
+		t, _ := time.Parse("2006-01-02 15:04:05", at.String)
+		g.MaterialsCheckedAt = &t
+	}
+	if by.Valid {
+		id := by.Int64
+		g.MaterialsCheckedBy = &id
+	}
 }
 
 func (s *Store) UpdateGame(ctx context.Context, id int64, upd GameUpdate) (Game, error) {

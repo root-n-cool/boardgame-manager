@@ -213,3 +213,26 @@ func validateMaterials(in []MaterialInput) ([]MaterialInput, error) {
 	}
 	return out, nil
 }
+
+// MarkMaterialsChecked dichiara che la scatola è di nuovo a posto: da
+// questo istante le mancanze registrate prima non segnalano più il gioco.
+//
+// Non cancella niente: le rilevazioni restano nel registro dei prestiti e
+// nel log del gioco. Si archivia la segnalazione, non la storia — ed è il
+// motivo per cui questa è una data e non un DELETE.
+func (s *Store) MarkMaterialsChecked(ctx context.Context, gameID, userID int64) (Game, error) {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE games SET materials_checked_at = datetime('now'), materials_checked_by = ?
+		 WHERE id = ?`, userID, gameID)
+	if err != nil {
+		return Game{}, err
+	}
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return Game{}, err
+	}
+	if affected == 0 {
+		return Game{}, ErrNotFound
+	}
+	return s.GetGame(ctx, gameID)
+}
