@@ -3,7 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import { formatEventDate } from '../utils/dates'
-import { issuesLabel, type MaterialIssue } from '../utils/loans'
+import { clockTime, issuesLabel, type MaterialIssue } from '../utils/loans'
 
 interface GameLoan {
   id: number
@@ -37,8 +37,16 @@ const game = ref<GameSummary | null>(null)
 const error = ref('')
 const loading = ref(true)
 
-function clockTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+/**
+ * Una riga si tinge solo se qualcuno ha contato e mancava qualcosa
+ * (`returned` valorizzato). Non su `length`: una riconsegna in cui
+ * nessuno ha aperto la scatola lascia una riga "non verificata" per ogni
+ * voce del catalogo, e sul numero di righe un rientro ordinario
+ * risulterebbe rosso — proprio sulla pagina che deve spiegare il marchio
+ * "Incompleto", che invece quelle voci non le conta.
+ */
+function hasShortage(loan: GameLoan) {
+  return loan.materialIssues.some((i) => i.returned !== null)
 }
 
 onMounted(async () => {
@@ -72,7 +80,7 @@ onMounted(async () => {
         Questo gioco non è mai stato dato in prestito.
       </p>
       <ul v-else role="list" class="game-loans-list">
-        <li v-for="loan in loans" :key="loan.id" :class="{ 'has-issues': loan.materialIssues.length }">
+        <li v-for="loan in loans" :key="loan.id" :class="{ 'has-issues': hasShortage(loan) }">
           <span class="game-loans-title">
             {{ loan.eventTitle }} · {{ formatEventDate(loan.eventDate) }}
             <template v-if="loan.copies > 1"> #{{ loan.copyIndex }}</template>

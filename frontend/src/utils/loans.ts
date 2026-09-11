@@ -31,3 +31,13 @@ export function issuesLabel(issues: MaterialIssue[]): string {
   }
   return parts.join(' · ')
 }
+
+/**
+ * "21:30": l'ora di una consegna o di un rientro. Sta qui accanto a
+ * `issuesLabel` e per la stessa ragione — la usano il banco prestiti e il
+ * registro di un gioco, e due copie della stessa funzione finiscono per
+ * stampare due orari diversi.
+ */
+export function clockTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+}

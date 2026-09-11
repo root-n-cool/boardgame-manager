@@ -302,7 +302,12 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   sinistra della copertina (`position: absolute`, richiede un `.game-grid a`
   con `position: relative`, già presente); con `.is-inline` torna nel
   flusso normale e scorre accanto a un nome in una riga di testo (banco
-  prestiti). **Mai un bordo laterale colorato sulla card**: la regola in
+  prestiti). `.is-inline` **da sola non basta dentro una colonna flex**
+  (`.loan-row-text`): il figlio `inline-block` viene reso a blocco e
+  stirato, e la pastiglia finisce larga quanto la riga, una riga sotto il
+  nome. Nome e pastiglia vanno avvolti in una riga flex — al banco
+  prestiti è `.loan-row-heading` (`display: flex`, `align-items: center`,
+  `flex-wrap: wrap`, `gap: .4rem`). **Mai un bordo laterale colorato sulla card**: la regola in
   Shapes lo esclude esplicitamente (il confine resta sempre `1px solid
   var(--card-line)` uniforme) — la pastiglia sulla copertina è la via per
   segnalare uno stato senza tingere il bordo.

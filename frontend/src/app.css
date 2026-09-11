@@ -1801,11 +1801,12 @@ form.panel-form > .form-actions {
 }
 
 /* Dentro una riga di testo la pastiglia scorre nel flusso, non si
-   sovrappone a niente. */
+   sovrappone a niente. Il posizionamento orizzontale lo dà chi la ospita
+   (`.loan-row-heading`): qui dentro un contenitore in colonna un margine
+   sinistro non sposterebbe niente. */
 .state-chip.is-inline {
   position: static;
   display: inline-block;
-  margin-left: 0.4rem;
 }
 
 .language-name {
@@ -4052,6 +4053,19 @@ tbody tr:nth-child(3) .rank-medal {
   overflow-wrap: anywhere;
 }
 
+/* Nome della copia e pastiglia "Incompleto" sulla stessa riga: dentro
+   `.loan-row-text`, che è una colonna, un figlio `inline-block` viene
+   comunque reso a blocco e stirato dall'`align-items: stretch`, e la
+   pastiglia finiva larga quanto la riga, una riga più sotto. Serve una
+   riga vera che li tenga insieme, non un margine. `wrap` perché a 390px
+   un titolo lungo e la pastiglia non ci stanno affiancati. */
+.loan-row-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .loan-row-title {
   font-weight: 600;
 }
@@ -4069,9 +4083,11 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 /* Quel che non è tornato è l'unica riga del registro che chiede di essere
-   notata: colore d'allarme (5.15:1 sul cartoncino, sopra la soglia AA) e non
-   il grigio delle altre meta. In `Body` e non nel mono di `.row-meta`: è una
-   frase con dentro dei numeri, non un dato da ricopiare. */
+   notata: colore d'allarme e non il grigio delle altre meta. Il rapporto
+   vale 5.15:1 sul cartoncino, sopra la soglia AA; sul fondo d'allarme no,
+   ed è per questo che la riga tinta lo sovrascrive più sotto. In `Body` e
+   non nel mono di `.row-meta`: è una frase con dentro dei numeri, non un
+   dato da ricopiare. */
 .material-issues {
   display: block;
   margin-top: 0.2rem;
@@ -4148,6 +4164,14 @@ tbody tr:nth-child(3) .rank-medal {
 .game-loans-list li.has-issues {
   background: var(--danger-bg);
   border-color: var(--danger);
+}
+
+/* Inchiostro e non colore d'allarme: `--danger` su `--danger-bg` sta a
+   4.48:1, sotto AA — la stessa ragione per cui `.missing-notice-head` e
+   `.state-chip.is-danger` non lo usano sul proprio fondo. L'allarme lo
+   danno già il fondo, il bordo e le parole. */
+.game-loans-list li.has-issues .material-issues {
+  color: var(--ink);
 }
 
 .game-loans-title {

@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
-import { issuesLabel, type MaterialIssue } from '../utils/loans'
+import { clockTime, issuesLabel, type MaterialIssue } from '../utils/loans'
 
 /** Una prenotazione attiva su una copia, come la manda il banco. */
 interface CopyBooking {
@@ -187,10 +187,6 @@ function since(iso: string) {
     : `da ${hours}h ${rest}′`
 }
 
-function clockTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
-}
-
 /**
  * Un nome che non compare fra i prenotati di una copia prenotata: si
  * consegna comunque — alle 21:30 chi non si è presentato non deve tenere
@@ -359,8 +355,12 @@ onMounted(async () => {
           <li v-for="copy in out" :key="copy.eventGameId">
             <button type="button" class="loan-row" @click="startReturning(copy, copy.openLoan)">
               <span class="loan-row-text">
-                <span class="loan-row-title">{{ copyLabel(copy) }}</span>
-                <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
+                <!-- Il marchio qualifica il gioco e sta sulla riga del nome;
+                     "Senza prenotazione" qualifica la copia e resta a sé. -->
+                <span class="loan-row-heading">
+                  <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                  <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
+                </span>
                 <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span class="row-meta">
                   {{ copy.openLoan.borrowerName }} · {{ copy.openLoan.borrowerPhone }}
@@ -394,8 +394,12 @@ onMounted(async () => {
           <li v-for="copy in available" :key="copy.eventGameId">
             <button type="button" class="loan-row" @click="startLending(copy)">
               <span class="loan-row-text">
-                <span class="loan-row-title">{{ copyLabel(copy) }}</span>
-                <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
+                <!-- Il marchio qualifica il gioco e sta sulla riga del nome;
+                     "Senza prenotazione" qualifica la copia e resta a sé. -->
+                <span class="loan-row-heading">
+                  <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                  <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
+                </span>
                 <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span v-if="copy.activeBookings.length > 0" class="row-meta">
                   prenotata da
