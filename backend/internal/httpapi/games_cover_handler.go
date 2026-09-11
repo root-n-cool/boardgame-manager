@@ -53,5 +53,5 @@ func (s *Server) uploadCoverHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update cover")
 		return
 	}
-	writeJSON(w, http.StatusOK, toGameSummary(game))
+	writeJSON(w, http.StatusOK, toGameSummary(game, nil))
 }

@@ -3,11 +3,13 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 
+	"boardgames-manager/internal/events"
 	"boardgames-manager/internal/games"
 )
 
@@ -21,9 +23,34 @@ func (s *Server) listGamesHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not list games")
 		return
 	}
+
+	// La join sulle mancanze si paga solo quando serve: un visitatore non
+	// vedrà mai il campo, quindi non deve nemmeno costarlo. Questa rotta è
+	// pubblica (non passa da requireAuth), quindi il controllo di sessione
+	// è hasAdminSession, non currentUser: qui non c'è alcun contesto
+	// popolato da valutare.
+	var missing map[int64][]events.MissingPiece
+	if s.hasAdminSession(r) {
+		ids := make([]int64, 0, len(list))
+		for _, g := range list {
+			ids = append(ids, g.ID)
+		}
+		missing, err = s.Events.GamesMissingPieces(r.Context(), ids)
+		if err != nil {
+			log.Printf("games: missing pieces: %v", err)
+			writeError(w, http.StatusInternalServerError, "could not list games")
+			return
+		}
+	}
+
 	out := make([]map[string]any, 0, len(list))
 	for _, g := range list {
-		out = append(out, toGameSummary(g))
+		var incomplete *bool
+		if missing != nil {
+			v := len(missing[g.ID]) > 0
+			incomplete = &v
+		}
+		out = append(out, toGameSummary(g, incomplete))
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -48,7 +75,7 @@ func (s *Server) getGameHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load languages")
 		return
 	}
-	resp, err := s.toGameDetail(r.Context(), game, langs)
+	resp, err := s.toGameDetail(r.Context(), game, langs, s.hasAdminSession(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not build response")
 		return
@@ -94,7 +121,7 @@ func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update game")
 		return
 	}
-	writeJSON(w, http.StatusOK, toGameSummary(game))
+	writeJSON(w, http.StatusOK, toGameSummary(game, nil))
 }
 
 func (s *Server) deleteGameHandler(w http.ResponseWriter, r *http.Request) {

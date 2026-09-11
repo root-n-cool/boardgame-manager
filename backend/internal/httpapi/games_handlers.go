@@ -124,7 +124,7 @@ func (s *Server) createGameFromBGG(w http.ResponseWriter, r *http.Request, req c
 		return
 	}
 
-	resp, err := s.toGameDetail(r.Context(), game, []games.GameLanguage{lang})
+	resp, err := s.toGameDetail(r.Context(), game, []games.GameLanguage{lang}, true)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not build response")
 		return
@@ -167,7 +167,7 @@ func (s *Server) createGameManually(w http.ResponseWriter, r *http.Request, req 
 		return
 	}
 
-	resp, err := s.toGameDetail(r.Context(), game, []games.GameLanguage{lang})
+	resp, err := s.toGameDetail(r.Context(), game, []games.GameLanguage{lang}, true)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not build response")
 		return
