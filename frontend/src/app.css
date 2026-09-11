@@ -4129,6 +4129,10 @@ tbody tr:nth-child(3) .rank-medal {
 .game-loans-list li {
   display: flex;
   flex-direction: column;
+  /* Contro il `center` che la riga eredita: un registro si scorre lungo il
+     bordo sinistro, e centrato somigliava a uno scontrino invece che alle
+     liste sorelle del banco prestiti e del catalogo. */
+  align-items: flex-start;
   gap: 0.15rem;
   padding: 0.7rem 0.85rem;
   border: 1px solid var(--card-line);

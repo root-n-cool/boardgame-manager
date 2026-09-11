@@ -71,12 +71,16 @@ const missingLabel = computed(() => {
   // cioè la più vecchia fra tutte le voci — non quella di una voce a caso.
   // Confronto su Date, non sulla stringa RFC3339: l'offset di fuso può
   // variare da una voce all'altra e renderebbe l'ordine testuale sbagliato.
-  const oldestMs = Math.min(...pieces.map((p) => new Date(p.since).getTime()))
-  const since = new Date(oldestMs).toLocaleDateString('it-IT', {
+  const oldest = new Date(Math.min(...pieces.map((p) => new Date(p.since).getTime())))
+  const since = oldest.toLocaleDateString('it-IT', {
     day: 'numeric',
     month: 'long',
   })
-  return `${parts.join(' · ')} — dal ${since}`
+  // "dal 11 settembre" non è italiano: undici e otto cominciano per vocale e
+  // vogliono l'elisione. Sono gli unici due giorni del mese a volerla, quindi
+  // la regola sta tutta qui invece che in una libreria.
+  const elide = oldest.getDate() === 8 || oldest.getDate() === 11
+  return `${parts.join(' · ')} — ${elide ? `dall'` : 'dal '}${since}`
 })
 
 async function resolveMaterials() {
