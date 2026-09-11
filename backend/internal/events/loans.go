@@ -429,3 +429,122 @@ func loanHistoryCopies(ctx context.Context, q queryer, eventID int64) (map[int64
 	}
 	return out, rows.Err()
 }
+
+// MissingPiece è una voce che a un gioco risulta mancante: quante se ne
+// aspettano e quante ne sono tornate l'ultima volta che qualcuno le ha
+// contate davvero.
+type MissingPiece struct {
+	Name     string
+	Expected int
+	Returned int
+	// Since è il returned_at del prestito che l'ha rilevata: serve a dire
+	// "dalla serata del 7 settembre" invece di un generico "manca".
+	Since time.Time
+}
+
+// GamesMissingPieces torna, per un gruppo di giochi, le voci che risultano
+// mancanti e non ancora risolte. Un gioco assente dalla mappa è completo.
+//
+// Lo stato "incompleto" non è memorizzato da nessuna parte: è questa query.
+// Un flag su games sarebbe una seconda verità accanto a
+// loan_material_issue, e le due possono divergere — un flag acceso dopo che
+// la riga d'esito è sparita con la cancellazione di un prestito, o spento
+// perché un percorso di scrittura si è dimenticato di alzarlo.
+//
+// Una query sola con una IN e non una per gioco: la chiama l'elenco del
+// catalogo con tutti i giochi in archivio.
+func (s *Store) GamesMissingPieces(ctx context.Context, gameIDs []int64) (map[int64][]MissingPiece, error) {
+	out := map[int64][]MissingPiece{}
+	if len(gameIDs) == 0 {
+		return out, nil
+	}
+	args := make([]any, len(gameIDs))
+	for i, id := range gameIDs {
+		args[i] = id
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(gameIDs)), ",")
+
+	// MAX(l.returned_at) con le altre colonne nude è la forma idiomatica di
+	// SQLite per "la riga del massimo" (sqlite.org/lang_select.html#bareagg):
+	// con un solo aggregato MIN/MAX le colonne nude vengono dalla riga
+	// scelta. Serve perché la stessa voce può essere risultata corta in tre
+	// serate e la scheda deve dire l'ultimo conteggio, non tre righe.
+	//
+	// `lmi.returned IS NOT NULL` è la regola centrale della funzione: una
+	// voce contata e mancante segnala, una "non verificata" no.
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT eg.game_id, lmi.name, lmi.expected, lmi.returned, MAX(l.returned_at)
+		 FROM loan_material_issue lmi
+		 JOIN game_loans l   ON l.id = lmi.loan_id
+		 JOIN event_games eg ON eg.id = l.event_game_id
+		 JOIN games g        ON g.id = eg.game_id
+		 WHERE eg.game_id IN (`+placeholders+`)
+		   AND lmi.returned IS NOT NULL
+		   AND l.returned_at IS NOT NULL
+		   AND (g.materials_checked_at IS NULL OR l.returned_at > g.materials_checked_at)
+		 GROUP BY eg.game_id, lmi.name
+		 ORDER BY eg.game_id, lmi.name`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var gameID int64
+		var p MissingPiece
+		var since string
+		if err := rows.Scan(&gameID, &p.Name, &p.Expected, &p.Returned, &since); err != nil {
+			return nil, err
+		}
+		p.Since, _ = time.Parse("2006-01-02 15:04:05", since)
+		out[gameID] = append(out[gameID], p)
+	}
+	return out, rows.Err()
+}
+
+// LoanWithEvent è un prestito come lo mostra il log di un gioco: la copia e
+// la serata risolte, perché quel log attraversa tutte le serate e una riga
+// deve leggersi da sola.
+type LoanWithEvent struct {
+	Loan
+	EventID    int64
+	EventTitle string
+	EventDate  string
+	CopyIndex  int
+	// Copies è quante copie di questo gioco aveva quella serata: con una
+	// sola, "#1" è rumore e la UI lo nasconde.
+	Copies int
+}
+
+// ListLoansForGame è tutto il registro di un gioco, aperti e chiusi
+// insieme, dal più recente. Chi chiama separa i due gruppi guardando
+// ReturnedAt, come già fa il banco prestiti: una query invece di due, e
+// nessun rischio che le due risposte arrivino da istanti diversi.
+func (s *Store) ListLoansForGame(ctx context.Context, gameID int64) ([]LoanWithEvent, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+loanColumns+`, e.id, e.title, e.event_date, eg.copy_index,
+		        (SELECT COUNT(*) FROM event_games x
+		          WHERE x.event_id = eg.event_id AND x.game_id = eg.game_id)
+		 FROM game_loans l
+		 JOIN event_games eg ON l.event_game_id = eg.id
+		 JOIN events e       ON e.id = eg.event_id
+		 WHERE eg.game_id = ?
+		 ORDER BY l.lent_at DESC, l.id DESC`, gameID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []LoanWithEvent{}
+	for rows.Next() {
+		var le LoanWithEvent
+		loan, err := scanLoan(rows, &le.EventID, &le.EventTitle, &le.EventDate,
+			&le.CopyIndex, &le.Copies)
+		if err != nil {
+			return nil, err
+		}
+		le.Loan = loan
+		out = append(out, le)
+	}
+	return out, rows.Err()
+}
