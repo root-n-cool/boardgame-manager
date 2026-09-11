@@ -49,6 +49,41 @@ const aiConfigured = ref(false)
 const translating = ref(false)
 const translateError = ref('')
 
+const resolving = ref(false)
+const resolvedMessage = ref('')
+
+/**
+ * "carte 35 di 40 · segnalini pesce 4 di 6 — dalla serata del 7 settembre".
+ *
+ * I nomi vengono copiati sulla riga d'esito al momento della riconsegna,
+ * quindi l'avviso può nominare una voce che nel catalogo non c'è più: è
+ * voluto, è cosa mancava quel giorno.
+ */
+const missingLabel = computed(() => {
+  const pieces = game.value?.missingPieces ?? []
+  if (!pieces.length) {
+    return ''
+  }
+  const parts = pieces.map((p) => `${p.name} ${p.returned} di ${p.expected}`)
+  const since = new Date(pieces[0].since).toLocaleDateString('it-IT', {
+    day: 'numeric',
+    month: 'long',
+  })
+  return `${parts.join(' · ')} — dal ${since}`
+})
+
+async function resolveMaterials() {
+  resolving.value = true
+  try {
+    game.value = await api.post(`/games/${gameId}/materials/resolve`)
+    resolvedMessage.value = 'Segnalazione chiusa: la scatola risulta di nuovo completa.'
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    resolving.value = false
+  }
+}
+
 async function translateDescription() {
   if (!window.confirm(`Ritradurre la descrizione in ${languageName(activeLangCode.value)}? Il testo attuale viene sostituito.`)) {
     return
@@ -396,6 +431,20 @@ onMounted(async () => {
           </button>
         </div>
       </div>
+
+      <div v-if="game.missingPieces?.length" class="missing-notice" role="status">
+        <p class="missing-notice-head">A questa scatola manca qualcosa</p>
+        <p class="missing-notice-list">{{ missingLabel }}</p>
+        <div class="missing-notice-actions">
+          <router-link :to="{ name: 'admin-game-loans', params: { id: game.id } }">
+            Vedi i prestiti
+          </router-link>
+          <button type="button" class="btn-secondary" :disabled="resolving" @click="resolveMaterials">
+            {{ resolving ? 'Registrazione…' : 'Segna come completo' }}
+          </button>
+        </div>
+      </div>
+      <p v-else-if="resolvedMessage" class="success">{{ resolvedMessage }}</p>
 
       <div class="game-cover-card">
         <!-- La copertina È il controllo di caricamento: si clicca l'immagine,

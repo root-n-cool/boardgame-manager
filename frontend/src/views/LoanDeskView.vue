@@ -40,6 +40,8 @@ interface DeskCopy {
   activeBookings: CopyBooking[]
   openLoan: OpenLoan | null
   materials: Material[]
+  /** Vero quando una riconsegna precedente ha lasciato materiali mancanti non ancora chiusi. */
+  incomplete: boolean
 }
 
 interface ReturnedLoan {
@@ -358,6 +360,7 @@ onMounted(async () => {
             <button type="button" class="loan-row" @click="startReturning(copy, copy.openLoan)">
               <span class="loan-row-text">
                 <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
                 <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span class="row-meta">
                   {{ copy.openLoan.borrowerName }} · {{ copy.openLoan.borrowerPhone }}
@@ -392,6 +395,7 @@ onMounted(async () => {
             <button type="button" class="loan-row" @click="startLending(copy)">
               <span class="loan-row-text">
                 <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
                 <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span v-if="copy.activeBookings.length > 0" class="row-meta">
                   prenotata da

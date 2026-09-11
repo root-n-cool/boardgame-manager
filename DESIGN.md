@@ -294,6 +294,19 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   esplicito è obbligatorio: `display: contents` rimuove la semantica di
   lista in Chrome e Safari.
 
+- **Pastiglia di stato** (`.state-chip`): comunica una condizione del gioco
+  ("Incompleto"), non un'etichetta neutra come `.lang-chip` — stessa sagoma
+  (pillola, raggio 999px), ma coi toni `--danger`/`--danger-bg` e un bordo
+  1px `--danger` invece del fondo `--card-alt` neutro. Due collocazioni: di
+  default (`.is-danger` da sola) sta sovrapposta all'angolo in alto a
+  sinistra della copertina (`position: absolute`, richiede un `.game-grid a`
+  con `position: relative`, già presente); con `.is-inline` torna nel
+  flusso normale e scorre accanto a un nome in una riga di testo (banco
+  prestiti). **Mai un bordo laterale colorato sulla card**: la regola in
+  Shapes lo esclude esplicitamente (il confine resta sempre `1px solid
+  var(--card-line)` uniforme) — la pastiglia sulla copertina è la via per
+  segnalare uno stato senza tingere il bordo.
+
 ### Testa di pagina (`.page-head`)
 - Titolo + `.page-meta` a sinistra, **azione primaria in alto a destra**
   come `.action-link.is-compact` (icona `+` e testo, misura ridotta).

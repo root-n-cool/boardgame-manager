@@ -8,6 +8,12 @@ interface GameSummary {
   year: number | null
   owner: string | null
   coverPath: string | null
+  /**
+   * Presente solo quando la richiesta ha una sessione admin (assente per il
+   * catalogo pubblico): questa vista legge la rotta pubblica `/games`, da
+   * cui il campo opzionale.
+   */
+  incomplete?: boolean
 }
 
 const games = ref<GameSummary[]>([])
@@ -45,6 +51,7 @@ onMounted(loadGames)
       <ul role="list" class="game-grid-items">
         <li v-for="g in games" :key="g.id">
           <router-link :to="{ name: 'admin-game-detail', params: { id: g.id } }">
+            <span v-if="g.incomplete" class="state-chip is-danger">Incompleto</span>
             <img
               v-if="g.coverPath"
               :src="`/api/uploads/${g.coverPath}`"

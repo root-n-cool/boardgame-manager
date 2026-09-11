@@ -1040,6 +1040,7 @@ button.back-link:active {
 
 .game-grid a {
   display: block;
+  position: relative;
   text-decoration: none;
   color: inherit;
   padding: 0 0 0.9rem;
@@ -1200,6 +1201,38 @@ button.back-link:active {
 }
 
 /* ---------- Scheda gioco (GameDetailView) ---------- */
+
+/* Avviso "manca qualcosa" in cima alla scheda admin (GameAdminDetailView):
+   stesso raggio e padding di una .panel-card, ma nei toni di --danger
+   perché segnala una condizione del gioco, non ospita un modulo. Il titolo
+   è un'etichetta — non un heading, la pagina non guadagna una sezione. */
+.missing-notice {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 1.35rem;
+  margin: 0 0 1.75rem;
+}
+
+.missing-notice-head {
+  margin: 0 0 0.3rem;
+  font-weight: 600;
+  color: var(--danger);
+}
+
+.missing-notice-list {
+  margin: 0 0 0.9rem;
+  font-family: 'Data', monospace;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.missing-notice-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
 
 /* Identità del gioco: copertina e i dati che arrivano da BGG in una card
    sola, invece di un'immagine sciolta con un file input larghissimo sotto. */
@@ -1734,6 +1767,36 @@ form.panel-form > .form-actions {
   background: var(--card-alt);
   border-radius: 999px;
   padding: 0.15rem 0.5rem;
+}
+
+/* Pastiglia di stato: la stessa sagoma di .lang-chip, ma dice una
+   condizione del gioco invece di un'etichetta neutra. Sta sopra la
+   copertina e non su un bordo laterale colorato, che il sistema rifiuta
+   sulle card. */
+.state-chip {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 1;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.state-chip.is-danger {
+  background: var(--danger-bg);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+/* Dentro una riga di testo la pastiglia scorre nel flusso, non si
+   sovrappone a niente. */
+.state-chip.is-inline {
+  position: static;
+  display: inline-block;
+  margin-left: 0.4rem;
 }
 
 .language-name {
