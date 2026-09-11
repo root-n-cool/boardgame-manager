@@ -65,7 +65,14 @@ const missingLabel = computed(() => {
     return ''
   }
   const parts = pieces.map((p) => `${p.name} ${p.returned} di ${p.expected}`)
-  const since = new Date(pieces[0].since).toLocaleDateString('it-IT', {
+  // Il server raggruppa per nome e ordina alfabeticamente, non per data:
+  // pieces[0] è solo la prima voce in ordine alfabetico, non la più
+  // vecchia. La data che la segnalazione mostra è quando si è aperta —
+  // cioè la più vecchia fra tutte le voci — non quella di una voce a caso.
+  // Confronto su Date, non sulla stringa RFC3339: l'offset di fuso può
+  // variare da una voce all'altra e renderebbe l'ordine testuale sbagliato.
+  const oldestMs = Math.min(...pieces.map((p) => new Date(p.since).getTime()))
+  const since = new Date(oldestMs).toLocaleDateString('it-IT', {
     day: 'numeric',
     month: 'long',
   })
@@ -75,7 +82,7 @@ const missingLabel = computed(() => {
 async function resolveMaterials() {
   resolving.value = true
   try {
-    game.value = await api.post(`/games/${gameId}/materials/resolve`)
+    game.value = await api.post<GameDetail>(`/games/${gameId}/materials/resolve`)
     resolvedMessage.value = 'Segnalazione chiusa: la scatola risulta di nuovo completa.'
   } catch (e) {
     error.value = (e as Error).message
@@ -149,6 +156,12 @@ const indexableMedia = computed(() =>
 const suggestedQuestionsKey = ref(0)
 
 async function load() {
+  // Stessa ragione per cui selectLanguage/saveLanguage azzerano
+  // saveMessage: un esito rimasto a schermo da un'azione precedente non
+  // deve sopravvivere a un'azione diversa. load() è il punto in comune di
+  // ogni azione della pagina (posti, traduzione, copertina, lingue, media),
+  // quindi è qui che il messaggio di risoluzione smette di essere valido.
+  resolvedMessage.value = ''
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
   editSeats.value = game.value.seats
   try {
