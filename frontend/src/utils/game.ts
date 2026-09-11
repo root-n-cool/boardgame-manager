@@ -21,6 +21,20 @@ export interface GameLanguageInfo {
   media: GameMediaInfo[]
 }
 
+/**
+ * Una voce mancante dall'ultima riconsegna incompleta di questo gioco. I
+ * nomi vengono copiati sulla riga d'esito al momento della riconsegna: una
+ * voce può nominare un materiale che nel catalogo non c'è più, ed è voluto —
+ * è cosa mancava quel giorno.
+ */
+export interface MissingPiece {
+  name: string
+  expected: number
+  returned: number
+  /** RFC3339: da quando la segnalazione è aperta. */
+  since: string
+}
+
 export interface GameDetail {
   id: number
   bggId: string | null
@@ -46,6 +60,12 @@ export interface GameDetail {
    */
   suggestedQuestions: string[]
   languages: GameLanguageInfo[]
+  /**
+   * Presente solo con una sessione admin (assente per la scheda pubblica).
+   * Assente o vuota quando la scatola è completa o la segnalazione è già
+   * stata chiusa.
+   */
+  missingPieces?: MissingPiece[]
 }
 
 /**

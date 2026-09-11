@@ -150,6 +150,8 @@ func NewRouter(s *Server) http.Handler {
 		protected.Get("/api/games/{id}/materials", s.listMaterialsHandler)
 		protected.Put("/api/games/{id}/materials", s.putMaterialsHandler)
 		protected.Post("/api/games/{id}/materials/suggest", s.suggestMaterialsHandler)
+		protected.Get("/api/games/{id}/loans", s.listGameLoansHandler)
+		protected.Post("/api/games/{id}/materials/resolve", s.resolveMaterialsHandler)
 		protected.Post("/api/events", s.createEventHandler)
 		protected.Put("/api/events/{id}", s.updateEventHandler)
 		protected.Post("/api/events/{id}/image", s.uploadEventImageHandler)

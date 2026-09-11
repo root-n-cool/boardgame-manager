@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
+import { clockTime, issuesLabel, type MaterialIssue } from '../utils/loans'
 
 /** Una prenotazione attiva su una copia, come la manda il banco. */
 interface CopyBooking {
@@ -26,13 +27,6 @@ interface Material {
   quantity: number
 }
 
-interface MaterialIssue {
-  name: string
-  expected: number
-  /** null = voce non verificata al momento della riconsegna. */
-  returned: number | null
-}
-
 interface DeskCopy {
   eventGameId: number
   gameId: number
@@ -46,6 +40,8 @@ interface DeskCopy {
   activeBookings: CopyBooking[]
   openLoan: OpenLoan | null
   materials: Material[]
+  /** Vero quando una riconsegna precedente ha lasciato materiali mancanti non ancora chiusi. */
+  incomplete: boolean
 }
 
 interface ReturnedLoan {
@@ -175,26 +171,6 @@ function returnedLabel(row: ReturnedLoan) {
   return copies > 1 ? `${row.gameName} #${row.copyIndex}` : row.gameName
 }
 
-/**
- * "mancano: carte 35/40 · non verificate: dadi" — il problema si legge dalla
- * lista, senza aprire niente. Un prestito pulito non ha esiti e non stampa
- * nessuna riga.
- */
-function issuesLabel(issues: MaterialIssue[]) {
-  const missing = issues
-    .filter((i) => i.returned !== null)
-    .map((i) => `${i.name} ${i.returned}/${i.expected}`)
-  const unchecked = issues.filter((i) => i.returned === null).map((i) => i.name)
-  const parts: string[] = []
-  if (missing.length) {
-    parts.push(`mancano: ${missing.join(', ')}`)
-  }
-  if (unchecked.length) {
-    parts.push(`non verificate: ${unchecked.join(', ')}`)
-  }
-  return parts.join(' · ')
-}
-
 /** "da 25 minuti", che al tavolo è più utile di un orario. */
 function since(iso: string) {
   const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000))
@@ -209,10 +185,6 @@ function since(iso: string) {
   return rest === 0
     ? `da ${hours} ${hours === 1 ? 'ora' : 'ore'}`
     : `da ${hours}h ${rest}′`
-}
-
-function clockTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
 }
 
 /**
@@ -383,7 +355,12 @@ onMounted(async () => {
           <li v-for="copy in out" :key="copy.eventGameId">
             <button type="button" class="loan-row" @click="startReturning(copy, copy.openLoan)">
               <span class="loan-row-text">
-                <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                <!-- Il marchio qualifica il gioco e sta sulla riga del nome;
+                     "Senza prenotazione" qualifica la copia e resta a sé. -->
+                <span class="loan-row-heading">
+                  <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                  <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
+                </span>
                 <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span class="row-meta">
                   {{ copy.openLoan.borrowerName }} · {{ copy.openLoan.borrowerPhone }}
@@ -417,7 +394,12 @@ onMounted(async () => {
           <li v-for="copy in available" :key="copy.eventGameId">
             <button type="button" class="loan-row" @click="startLending(copy)">
               <span class="loan-row-text">
-                <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                <!-- Il marchio qualifica il gioco e sta sulla riga del nome;
+                     "Senza prenotazione" qualifica la copia e resta a sé. -->
+                <span class="loan-row-heading">
+                  <span class="loan-row-title">{{ copyLabel(copy) }}</span>
+                  <span v-if="copy.incomplete" class="state-chip is-danger is-inline">Incompleto</span>
+                </span>
                 <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span v-if="copy.activeBookings.length > 0" class="row-meta">
                   prenotata da

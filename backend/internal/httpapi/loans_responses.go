@@ -109,6 +109,17 @@ func (s *Server) toLoanDeskResponse(ctx context.Context, eventID int64) (map[str
 		copiesPerGame[eg.GameID]++
 	}
 
+	// Il banco lo mostra prima della consegna: chi dà in mano la scatola
+	// deve sapere che è già incompleta, e non prendersi la colpa al rientro.
+	gameIDs := make([]int64, 0, len(eventGames))
+	for _, eg := range eventGames {
+		gameIDs = append(gameIDs, eg.GameID)
+	}
+	missing, err := s.Events.GamesMissingPieces(ctx, gameIDs)
+	if err != nil {
+		return nil, err
+	}
+
 	// Un gioco si legge una volta anche se ha più copie, come in
 	// toEventDetail.
 	gameCache := map[int64]games.Game{}
@@ -146,6 +157,7 @@ func (s *Server) toLoanDeskResponse(ctx context.Context, eventID int64) (map[str
 			"seats": eg.Seats, "openLoan": nil,
 			"activeBookings": orEmptyRows(bookingsByCopy[eg.ID]),
 			"materials":      materials,
+			"incomplete":     len(missing[eg.GameID]) > 0,
 		}
 		if l, out := openByCopy[eg.ID]; out {
 			row["openLoan"] = toOpenLoanResponse(l)

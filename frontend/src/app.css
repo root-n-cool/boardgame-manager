@@ -1040,6 +1040,7 @@ button.back-link:active {
 
 .game-grid a {
   display: block;
+  position: relative;
   text-decoration: none;
   color: inherit;
   padding: 0 0 0.9rem;
@@ -1200,6 +1201,43 @@ button.back-link:active {
 }
 
 /* ---------- Scheda gioco (GameDetailView) ---------- */
+
+/* Avviso "manca qualcosa" in cima alla scheda admin (GameAdminDetailView):
+   stesso raggio e padding di una .panel-card, ma nei toni di --danger
+   perché segnala una condizione del gioco, non ospita un modulo. Il titolo
+   è un'etichetta — non un heading, la pagina non guadagna una sezione. */
+.missing-notice {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  padding: 1.35rem;
+  margin: 0 0 1.75rem;
+}
+
+/* Inchiostro e non colore d'allarme: `--danger` sul suo stesso fondo sta a
+   4.48:1, sotto la soglia AA per un testo di questa misura. L'allarme lo
+   danno già il fondo, il bordo e le parole. */
+.missing-notice-head {
+  margin: 0 0 0.3rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* In `Body` e non nel mono dei dati: "carte 35 di 40 — dal 7 settembre" è
+   una frase con dentro dei numeri, non un codice da ricopiare. Stessa
+   scelta già fatta per `.material-issues` nel registro del banco. */
+.missing-notice-list {
+  margin: 0 0 0.9rem;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.missing-notice-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
 
 /* Identità del gioco: copertina e i dati che arrivano da BGG in una card
    sola, invece di un'immagine sciolta con un file input larghissimo sotto. */
@@ -1734,6 +1772,41 @@ form.panel-form > .form-actions {
   background: var(--card-alt);
   border-radius: 999px;
   padding: 0.15rem 0.5rem;
+}
+
+/* Pastiglia di stato: la stessa sagoma di .lang-chip, ma dice una
+   condizione del gioco invece di un'etichetta neutra. Sta sopra la
+   copertina e non su un bordo laterale colorato, che il sistema rifiuta
+   sulle card. */
+.state-chip {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  z-index: 1;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Fondo cartoncino e non `--danger-bg`: il rosso su quel fondo sta a 4.48:1,
+   sotto AA per un testo da 0.72rem, e una pastiglia che sta sopra una
+   copertina qualsiasi ha comunque bisogno di un fondo pieno. Così il testo
+   sta a 5.15:1 in tutte e due le collocazioni. */
+.state-chip.is-danger {
+  background: var(--card);
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+/* Dentro una riga di testo la pastiglia scorre nel flusso, non si
+   sovrappone a niente. Il posizionamento orizzontale lo dà chi la ospita
+   (`.loan-row-heading`): qui dentro un contenitore in colonna un margine
+   sinistro non sposterebbe niente. */
+.state-chip.is-inline {
+  position: static;
+  display: inline-block;
 }
 
 .language-name {
@@ -3980,6 +4053,19 @@ tbody tr:nth-child(3) .rank-medal {
   overflow-wrap: anywhere;
 }
 
+/* Nome della copia e pastiglia "Incompleto" sulla stessa riga: dentro
+   `.loan-row-text`, che è una colonna, un figlio `inline-block` viene
+   comunque reso a blocco e stirato dall'`align-items: stretch`, e la
+   pastiglia finiva larga quanto la riga, una riga più sotto. Serve una
+   riga vera che li tenga insieme, non un margine. `wrap` perché a 390px
+   un titolo lungo e la pastiglia non ci stanno affiancati. */
+.loan-row-heading {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .loan-row-title {
   font-weight: 600;
 }
@@ -3997,9 +4083,11 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 /* Quel che non è tornato è l'unica riga del registro che chiede di essere
-   notata: colore d'allarme (5.15:1 sul cartoncino, sopra la soglia AA) e non
-   il grigio delle altre meta. In `Body` e non nel mono di `.row-meta`: è una
-   frase con dentro dei numeri, non un dato da ricopiare. */
+   notata: colore d'allarme e non il grigio delle altre meta. Il rapporto
+   vale 5.15:1 sul cartoncino, sopra la soglia AA; sul fondo d'allarme no,
+   ed è per questo che la riga tinta lo sovrascrive più sotto. In `Body` e
+   non nel mono di `.row-meta`: è una frase con dentro dei numeri, non un
+   dato da ricopiare. */
 .material-issues {
   display: block;
   margin-top: 0.2rem;
@@ -4031,6 +4119,63 @@ tbody tr:nth-child(3) .rank-medal {
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.02em;
+}
+
+/* Registro prestiti di un gioco (GameLoansView): una riga per prestito, dal
+   più recente, ognuna già una card — niente `.panel-card` a contenerle,
+   quindi si spoglia come `.loan-list` e non come `.admin-list`/
+   `.game-materials-list`, che invece delegano il fondo al pannello. Il
+   bordo c'è sempre, `--card-line` a riposo: la riga con mancanze lo tinge
+   insieme al fondo (`--danger-bg`/`--danger`) invece di aggiungerne uno
+   solo suo, così tutte le righe restano alla stessa altezza. */
+.game-loans-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.game-loans-list li {
+  display: flex;
+  flex-direction: column;
+  /* Contro il `center` che la riga eredita: un registro si scorre lungo il
+     bordo sinistro, e centrato somigliava a uno scontrino invece che alle
+     liste sorelle del banco prestiti e del catalogo. */
+  align-items: flex-start;
+  gap: 0.15rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  background: var(--card);
+  /* Nome di chi ha preso e titolo evento sono testo libero: a 390px, senza
+     questo, una parola lunga (o un nome incollato senza spazi) spinge la
+     riga fuori dal foglio invece di andare a capo — stessa difesa di
+     `.loan-row-text`. */
+  overflow-wrap: anywhere;
+}
+
+.game-loans-list li.has-issues {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+/* Inchiostro e non colore d'allarme: `--danger` su `--danger-bg` sta a
+   4.48:1, sotto AA — la stessa ragione per cui `.missing-notice-head` e
+   `.state-chip.is-danger` non lo usano sul proprio fondo. L'allarme lo
+   danno già il fondo, il bordo e le parole. */
+.game-loans-list li.has-issues .material-issues {
+  color: var(--ink);
+}
+
+.game-loans-title {
+  font-weight: 600;
 }
 
 /* Stessa spoliazione di `.loan-list`: la lista è una pila di bottoni dentro

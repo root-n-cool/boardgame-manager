@@ -303,3 +303,56 @@ func TestReplaceMaterialsDeletesOnlyTheRemovedRow(t *testing.T) {
 		t.Errorf("le voci rimaste hanno cambiato id: prima %v, dopo %v", before, after)
 	}
 }
+
+func TestMarkMaterialsCheckedStampsTimeAndUser(t *testing.T) {
+	store, conn := newTestStoreWithDB(t)
+	gameID := mustGameID(t, store, "Carcassonne")
+	ctx := context.Background()
+
+	// L'utente deve esistere davvero: la colonna ha una FK, e le FK sono
+	// attive (PRAGMA foreign_keys(1) in db.Open).
+	res, err := conn.ExecContext(ctx,
+		`INSERT INTO users (email, password_hash) VALUES ('admin@example.com', 'x')`)
+	if err != nil {
+		t.Fatalf("insert user: %v", err)
+	}
+	userID, err := res.LastInsertId()
+	if err != nil {
+		t.Fatalf("last insert id: %v", err)
+	}
+
+	before, err := store.GetGame(ctx, gameID)
+	if err != nil {
+		t.Fatalf("get game: %v", err)
+	}
+	if before.MaterialsCheckedAt != nil || before.MaterialsCheckedBy != nil {
+		t.Fatalf("un gioco nuovo non è mai stato controllato: %+v", before)
+	}
+
+	got, err := store.MarkMaterialsChecked(ctx, gameID, userID)
+	if err != nil {
+		t.Fatalf("mark: %v", err)
+	}
+	if got.MaterialsCheckedAt == nil || got.MaterialsCheckedAt.IsZero() {
+		t.Error("volevo una data di controllo")
+	}
+	if got.MaterialsCheckedBy == nil || *got.MaterialsCheckedBy != userID {
+		t.Errorf("materialsCheckedBy = %v, volevo %d", got.MaterialsCheckedBy, userID)
+	}
+
+	// E deve essere durevole, non solo nel valore di ritorno.
+	read, err := store.GetGame(ctx, gameID)
+	if err != nil {
+		t.Fatalf("re-get: %v", err)
+	}
+	if read.MaterialsCheckedAt == nil {
+		t.Error("la data non è stata salvata")
+	}
+}
+
+func TestMarkMaterialsCheckedOnAMissingGameIsNotFound(t *testing.T) {
+	store := newTestStore(t)
+	if _, err := store.MarkMaterialsChecked(context.Background(), 9999, 1); !errors.Is(err, games.ErrNotFound) {
+		t.Fatalf("volevo ErrNotFound, ho %v", err)
+	}
+}

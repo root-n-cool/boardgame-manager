@@ -660,3 +660,252 @@ func TestReturnLoanWithStaleMaterialIDsRecordsEverythingUnverified(t *testing.T)
 		}
 	}
 }
+
+// returnWithShortage chiude un prestito dichiarando `returned` pezzi su una
+// voce: è il modo più corto di produrre una mancanza registrata.
+func returnWithShortage(t *testing.T, store *events.Store, loanID, materialID int64, returned int) {
+	t.Helper()
+	if _, err := store.ReturnLoan(context.Background(), loanID, nil,
+		[]events.MaterialCheck{{MaterialID: materialID, Returned: &returned}}); err != nil {
+		t.Fatalf("return con mancanza: %v", err)
+	}
+}
+
+func TestGamesMissingPiecesIsEmptyWithoutShortages(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"tessere", 72})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	// Spuntata: tornata tutta, nessuna segnalazione.
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil,
+		[]events.MaterialCheck{{MaterialID: ids[0], Complete: true}}); err != nil {
+		t.Fatalf("return: %v", err)
+	}
+
+	got, err := store.GamesMissingPieces(context.Background(), []int64{gameID})
+	if err != nil {
+		t.Fatalf("missing pieces: %v", err)
+	}
+	if len(got[gameID]) != 0 {
+		t.Fatalf("un reso pulito non segnala niente, ho %+v", got[gameID])
+	}
+}
+
+func TestGamesMissingPiecesIgnoresUnverifiedRows(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	mustMaterials(t, conn, gameID, [2]any{"tessere", 72})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	// Checklist non vuota ma con la voce mai toccata: resta "non
+	// verificata", e una cosa che nessuno ha guardato non è una perdita.
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil,
+		[]events.MaterialCheck{}); err != nil {
+		t.Fatalf("return: %v", err)
+	}
+
+	got, err := store.GamesMissingPieces(context.Background(), []int64{gameID})
+	if err != nil {
+		t.Fatalf("missing pieces: %v", err)
+	}
+	if len(got[gameID]) != 0 {
+		t.Fatalf("una voce non verificata non segnala, ho %+v", got[gameID])
+	}
+}
+
+func TestGamesMissingPiecesReportsAShortage(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"carte", 40}, [2]any{"dadi", 5})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+	returnWithShortage(t, store, loan.ID, ids[0], 35)
+
+	got, err := store.GamesMissingPieces(context.Background(), []int64{gameID})
+	if err != nil {
+		t.Fatalf("missing pieces: %v", err)
+	}
+	rows := got[gameID]
+	if len(rows) != 1 {
+		t.Fatalf("volevo una sola voce mancante, ho %+v", rows)
+	}
+	if rows[0].Name != "carte" || rows[0].Expected != 40 || rows[0].Returned != 35 {
+		t.Errorf("voce inattesa: %+v", rows[0])
+	}
+	if rows[0].Since.IsZero() {
+		t.Error("Since deve dire da quando manca")
+	}
+}
+
+func TestGamesMissingPiecesKeepsTheMostRecentCount(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"carte", 40})
+	copy := firstCopy(t, store, event.ID)
+
+	loan1 := mustLend(t, store, event.ID, copy.ID, "Anna")
+	returnWithShortage(t, store, loan1.ID, ids[0], 38)
+	loan2 := mustLend(t, store, event.ID, copy.ID, "Bruno")
+	returnWithShortage(t, store, loan2.ID, ids[0], 35)
+
+	// Le due riconsegne cadono nello stesso secondo di datetime('now'): il
+	// secondo prestito si forza indietro nel tempo così l'ordine è certo e
+	// il test non dipende dalla velocità della macchina.
+	if _, err := conn.Exec(
+		`UPDATE game_loans SET returned_at = '2030-01-02 21:00:00' WHERE id = ?`, loan2.ID); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	if _, err := conn.Exec(
+		`UPDATE game_loans SET returned_at = '2030-01-01 21:00:00' WHERE id = ?`, loan1.ID); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+
+	got, err := store.GamesMissingPieces(context.Background(), []int64{gameID})
+	if err != nil {
+		t.Fatalf("missing pieces: %v", err)
+	}
+	rows := got[gameID]
+	if len(rows) != 1 {
+		t.Fatalf("la stessa voce non deve comparire due volte: %+v", rows)
+	}
+	if rows[0].Returned != 35 {
+		t.Errorf("returned = %d, volevo l'ultimo conteggio (35)", rows[0].Returned)
+	}
+}
+
+func TestGamesMissingPiecesRespectsTheCheckedDate(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"carte", 40})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+	returnWithShortage(t, store, loan.ID, ids[0], 35)
+
+	// Dichiarata a posto DOPO la mancanza: non segnala più.
+	if _, err := conn.Exec(
+		`UPDATE games SET materials_checked_at = datetime('now', '+1 day') WHERE id = ?`, gameID); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	got, _ := store.GamesMissingPieces(context.Background(), []int64{gameID})
+	if len(got[gameID]) != 0 {
+		t.Fatalf("dopo la risoluzione non deve segnalare: %+v", got[gameID])
+	}
+
+	// Dichiarata a posto PRIMA della mancanza: torna a segnalare.
+	if _, err := conn.Exec(
+		`UPDATE games SET materials_checked_at = '2000-01-01 00:00:00' WHERE id = ?`, gameID); err != nil {
+		t.Fatalf("check: %v", err)
+	}
+	got, _ = store.GamesMissingPieces(context.Background(), []int64{gameID})
+	if len(got[gameID]) != 1 {
+		t.Fatalf("una mancanza successiva alla risoluzione deve segnalare: %+v", got[gameID])
+	}
+}
+
+// Con più giochi in una chiamata sola — è così che la usa l'elenco del
+// catalogo — ogni mancanza deve finire sotto la propria chiave, e il gioco
+// pulito non deve comparire affatto.
+func TestGamesMissingPiecesSplitsPerGame(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	shortID := mustCreateGame(t, gameStore, "Carcassonne")
+	cleanID := mustCreateGame(t, gameStore, "Azul")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", shortID, cleanID)
+	shortMaterials := mustMaterials(t, conn, shortID, [2]any{"carte", 40})
+	cleanMaterials := mustMaterials(t, conn, cleanID, [2]any{"tessere", 100})
+
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	byGame := map[int64]int64{}
+	for _, c := range copies {
+		byGame[c.GameID] = c.ID
+	}
+
+	shortLoan := mustLend(t, store, event.ID, byGame[shortID], "Anna")
+	returnWithShortage(t, store, shortLoan.ID, shortMaterials[0], 35)
+
+	cleanLoan := mustLend(t, store, event.ID, byGame[cleanID], "Bruno")
+	if _, err := store.ReturnLoan(context.Background(), cleanLoan.ID, nil,
+		[]events.MaterialCheck{{MaterialID: cleanMaterials[0], Complete: true}}); err != nil {
+		t.Fatalf("return pulito: %v", err)
+	}
+
+	got, err := store.GamesMissingPieces(context.Background(), []int64{shortID, cleanID})
+	if err != nil {
+		t.Fatalf("missing pieces: %v", err)
+	}
+	if len(got[shortID]) != 1 || got[shortID][0].Name != "carte" || got[shortID][0].Returned != 35 {
+		t.Errorf("la mancanza deve stare sotto il suo gioco: %+v", got[shortID])
+	}
+	if len(got[cleanID]) != 0 {
+		t.Errorf("il gioco pulito non deve avere voci: %+v", got[cleanID])
+	}
+}
+
+func TestGamesMissingPiecesWithNoIDs(t *testing.T) {
+	store, _, _ := newTestStoreWithConn(t)
+	got, err := store.GamesMissingPieces(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("missing pieces: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("volevo una mappa vuota, ho %+v", got)
+	}
+}
+
+func TestListLoansForGameSpansEvents(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	ids := mustMaterials(t, conn, gameID, [2]any{"carte", 40})
+	ev1 := mustCreateEvent(t, store, "Prima serata", "2030-01-01", "21:00", gameID)
+	ev2 := mustCreateEvent(t, store, "Seconda serata", "2030-02-01", "21:00", gameID)
+
+	c1 := firstCopy(t, store, ev1.ID)
+	l1 := mustLend(t, store, ev1.ID, c1.ID, "Anna")
+	returnWithShortage(t, store, l1.ID, ids[0], 35)
+
+	c2 := firstCopy(t, store, ev2.ID)
+	mustLend(t, store, ev2.ID, c2.ID, "Bruno") // ancora fuori
+
+	got, err := store.ListLoansForGame(context.Background(), gameID)
+	if err != nil {
+		t.Fatalf("list loans for game: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("volevo 2 prestiti, ho %d", len(got))
+	}
+	// Il più recente per primo.
+	if got[0].BorrowerName != "Bruno" || got[0].ReturnedAt != nil {
+		t.Errorf("prima riga inattesa: %+v", got[0])
+	}
+	if got[0].EventTitle != "Seconda serata" || got[0].EventID != ev2.ID {
+		t.Errorf("la serata non è risolta: %+v", got[0])
+	}
+	if got[1].BorrowerName != "Anna" || got[1].ReturnedAt == nil {
+		t.Errorf("seconda riga inattesa: %+v", got[1])
+	}
+	if got[1].Copies != 1 || got[1].CopyIndex != 1 {
+		t.Errorf("copie/indice inattesi: %+v", got[1])
+	}
+}
+
+func TestListLoansForGameIsEmptyForAnUnlentGame(t *testing.T) {
+	store, gameStore, _ := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	got, err := store.ListLoansForGame(context.Background(), gameID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("volevo zero prestiti, ho %+v", got)
+	}
+}

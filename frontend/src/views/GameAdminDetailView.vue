@@ -49,6 +49,61 @@ const aiConfigured = ref(false)
 const translating = ref(false)
 const translateError = ref('')
 
+const resolving = ref(false)
+const resolvedMessage = ref('')
+
+/**
+ * "carte 35 di 40 · segnalini pesce 4 di 6 — dalla serata del 7 settembre".
+ *
+ * I nomi vengono copiati sulla riga d'esito al momento della riconsegna,
+ * quindi l'avviso può nominare una voce che nel catalogo non c'è più: è
+ * voluto, è cosa mancava quel giorno.
+ */
+const missingLabel = computed(() => {
+  const pieces = game.value?.missingPieces ?? []
+  if (!pieces.length) {
+    return ''
+  }
+  const parts = pieces.map((p) => `${p.name} ${p.returned} di ${p.expected}`)
+  // Il server raggruppa per nome e ordina alfabeticamente, non per data:
+  // pieces[0] è solo la prima voce in ordine alfabetico, non la più
+  // vecchia. Ogni `since` è l'ULTIMA volta che quella voce è risultata
+  // corta, quindi il minimo qui sotto è la voce rilevata meno di recente
+  // — "da almeno quando", non la data in cui la segnalazione si è aperta,
+  // che il server non calcola.
+  // Confronto su Date, non sulla stringa RFC3339: l'offset di fuso può
+  // variare da una voce all'altra e renderebbe l'ordine testuale sbagliato.
+  const oldest = new Date(Math.min(...pieces.map((p) => new Date(p.since).getTime())))
+  // Con l'anno: il marchio resta finché un admin non lo chiude, e una
+  // mancanza di due anni fa non deve leggersi come quella di settimana
+  // scorsa.
+  const since = oldest.toLocaleDateString('it-IT', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+  // "dal 11 settembre" non è italiano: undici e otto cominciano per vocale e
+  // vogliono l'elisione. Sono gli unici due giorni del mese a volerla, quindi
+  // la regola sta tutta qui invece che in una libreria.
+  const elide = oldest.getDate() === 8 || oldest.getDate() === 11
+  return `${parts.join(' · ')} — ${elide ? `dall'` : 'dal '}${since}`
+})
+
+async function resolveMaterials() {
+  // Come ogni altra azione della pagina: un errore rimasto da un'azione
+  // precedente non deve restare a schermo accanto a un esito riuscito.
+  error.value = ''
+  resolving.value = true
+  try {
+    game.value = await api.post<GameDetail>(`/games/${gameId}/materials/resolve`)
+    resolvedMessage.value = 'Segnalazione chiusa: la scatola risulta di nuovo completa.'
+  } catch (e) {
+    error.value = (e as Error).message
+  } finally {
+    resolving.value = false
+  }
+}
+
 async function translateDescription() {
   if (!window.confirm(`Ritradurre la descrizione in ${languageName(activeLangCode.value)}? Il testo attuale viene sostituito.`)) {
     return
@@ -114,6 +169,12 @@ const indexableMedia = computed(() =>
 const suggestedQuestionsKey = ref(0)
 
 async function load() {
+  // Stessa ragione per cui selectLanguage/saveLanguage azzerano
+  // saveMessage: un esito rimasto a schermo da un'azione precedente non
+  // deve sopravvivere a un'azione diversa. load() è il punto in comune di
+  // ogni azione della pagina (posti, traduzione, copertina, lingue, media),
+  // quindi è qui che il messaggio di risoluzione smette di essere valido.
+  resolvedMessage.value = ''
   game.value = await api.get<GameDetail>(`/games/${gameId}`)
   editSeats.value = game.value.seats
   try {
@@ -357,6 +418,10 @@ onMounted(async () => {
           <p class="page-meta">
             <template v-if="game.owner">Proprietario: {{ game.owner }} · </template>
             <router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link>
+            ·
+            <router-link :to="{ name: 'admin-game-loans', params: { id: game.id } }">
+              Prestiti
+            </router-link>
           </p>
         </div>
         <div class="page-head-actions">
@@ -392,6 +457,20 @@ onMounted(async () => {
           </button>
         </div>
       </div>
+
+      <div v-if="game.missingPieces?.length" class="missing-notice" role="status">
+        <p class="missing-notice-head">A questa scatola manca qualcosa</p>
+        <p class="missing-notice-list">{{ missingLabel }}</p>
+        <div class="missing-notice-actions">
+          <router-link :to="{ name: 'admin-game-loans', params: { id: game.id } }">
+            Vedi i prestiti
+          </router-link>
+          <button type="button" class="btn-secondary" :disabled="resolving" @click="resolveMaterials">
+            {{ resolving ? 'Salvataggio…' : 'Segna come completo' }}
+          </button>
+        </div>
+      </div>
+      <p v-else-if="resolvedMessage" class="success">{{ resolvedMessage }}</p>
 
       <div class="game-cover-card">
         <!-- La copertina È il controllo di caricamento: si clicca l'immagine,

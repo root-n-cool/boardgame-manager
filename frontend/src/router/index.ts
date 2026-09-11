@@ -9,6 +9,7 @@ import GameNewView from '../views/GameNewView.vue'
 import GameDetailView from '../views/GameDetailView.vue'
 import GameAdminDetailView from '../views/GameAdminDetailView.vue'
 import GameLeaderboardView from '../views/GameLeaderboardView.vue'
+import GameLoansView from '../views/GameLoansView.vue'
 import EventsView from '../views/EventsView.vue'
 import EventDetailView from '../views/EventDetailView.vue'
 import ManageBookingView from '../views/ManageBookingView.vue'
@@ -71,6 +72,7 @@ const router = createRouter({
     { path: '/admin/games', name: 'admin-games', component: GamesView },
     { path: '/admin/games/new', name: 'admin-game-new', component: GameNewView },
     { path: '/admin/games/:id', name: 'admin-game-detail', component: GameAdminDetailView },
+    { path: '/admin/games/:id/prestiti', name: 'admin-game-loans', component: GameLoansView },
     { path: '/admin/users', name: 'admin-users', component: UsersView },
     { path: '/admin/settings', name: 'admin-settings', component: SettingsView },
     // Le pagine di gestione stavano sulla root prima di finire sotto /admin:
