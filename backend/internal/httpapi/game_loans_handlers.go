@@ -1,10 +1,12 @@
 package httpapi
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
 	"boardgames-manager/internal/events"
+	"boardgames-manager/internal/games"
 )
 
 // toGameLoanResponse è una riga del log di un gioco. materialIssues ha la
@@ -88,6 +90,13 @@ func (s *Server) resolveMaterialsHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	game, err := s.Games.MarkMaterialsChecked(r.Context(), gameID, user.ID)
+	// Il gioco c'era un istante fa (requireGame): sparisce solo se qualcuno
+	// lo cancella nel frattempo. Resta un 404 come ovunque nel pacchetto,
+	// non un 500: il gioco non c'è, non è il server a essere rotto.
+	if errors.Is(err, games.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "gioco non trovato")
+		return
+	}
 	if err != nil {
 		log.Printf("game loans: resolve for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not resolve")
@@ -95,11 +104,13 @@ func (s *Server) resolveMaterialsHandler(w http.ResponseWriter, r *http.Request)
 	}
 	langs, err := s.Games.ListLanguages(r.Context(), gameID)
 	if err != nil {
+		log.Printf("game loans: languages for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not load game")
 		return
 	}
 	detail, err := s.toGameDetail(r.Context(), game, langs, true)
 	if err != nil {
+		log.Printf("game loans: detail for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not load game")
 		return
 	}

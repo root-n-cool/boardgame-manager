@@ -810,6 +810,47 @@ func TestGamesMissingPiecesRespectsTheCheckedDate(t *testing.T) {
 	}
 }
 
+// Con più giochi in una chiamata sola — è così che la usa l'elenco del
+// catalogo — ogni mancanza deve finire sotto la propria chiave, e il gioco
+// pulito non deve comparire affatto.
+func TestGamesMissingPiecesSplitsPerGame(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	shortID := mustCreateGame(t, gameStore, "Carcassonne")
+	cleanID := mustCreateGame(t, gameStore, "Azul")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", shortID, cleanID)
+	shortMaterials := mustMaterials(t, conn, shortID, [2]any{"carte", 40})
+	cleanMaterials := mustMaterials(t, conn, cleanID, [2]any{"tessere", 100})
+
+	copies, err := store.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	byGame := map[int64]int64{}
+	for _, c := range copies {
+		byGame[c.GameID] = c.ID
+	}
+
+	shortLoan := mustLend(t, store, event.ID, byGame[shortID], "Anna")
+	returnWithShortage(t, store, shortLoan.ID, shortMaterials[0], 35)
+
+	cleanLoan := mustLend(t, store, event.ID, byGame[cleanID], "Bruno")
+	if _, err := store.ReturnLoan(context.Background(), cleanLoan.ID, nil,
+		[]events.MaterialCheck{{MaterialID: cleanMaterials[0], Complete: true}}); err != nil {
+		t.Fatalf("return pulito: %v", err)
+	}
+
+	got, err := store.GamesMissingPieces(context.Background(), []int64{shortID, cleanID})
+	if err != nil {
+		t.Fatalf("missing pieces: %v", err)
+	}
+	if len(got[shortID]) != 1 || got[shortID][0].Name != "carte" || got[shortID][0].Returned != 35 {
+		t.Errorf("la mancanza deve stare sotto il suo gioco: %+v", got[shortID])
+	}
+	if len(got[cleanID]) != 0 {
+		t.Errorf("il gioco pulito non deve avere voci: %+v", got[cleanID])
+	}
+}
+
 func TestGamesMissingPiecesWithNoIDs(t *testing.T) {
 	store, _, _ := newTestStoreWithConn(t)
 	got, err := store.GamesMissingPieces(context.Background(), nil)

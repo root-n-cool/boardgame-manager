@@ -53,6 +53,7 @@ type deskCopyBody struct {
 	ActiveBookings []deskBookingBody `json:"activeBookings"`
 	OpenLoan       *openLoanBody     `json:"openLoan"`
 	Materials      []materialBody    `json:"materials"`
+	Incomplete     bool              `json:"incomplete"`
 }
 
 type returnedLoanBody struct {
@@ -501,5 +502,81 @@ func TestReturnLoan_RejectsANegativeReturnedQuantity(t *testing.T) {
 	desk := readDesk(t, router, cookie, eventID)
 	if desk.Copies[0].OpenLoan == nil {
 		t.Error("il prestito si è chiuso nonostante l'errore")
+	}
+}
+
+// Il banco deve dire quale scatola è già incompleta PRIMA di consegnarla:
+// chi la dà in mano lo sa, e chi la riporta non si prende una colpa non
+// sua. Due giochi nella stessa serata perché il campo esce da una mappa
+// per gioco: con uno solo non si vedrebbe se la mancanza finisce sulla
+// riga giusta.
+func TestLoanDesk_MarksOnlyTheIncompleteGame(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	shortGameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+	cleanGameID := createTestGameForEvent(t, server.Games, "Azul")
+	saved, err := server.Games.ReplaceMaterials(context.Background(), shortGameID,
+		[]games.MaterialInput{{Name: "carte", Quantity: 40}})
+	if err != nil {
+		t.Fatalf("materials: %v", err)
+	}
+	if _, err := server.Games.ReplaceMaterials(context.Background(), cleanGameID,
+		[]games.MaterialInput{{Name: "tessere", Quantity: 100}}); err != nil {
+		t.Fatalf("materials: %v", err)
+	}
+
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata", EventDate: "2099-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{
+			{GameID: shortGameID, Copies: 1},
+			{GameID: cleanGameID, Copies: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, err := server.Events.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+
+	copyOf := func(desk loanDeskBody, gameID int64) deskCopyBody {
+		t.Helper()
+		for _, c := range desk.Copies {
+			if c.GameID == gameID {
+				return c
+			}
+		}
+		t.Fatalf("il gioco %d non è al banco: %+v", gameID, desk.Copies)
+		return deskCopyBody{}
+	}
+
+	// Prima di qualunque riconsegna nessuno dei due è marchiato.
+	before := readDesk(t, router, cookie, event.ID)
+	if copyOf(before, shortGameID).Incomplete || copyOf(before, cleanGameID).Incomplete {
+		t.Fatalf("senza riconsegne nessun gioco è incompleto: %+v", before.Copies)
+	}
+
+	var shortCopyID int64
+	for _, eg := range eventGames {
+		if eg.GameID == shortGameID {
+			shortCopyID = eg.ID
+		}
+	}
+	loan := lend(t, router, cookie, event.ID, shortCopyID, "Anna", "3331234567", "")
+	body := fmt.Sprintf(`{"materials":[{"materialId":%d,"complete":false,"returned":35}]}`, saved[0].ID)
+	if rec := doLoanRequest(router, http.MethodPost,
+		fmt.Sprintf("/api/loans/%d/return", loan.ID), cookie, body); rec.Code != http.StatusOK {
+		t.Fatalf("return: %d %s", rec.Code, rec.Body.String())
+	}
+
+	after := readDesk(t, router, cookie, event.ID)
+	if !copyOf(after, shortGameID).Incomplete {
+		t.Errorf("il gioco con la mancanza deve risultare incompleto: %+v", copyOf(after, shortGameID))
+	}
+	if copyOf(after, cleanGameID).Incomplete {
+		t.Errorf("il gioco pulito non deve essere marchiato: %+v", copyOf(after, cleanGameID))
 	}
 }
