@@ -810,6 +810,29 @@ foglio.
   che altrove sarebbe un modale, qui è distanza più copia adiacente al
   bottone.
 
+#### Materiali (`GameMaterialsPanel.vue`)
+Il contenuto della scatola, una riga per voce: nome, quantità, e le tre
+azioni della riga. Stessa forma di "Domande suggerite" — form annidato nel
+`.panel-card`, lista spogliata, "Genera dal manuale" nella testata — con tre
+regole sue.
+
+- **Le azioni della riga stanno su una griglia di tre caselle fisse**
+  (`.game-materials-row-actions`, `grid-template-columns: repeat(3, 44px)`),
+  non su una fila che si compatta. La prima riga non ha ↑ e l'ultima non ha
+  ↓: in una fila la freccia rimasta scivolerebbe nella colonna dell'altra, e
+  chi risale una voce a colpi di clic si troverebbe sotto il dito il bottone
+  che la fa riscendere. La casella vuota resta vuota.
+- **Bottoni icona-soli da 44px.** Il testo vive solo nell'`aria-label`, e
+  senza etichetta manca l'imbottitura che negli altri `.btn-with-icon` fa da
+  bersaglio: il quadrato lo dichiara da sé (44×44, icona 1.1rem).
+- **"Aggiungi voce" è largo quanto la lista** (`.game-materials-add`), come
+  `.player-score-add`: è lo slot vuoto in fondo all'elenco, non un bottone
+  sospeso a sinistra.
+- **"Salva materiali" è spento finché una riga è incompleta**, e la nota
+  legata via `aria-describedby` dice *quali* voci — il server rifiuta la
+  lista intera con un messaggio che non nomina la riga. Il campo quantità
+  filtra alle sole cifre, come quello della checklist al banco prestiti.
+
 ### Amministratori (`/admin/users`)
 - **La riga admin** (`.admin-row`, dentro `.admin-list` in un `.panel-card`):
   la pedina con l'iniziale (`.admin-pawn`) sta dove il catalogo mette la
@@ -1095,6 +1118,17 @@ l'azione sta in basso a destra, dove il pollice la trova.
   riga di "Fuori" (`.loan-row-notes`, corsivo nel font di corpo). La
   stessa nota in due font avrebbe fatto sembrare due cose diverse la
   stessa frase.
+- **Riga della checklist materiali** (`.material-check-list li`, nella
+  modale di restituzione): nome elastico (`.material-check-name`, `flex:
+  1`), quantità attesa in mono (`.material-check-expected`, è un dato),
+  campo numerico stretto quanto basta a quattro cifre
+  (`.material-check-input`) e casella di spunta. La casella nativa in
+  Chrome **ignora il `padding`**: gonfiarla per portare l'area di tocco a
+  44px lasciava il bersaglio reale a ~20px. La soluzione è avvolgere
+  l'`<input>` in un `<label>` (`.material-check-box-wrap`) di 44×44px che
+  centra al suo interno una casella piccola quanto il resto della riga
+  (`.material-check-box`, 1.35rem): l'area di tocco cresce sul
+  contenitore, il disegno del controllo resta fedele alla riga.
 
 ### Aggiungi gioco (`/admin/games/new`)
 - **Un form solo, due fogli** (`.panel-form` + `.panel-card`): *Gioco* e

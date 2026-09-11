@@ -79,6 +79,18 @@ type returnLoanRequest struct {
 	// Notes nil lascia quelle scritte alla consegna: un corpo vuoto è il
 	// caso normale, si restituisce senza avere niente da segnalare.
 	Notes *string `json:"notes"`
+	// Materials assente (nil) significa "nessuna checklist": un gioco senza
+	// materiali, o un client vecchio, chiude il prestito come prima. Una
+	// lista presente ma con voci mancanti è un'altra cosa — quelle voci
+	// risultano non verificate.
+	Materials []returnMaterialCheck `json:"materials"`
+}
+
+type returnMaterialCheck struct {
+	MaterialID int64 `json:"materialId"`
+	Complete   bool  `json:"complete"`
+	// Returned nil = non verificata. Ha senso solo con Complete false.
+	Returned *int `json:"returned"`
 }
 
 func (s *Server) returnLoanHandler(w http.ResponseWriter, r *http.Request) {
@@ -92,12 +104,24 @@ func (s *Server) returnLoanHandler(w http.ResponseWriter, r *http.Request) {
 	// non è un errore: si prosegue con Notes nil.
 	_ = json.NewDecoder(r.Body).Decode(&req)
 
-	loan, err := s.Events.ReturnLoan(r.Context(), id, req.Notes)
+	var checks []events.MaterialCheck
+	if req.Materials != nil {
+		checks = make([]events.MaterialCheck, 0, len(req.Materials))
+		for _, m := range req.Materials {
+			checks = append(checks, events.MaterialCheck{
+				MaterialID: m.MaterialID, Complete: m.Complete, Returned: m.Returned,
+			})
+		}
+	}
+
+	loan, err := s.Events.ReturnLoan(r.Context(), id, req.Notes, checks)
 	switch {
 	case errors.Is(err, events.ErrNotFound):
 		writeError(w, http.StatusNotFound, "questo prestito non esiste più: ricarica il banco")
 	case errors.Is(err, events.ErrLoanAlreadyReturned):
 		writeError(w, http.StatusConflict, "questo prestito è già stato chiuso")
+	case errors.Is(err, events.ErrMaterialCheckInvalid):
+		writeError(w, http.StatusBadRequest, "una quantità restituita non può essere negativa")
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "could not return loan")
 	default:

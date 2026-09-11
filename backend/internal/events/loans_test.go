@@ -2,6 +2,7 @@ package events_test
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"testing"
 
@@ -115,7 +116,7 @@ func TestReturnLoanClosesItAndFreesTheCopy(t *testing.T) {
 	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
 
 	notes := "manca una tessera"
-	returned, err := store.ReturnLoan(context.Background(), loan.ID, &notes)
+	returned, err := store.ReturnLoan(context.Background(), loan.ID, &notes, nil)
 	if err != nil {
 		t.Fatalf("return loan: %v", err)
 	}
@@ -154,7 +155,7 @@ func TestReturnLoanKeepsNotesWhenNoneAreSent(t *testing.T) {
 		t.Fatalf("lend: %v", err)
 	}
 
-	returned, err := store.ReturnLoan(context.Background(), loan.ID, nil)
+	returned, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil)
 	if err != nil {
 		t.Fatalf("return loan: %v", err)
 	}
@@ -169,11 +170,11 @@ func TestReturnLoanRefusesTwice(t *testing.T) {
 	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
 	copy := firstCopy(t, store, event.ID)
 	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
-	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); err != nil {
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); err != nil {
 		t.Fatalf("first return: %v", err)
 	}
 
-	_, err := store.ReturnLoan(context.Background(), loan.ID, nil)
+	_, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil)
 	if !errors.Is(err, events.ErrLoanAlreadyReturned) {
 		t.Fatalf("err = %v, want ErrLoanAlreadyReturned", err)
 	}
@@ -182,7 +183,7 @@ func TestReturnLoanRefusesTwice(t *testing.T) {
 func TestReturnLoanRefusesAnUnknownID(t *testing.T) {
 	store, _ := newTestStore(t)
 
-	_, err := store.ReturnLoan(context.Background(), 999, nil)
+	_, err := store.ReturnLoan(context.Background(), 999, nil, nil)
 	if !errors.Is(err, events.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound", err)
 	}
@@ -299,7 +300,7 @@ func TestDeleteEventRemovesItsLoans(t *testing.T) {
 		t.Fatalf("delete event: %v", err)
 	}
 
-	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); !errors.Is(err, events.ErrNotFound) {
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); !errors.Is(err, events.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound: il prestito doveva sparire in cascata", err)
 	}
 }
@@ -343,7 +344,7 @@ func TestUpdateEventDropsAnOnlyCopyEvenWithClosedHistory(t *testing.T) {
 	gameID := mustCreateGame(t, gameStore, "Carcassonne")
 	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
 	loan := mustLend(t, store, event.ID, firstCopy(t, store, event.ID).ID, "Anna")
-	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); err != nil {
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); err != nil {
 		t.Fatalf("return loan: %v", err)
 	}
 
@@ -366,7 +367,7 @@ func TestUpdateEventDropsAnOnlyCopyEvenWithClosedHistory(t *testing.T) {
 	// La riga di game_loans deve essere sparita in cascata con la copia:
 	// una seconda restituzione dà ErrNotFound (riga assente), non
 	// ErrLoanAlreadyReturned (riga ancora lì, già chiusa).
-	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); !errors.Is(err, events.ErrNotFound) {
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); !errors.Is(err, events.ErrNotFound) {
 		t.Fatalf("err = %v, want ErrNotFound: la riga di game_loans doveva sparire con la copia", err)
 	}
 }
@@ -395,7 +396,7 @@ func TestUpdateEventPrefersDroppingACopyWithNoLoanHistory(t *testing.T) {
 	// dropCopies seguisse solo "dalla più alta in giù" la eliminerebbe lei
 	// per prima, perdendo la riga. La #1 non ha mai avuto un prestito.
 	loan := mustLend(t, store, event.ID, copies[1].ID, "Anna")
-	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); err != nil {
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); err != nil {
 		t.Fatalf("return loan: %v", err)
 	}
 
@@ -416,7 +417,7 @@ func TestUpdateEventPrefersDroppingACopyWithNoLoanHistory(t *testing.T) {
 
 	// La riga del prestito chiuso è ancora lì: ErrLoanAlreadyReturned
 	// (non ErrNotFound) prova che la copia #2 non è stata toccata.
-	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil); !errors.Is(err, events.ErrLoanAlreadyReturned) {
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); !errors.Is(err, events.ErrLoanAlreadyReturned) {
 		t.Fatalf("err = %v, want ErrLoanAlreadyReturned: lo storico doveva restare intatto", err)
 	}
 }
@@ -455,5 +456,207 @@ func TestUpdateEventShrinkingSpareTheCopyOnLoan(t *testing.T) {
 	}
 	if after[0].ID != copies[1].ID {
 		t.Fatalf("copia sopravvissuta = %d, want %d: doveva restare quella in prestito", after[0].ID, copies[1].ID)
+	}
+}
+
+// mustMaterials scrive le voci del catalogo con SQL diretto: internal/events
+// non importa internal/games, e nemmeno i suoi test devono farlo per una
+// tabella di due colonne.
+func mustMaterials(t *testing.T, conn *sql.DB, gameID int64, rows ...[2]any) []int64 {
+	t.Helper()
+	ids := make([]int64, 0, len(rows))
+	for i, r := range rows {
+		res, err := conn.Exec(
+			`INSERT INTO game_material (game_id, name, quantity, position) VALUES (?, ?, ?, ?)`,
+			gameID, r[0], r[1], i)
+		if err != nil {
+			t.Fatalf("insert material %v: %v", r[0], err)
+		}
+		id, err := res.LastInsertId()
+		if err != nil {
+			t.Fatalf("last insert id: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func TestReturnLoanWithoutChecksWritesNoIssue(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	mustMaterials(t, conn, gameID, [2]any{"tessere", 72})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); err != nil {
+		t.Fatalf("return: %v", err)
+	}
+	issues, err := store.ListMaterialIssues(context.Background(), []int64{loan.ID})
+	if err != nil {
+		t.Fatalf("list issues: %v", err)
+	}
+	if len(issues[loan.ID]) != 0 {
+		t.Fatalf("senza checklist non si scrive niente, ho %+v", issues[loan.ID])
+	}
+}
+
+func TestReturnLoanWithEverythingCheckedWritesNoIssue(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"tessere", 72}, [2]any{"meeple", 40})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	checks := []events.MaterialCheck{
+		{MaterialID: ids[0], Complete: true},
+		{MaterialID: ids[1], Complete: true},
+	}
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, checks); err != nil {
+		t.Fatalf("return: %v", err)
+	}
+	issues, _ := store.ListMaterialIssues(context.Background(), []int64{loan.ID})
+	if len(issues[loan.ID]) != 0 {
+		t.Fatalf("un controllo pulito non lascia righe, ho %+v", issues[loan.ID])
+	}
+}
+
+func TestReturnLoanRecordsShortagesAndUncheckedRows(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID,
+		[2]any{"tessere", 72}, [2]any{"carte", 40}, [2]any{"dadi", 5})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	returned := 35
+	checks := []events.MaterialCheck{
+		{MaterialID: ids[0], Complete: true},                       // tutte tornate
+		{MaterialID: ids[1], Complete: false, Returned: &returned}, // 35 su 40
+		// ids[2] non compare: non verificata
+	}
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, checks); err != nil {
+		t.Fatalf("return: %v", err)
+	}
+
+	issues, err := store.ListMaterialIssues(context.Background(), []int64{loan.ID})
+	if err != nil {
+		t.Fatalf("list issues: %v", err)
+	}
+	got := issues[loan.ID]
+	if len(got) != 2 {
+		t.Fatalf("volevo 2 righe di esito, ho %+v", got)
+	}
+	if got[0].Name != "carte" || got[0].Expected != 40 || got[0].Returned == nil || *got[0].Returned != 35 {
+		t.Errorf("riga incompleta inattesa: %+v", got[0])
+	}
+	if got[1].Name != "dadi" || got[1].Returned != nil {
+		t.Errorf("riga non verificata inattesa: %+v", got[1])
+	}
+}
+
+func TestReturnLoanTreatsExtraPiecesAsComplete(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"meeple", 40})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	// 41 su 40: capita di ritrovare il pezzo di un'altra scatola. Non manca
+	// niente, quindi non è un esito da registrare.
+	extra := 41
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil,
+		[]events.MaterialCheck{{MaterialID: ids[0], Returned: &extra}}); err != nil {
+		t.Fatalf("return: %v", err)
+	}
+	issues, _ := store.ListMaterialIssues(context.Background(), []int64{loan.ID})
+	if len(issues[loan.ID]) != 0 {
+		t.Fatalf("non doveva restare niente, ho %+v", issues[loan.ID])
+	}
+}
+
+func TestReturnLoanRejectsNegativeQuantity(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"meeple", 40})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	negative := -1
+	_, err := store.ReturnLoan(context.Background(), loan.ID, nil,
+		[]events.MaterialCheck{{MaterialID: ids[0], Returned: &negative}})
+	if !errors.Is(err, events.ErrMaterialCheckInvalid) {
+		t.Fatalf("volevo ErrMaterialCheckInvalid, ho %v", err)
+	}
+	// E il prestito deve essere ancora aperto: o si chiude con il suo esito,
+	// o non si chiude.
+	open, err := store.ListLoansForEvent(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list loans: %v", err)
+	}
+	if len(open) != 1 || open[0].ReturnedAt != nil {
+		t.Fatalf("il prestito non doveva chiudersi: %+v", open)
+	}
+}
+
+func TestReturnLoanTwiceStillFails(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	mustMaterials(t, conn, gameID, [2]any{"meeple", 40})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); err != nil {
+		t.Fatalf("prima return: %v", err)
+	}
+	if _, err := store.ReturnLoan(context.Background(), loan.ID, nil, nil); !errors.Is(err, events.ErrLoanAlreadyReturned) {
+		t.Fatalf("volevo ErrLoanAlreadyReturned, ho %v", err)
+	}
+}
+
+// Gli id del catalogo cambiano solo quando una voce viene rinominata o
+// tolta (ReplaceMaterials li conserva), ma se accade mentre una modale di
+// riconsegna è aperta le spunte arrivano con id che non esistono più. Il
+// prestito si chiude comunque e ogni voce risulta non verificata: è la
+// direzione prudente dell'errore, l'opposto — dare per presente ciò che
+// nessuno ha guardato — non deve essere possibile.
+func TestReturnLoanWithStaleMaterialIDsRecordsEverythingUnverified(t *testing.T) {
+	store, gameStore, conn := newTestStoreWithConn(t)
+	gameID := mustCreateGame(t, gameStore, "Carcassonne")
+	event := mustCreateEvent(t, store, "Serata", "2030-01-01", "21:00", gameID)
+	ids := mustMaterials(t, conn, gameID, [2]any{"tessere", 72}, [2]any{"carte", 40})
+	copy := firstCopy(t, store, event.ID)
+	loan := mustLend(t, store, event.ID, copy.ID, "Anna")
+
+	returned := 35
+	checks := []events.MaterialCheck{
+		{MaterialID: ids[0] + 1000, Complete: true},
+		{MaterialID: ids[1] + 1000, Returned: &returned},
+	}
+	closed, err := store.ReturnLoan(context.Background(), loan.ID, nil, checks)
+	if err != nil {
+		t.Fatalf("return: %v", err)
+	}
+	if closed.ReturnedAt == nil {
+		t.Fatal("il prestito doveva chiudersi lo stesso")
+	}
+
+	issues, err := store.ListMaterialIssues(context.Background(), []int64{loan.ID})
+	if err != nil {
+		t.Fatalf("list issues: %v", err)
+	}
+	got := issues[loan.ID]
+	if len(got) != 2 {
+		t.Fatalf("volevo una riga per ogni voce del catalogo, ho %+v", got)
+	}
+	for _, iss := range got {
+		if iss.Returned != nil {
+			t.Errorf("%q doveva risultare non verificata, ho %d", iss.Name, *iss.Returned)
+		}
 	}
 }

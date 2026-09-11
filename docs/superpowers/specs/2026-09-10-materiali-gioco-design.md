@@ -265,10 +265,10 @@ dove `preferLang` è il codice della lingua base del gioco (`is_base_language`),
 la stessa preferenza che usa la chat sul manuale.
 Prende al più 6 passaggi, li passa a `ListMaterials`, e torna
 `{ "materials": [{name, quantity}] }` senza toccare il DB. Se il gioco non
-ha chunk indicizzati risponde `409` con un messaggio che dice di indicizzare
-prima un manuale — lo stesso trattamento di `errNoHeadings` per le domande
-suggerite, perché l'admin deve leggere "indicizza un manuale", non
-"riprova".
+ha chunk indicizzati risponde `422` con un messaggio che dice di indicizzare
+prima un manuale — lo stesso codice e lo stesso trattamento di
+`errNoHeadings` per le domande suggerite, perché l'admin deve leggere
+"indicizza un manuale", non "riprova".
 
 Il generatore si costruisce dalle impostazioni a ogni richiesta, con
 l'iniezione per i test, come `suggester()` in `questions_handlers.go`.
@@ -293,7 +293,7 @@ Nuova `.panel-card` **"Materiali"**, dopo le lingue. Una riga per voce:
   `SuggestedQuestionsPanel`: c'è sempre, ma è `disabled` quando il provider
   AI non è configurato, con la nota che lo spiega legata al bottone via
   `aria-describedby` (mai un controllo spento e muto — è un *Don't* di
-  DESIGN.md). Il caso "nessun manuale indicizzato" lo racconta il `409`
+  DESIGN.md). Il caso "nessun manuale indicizzato" lo racconta il `422`
   della rotta, perché è il backend a saperlo con certezza. Il risultato
   **riempie l'editor come proposta non salvata**, con una riga che lo dice
   (*"Proposta dal manuale: correggi quel che serve, poi salva."*); l'admin
@@ -359,7 +359,7 @@ problema si vede senza aprire niente. Un prestito pulito resta come oggi.
   numero, quantità fuori scala, duplicati), rifiuto quando non resta
   niente.
 - `internal/httpapi/materials_handlers_test.go`: GET/PUT, 401 senza
-  sessione, 409 senza fonti indicizzate, `suggest` che non scrive nel DB,
+  sessione, 422 senza fonti indicizzate, `suggest` che non scrive nel DB,
   `return` con e senza il campo `materials`.
 
 **Frontend**: `npm run build` (che fa anche il type-check con `vue-tsc`) e

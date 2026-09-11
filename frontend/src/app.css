@@ -3996,6 +3996,18 @@ tbody tr:nth-child(3) .rank-medal {
   color: var(--ink-muted);
 }
 
+/* Quel che non è tornato è l'unica riga del registro che chiede di essere
+   notata: colore d'allarme (5.15:1 sul cartoncino, sopra la soglia AA) e non
+   il grigio delle altre meta. In `Body` e non nel mono di `.row-meta`: è una
+   frase con dentro dei numeri, non un dato da ricopiare. */
+.material-issues {
+  display: block;
+  margin-top: 0.2rem;
+  font-family: 'Body', system-ui, sans-serif;
+  font-size: 0.85rem;
+  color: var(--danger);
+}
+
 .loan-row-action {
   flex-shrink: 0;
   font-family: 'Body', system-ui, sans-serif;
@@ -4090,6 +4102,98 @@ tbody tr:nth-child(3) .rank-medal {
   font-family: 'Body', system-ui, sans-serif;
   color: var(--ink-muted);
   overflow-wrap: anywhere;
+}
+
+/* Il gruppo della checklist nella modale di restituzione. Il `fieldset`
+   nasce con `min-width: min-content`, che nella modale stretta lo fa
+   sporgere invece di stringersi; e il conteggio in fondo si stacca
+   dall'ultima riga, che altrimenti se lo prende per una voce sua. */
+.material-check {
+  min-width: 0;
+}
+
+.material-check > .empty-note {
+  margin-top: 0.6rem;
+}
+
+/* Il conteggio vive dentro la `<legend>`, che è maiuscoletto tracciato: la
+   voce dell'etichetta, non quella del dato. Ereditandola la testata si
+   leggeva "MATERIALI 3 DI 7 VERIFICATE"; qui torna frase, in mono come ogni
+   numero da leggere in questo progetto. */
+.material-check-progress {
+  margin-left: 0.35rem;
+  font-family: 'Data', monospace;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Spogliata come `.loan-list`: la regola globale delle liste la vestirebbe
+   da card — fondo, bordo, ombra e 1.75rem di margine sotto — dentro la
+   cornice che il `fieldset` disegna già, col testo delle righe schiacciato
+   contro quel bordo. Il filetto fra le `li` invece resta: sono voci da
+   spuntare una per una, e la riga staccata si perde meno sotto il dito. */
+.material-check-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
+/* La riga della checklist si legge e si tocca in piedi, al tavolo: nome
+   elastico, quantità attesa in mono perché è un dato, campo stretto quanto
+   basta a quattro cifre, casella con l'area di tocco piena. */
+.material-check-list li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.35rem 0;
+}
+
+.material-check-name {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.material-check-expected {
+  font-family: 'Data', monospace;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.material-check-input {
+  width: 4.5rem;
+  flex: none;
+  font-family: 'Data', monospace;
+  text-align: right;
+}
+
+/* Chrome ignora il padding sui checkbox nativi (verificato dal vivo: con
+   `padding` e margine negativo il target restava ~20px, non 44), quindi
+   l'area di tocco si ottiene avvolgendo l'input in questo `<label>` di 44px
+   invece che gonfiando il controllo — il disegno della casella resta
+   piccolo quanto il resto della riga. */
+.material-check-box-wrap {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+
+.material-check-box {
+  flex: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
 }
 
 /* ---------- Chiedi al manuale ---------- */
@@ -4655,5 +4759,141 @@ form.suggested-questions {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.6rem;
+}
+
+/* ---------- Materiali del gioco ---------- */
+/* Stesso scheletro di `.suggested-questions`: colonna con `gap`, testata e
+   didascalie senza margine proprio perché la spaziatura fra i gruppi la dà
+   già il form. */
+form.game-materials {
+  align-items: stretch;
+  gap: 0.85rem;
+}
+
+.game-materials > .empty-note,
+.game-materials > .error,
+.game-materials-head > .empty-note {
+  margin: 0;
+}
+
+.game-materials-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.game-materials-head .section-head {
+  margin-bottom: 0;
+}
+
+.game-materials h3 {
+  margin: 0;
+}
+
+/* Spogliata come `.admin-list`: la regola globale delle liste la vestirebbe
+   da card e darebbe a ogni riga un filetto proprio, mentre qui la card è già
+   il `.panel-card` che contiene il pannello. */
+.game-materials-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.game-materials-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0;
+  border: 0;
+}
+
+.game-materials-row input {
+  min-height: 44px;
+}
+
+.game-materials-row input:not(.game-materials-qty) {
+  flex: 1 1 12rem;
+  min-width: 0;
+}
+
+.game-materials-qty {
+  flex: none;
+  width: 6rem;
+  max-width: 6rem;
+  font-family: 'Data', monospace;
+  text-align: right;
+}
+
+/* Griglia a tre caselle fisse e non una fila di bottoni: su una riga senza
+   la freccia in su — la prima — o senza quella in giù — l'ultima — la casella
+   resta vuota invece di far scivolare le altre. Senza questo, la freccia in su
+   dell'ultima riga si siede dove tutte le altre hanno quella in giù, e chi
+   risale una voce a colpi di clic trova un bottone diverso sotto il dito. */
+.game-materials-row-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  flex: none;
+  gap: 0.3rem;
+  margin-left: auto;
+}
+
+.game-materials-move-up {
+  grid-column: 1;
+}
+
+.game-materials-move-down {
+  grid-column: 2;
+}
+
+.game-materials-remove {
+  grid-column: 3;
+}
+
+/* Bottoni icona-soli: il testo è solo nell'`aria-label`, quindi il quadrato
+   deve restare un bersaglio da dito (44px) anche senza l'etichetta che negli
+   altri `.btn-with-icon` fa da imbottitura. */
+.game-materials-row-actions button {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.game-materials-row-actions button svg {
+  flex: none;
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+/* Stessa misura piena di `.player-score-add`: lo slot vuoto in fondo alla
+   lista continua il bordo delle righe sopra invece di restare un bottone
+   sospeso a sinistra. */
+.game-materials-add {
+  align-self: stretch;
+  width: 100%;
+}
+
+@media (max-width: 560px) {
+  /* Da telefono il nome prende la riga intera e quantità + azioni scendono
+     sotto, come `.player-score-row`. */
+  .game-materials-row input:not(.game-materials-qty) {
+    flex: 1 0 100%;
+  }
+
+  .game-materials-row-actions {
+    margin-left: 0;
+  }
 }
 

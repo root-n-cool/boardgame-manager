@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"boardgames-manager/internal/events"
+	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
 )
 
@@ -29,6 +30,18 @@ type openLoanBody struct {
 	Notes         *string `json:"notes"`
 }
 
+type materialBody struct {
+	ID       int64  `json:"id"`
+	Name     string `json:"name"`
+	Quantity int    `json:"quantity"`
+}
+
+type materialIssueBody struct {
+	Name     string `json:"name"`
+	Expected int    `json:"expected"`
+	Returned *int   `json:"returned"`
+}
+
 type deskCopyBody struct {
 	EventGameID    int64             `json:"eventGameId"`
 	GameID         int64             `json:"gameId"`
@@ -39,17 +52,19 @@ type deskCopyBody struct {
 	Seats          int               `json:"seats"`
 	ActiveBookings []deskBookingBody `json:"activeBookings"`
 	OpenLoan       *openLoanBody     `json:"openLoan"`
+	Materials      []materialBody    `json:"materials"`
 }
 
 type returnedLoanBody struct {
-	ID           int64   `json:"id"`
-	EventGameID  int64   `json:"eventGameId"`
-	GameName     string  `json:"gameName"`
-	CopyIndex    int     `json:"copyIndex"`
-	BorrowerName string  `json:"borrowerName"`
-	LentAt       string  `json:"lentAt"`
-	ReturnedAt   string  `json:"returnedAt"`
-	Notes        *string `json:"notes"`
+	ID             int64               `json:"id"`
+	EventGameID    int64               `json:"eventGameId"`
+	GameName       string              `json:"gameName"`
+	CopyIndex      int                 `json:"copyIndex"`
+	BorrowerName   string              `json:"borrowerName"`
+	LentAt         string              `json:"lentAt"`
+	ReturnedAt     string              `json:"returnedAt"`
+	Notes          *string             `json:"notes"`
+	MaterialIssues []materialIssueBody `json:"materialIssues"`
 }
 
 type loanDeskBody struct {
@@ -350,5 +365,141 @@ func TestCreateLoan_FromABookingLinksIt(t *testing.T) {
 	}
 	if loan.BookingID == nil || *loan.BookingID != bookingID {
 		t.Fatalf("bookingId = %v, want %d", loan.BookingID, bookingID)
+	}
+}
+
+// loanFixtureWithMaterials è loanFixture più le voci del catalogo sul
+// gioco della serata, e restituisce i loro id nell'ordine in cui sono
+// state scritte. Non riusa loanFixture perché ha bisogno del *Server per
+// scrivere i materiali, che loanFixture non restituisce.
+func loanFixtureWithMaterials(t *testing.T, rows ...games.MaterialInput) (http.Handler, *http.Cookie, int64, []events.EventGame, []int64) {
+	t.Helper()
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+
+	saved, err := server.Games.ReplaceMaterials(context.Background(), gameID, rows)
+	if err != nil {
+		t.Fatalf("replace materials: %v", err)
+	}
+	ids := make([]int64, 0, len(saved))
+	for _, m := range saved {
+		ids = append(ids, m.ID)
+	}
+
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata", EventDate: "2099-01-01", StartTime: "21:00",
+		Games: []events.EventGameInput{{GameID: gameID, Copies: 1}},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+	eventGames, err := server.Events.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list event games: %v", err)
+	}
+	return router, cookie, event.ID, eventGames, ids
+}
+
+func TestLoanDesk_CarriesTheGameMaterials(t *testing.T) {
+	router, cookie, eventID, _, ids := loanFixtureWithMaterials(t,
+		games.MaterialInput{Name: "tessere", Quantity: 72},
+		games.MaterialInput{Name: "meeple", Quantity: 40},
+	)
+
+	desk := readDesk(t, router, cookie, eventID)
+	if len(desk.Copies) != 1 {
+		t.Fatalf("copies = %d, want 1", len(desk.Copies))
+	}
+	got := desk.Copies[0].Materials
+	if len(got) != 2 {
+		t.Fatalf("materials = %d righe, want 2: %+v", len(got), got)
+	}
+	if got[0].ID != ids[0] || got[0].Name != "tessere" || got[0].Quantity != 72 {
+		t.Errorf("prima voce = %+v", got[0])
+	}
+	if got[1].Name != "meeple" || got[1].Quantity != 40 {
+		t.Errorf("seconda voce = %+v", got[1])
+	}
+}
+
+func TestReturnLoan_WithChecklistRecordsWhatIsMissing(t *testing.T) {
+	router, cookie, eventID, eventGames, ids := loanFixtureWithMaterials(t,
+		games.MaterialInput{Name: "tessere", Quantity: 72},
+		games.MaterialInput{Name: "carte", Quantity: 40},
+		games.MaterialInput{Name: "dadi", Quantity: 5},
+	)
+	loan := lend(t, router, cookie, eventID, eventGames[0].ID, "Anna", "3331234567", "")
+
+	// tessere spuntate, carte contate 35 su 40, dadi mai toccati.
+	body := fmt.Sprintf(
+		`{"materials":[{"materialId":%d,"complete":true},{"materialId":%d,"complete":false,"returned":35}]}`,
+		ids[0], ids[1])
+	rec := doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/loans/%d/return", loan.ID), cookie, body)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+
+	desk := readDesk(t, router, cookie, eventID)
+	if len(desk.Returned) != 1 {
+		t.Fatalf("returned = %d righe, want 1", len(desk.Returned))
+	}
+	issues := desk.Returned[0].MaterialIssues
+	if len(issues) != 2 {
+		t.Fatalf("materialIssues = %d righe, want 2 (carte e dadi): %+v", len(issues), issues)
+	}
+	if issues[0].Name != "carte" || issues[0].Expected != 40 ||
+		issues[0].Returned == nil || *issues[0].Returned != 35 {
+		t.Errorf("riga incompleta = %+v", issues[0])
+	}
+	if issues[1].Name != "dadi" || issues[1].Returned != nil {
+		t.Errorf("riga non verificata = %+v", issues[1])
+	}
+	for _, iss := range issues {
+		if iss.Name == "tessere" {
+			t.Error("una voce spuntata non deve lasciare un esito")
+		}
+	}
+}
+
+func TestReturnLoan_WithoutMaterialsFieldStillWorks(t *testing.T) {
+	router, cookie, eventID, eventGames, _ := loanFixtureWithMaterials(t,
+		games.MaterialInput{Name: "tessere", Quantity: 72},
+	)
+	loan := lend(t, router, cookie, eventID, eventGames[0].ID, "Anna", "3331234567", "")
+
+	// Il corpo di ieri: nessun campo materials. È il contratto che tiene in
+	// piedi i giochi senza materiali e i client non aggiornati.
+	rec := doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/loans/%d/return", loan.ID), cookie, `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rec.Code, rec.Body.String())
+	}
+	desk := readDesk(t, router, cookie, eventID)
+	if len(desk.Returned) != 1 {
+		t.Fatalf("returned = %d righe, want 1", len(desk.Returned))
+	}
+	if len(desk.Returned[0].MaterialIssues) != 0 {
+		t.Fatalf("senza checklist non si scrive niente: %+v", desk.Returned[0].MaterialIssues)
+	}
+}
+
+func TestReturnLoan_RejectsANegativeReturnedQuantity(t *testing.T) {
+	router, cookie, eventID, eventGames, ids := loanFixtureWithMaterials(t,
+		games.MaterialInput{Name: "tessere", Quantity: 72},
+	)
+	loan := lend(t, router, cookie, eventID, eventGames[0].ID, "Anna", "3331234567", "")
+
+	body := fmt.Sprintf(`{"materials":[{"materialId":%d,"complete":false,"returned":-3}]}`, ids[0])
+	rec := doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/loans/%d/return", loan.ID), cookie, body)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400: %s", rec.Code, rec.Body.String())
+	}
+
+	// O si chiude con il suo esito, o non si chiude: la copia deve essere
+	// ancora fuori.
+	desk := readDesk(t, router, cookie, eventID)
+	if desk.Copies[0].OpenLoan == nil {
+		t.Error("il prestito si è chiuso nonostante l'errore")
 	}
 }

@@ -62,6 +62,10 @@ type Server struct {
 	// suggerite. Nil = costruito per richiesta dalle impostazioni, stesso
 	// schema di AI/Vision/Asker/Segmenter.
 	Suggester ai.QuestionSuggester
+	// MaterialLister, quando è valorizzato, è il generatore della proposta
+	// di materiali dal manuale. Stesso schema di AI/Vision/Segmenter/
+	// Suggester: nil in produzione, un finto nei test.
+	MaterialLister ai.MaterialLister
 }
 
 func NewRouter(s *Server) http.Handler {
@@ -143,6 +147,9 @@ func NewRouter(s *Server) http.Handler {
 		protected.Get("/api/games/{id}/suggested-questions", s.getSuggestedQuestionsHandler)
 		protected.Put("/api/games/{id}/suggested-questions", s.putSuggestedQuestionsHandler)
 		protected.Post("/api/games/{id}/suggested-questions/regenerate", s.regenerateSuggestedQuestionsHandler)
+		protected.Get("/api/games/{id}/materials", s.listMaterialsHandler)
+		protected.Put("/api/games/{id}/materials", s.putMaterialsHandler)
+		protected.Post("/api/games/{id}/materials/suggest", s.suggestMaterialsHandler)
 		protected.Post("/api/events", s.createEventHandler)
 		protected.Put("/api/events/{id}", s.updateEventHandler)
 		protected.Post("/api/events/{id}/image", s.uploadEventImageHandler)

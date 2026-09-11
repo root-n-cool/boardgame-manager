@@ -7,6 +7,7 @@ import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import BggFilesPicker, { type BggFile } from '../components/BggFilesPicker.vue'
 import ManualPrepPanel from '../components/ManualPrepPanel.vue'
+import GameMaterialsPanel from '../components/GameMaterialsPanel.vue'
 import SuggestedQuestionsPanel from '../components/SuggestedQuestionsPanel.vue'
 import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
 
@@ -668,6 +669,18 @@ onMounted(async () => {
           />
         </section>
       </div>
+
+      <!--
+        Fuori dal gruppo «Chatbot» e non una terza card sorella lì dentro:
+        quel gruppo esiste per le card che dipendono dalla chat (nessun
+        `lang-chip`, vedi sopra), e l'elenco dei materiali non ne dipende —
+        serve a chi presta il gioco, non a chi prepara il manuale, e può
+        esistere anche su un gioco senza documenti indicizzati (si scrive a
+        mano). Sotto quel titolo si leggerebbe come una funzione della chat.
+      -->
+      <section class="panel-card">
+        <GameMaterialsPanel :game-id="game.id" :ai-configured="aiConfigured" />
+      </section>
     </template>
 
     <p v-if="error" class="error">{{ error }}</p>

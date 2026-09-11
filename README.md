@@ -18,7 +18,12 @@ esterno obbligatorio.
   Caricando un manuale, l'app elenca i file che BoardGameGeek ha per quel
   gioco nella lingua della scheda: il download resta un gesto manuale — BGG
   li serve solo a chi ha fatto login sul sito — ma il file giusto si trova
-  senza cercarlo.
+  senza cercarlo. Il catalogo tiene anche il contenuto della scatola (nome
+  e quantità di ogni componente, es. "carte" ×40): si scrive a mano, oppure
+  — se il gioco ha un manuale indicizzato e un provider AI configurato —
+  si propone leggendola dalla sezione del manuale che elenca i componenti,
+  restando comunque una proposta da confermare e salvare, mai un salvataggio
+  automatico.
   Ogni gioco ha anche un numero di **posti prenotabili per copia**: `1`
   per un gioco da tavolo normale, dove chi prenota si prende la copia e
   si porta i suoi; più di 1 per un tavolo aperto — una partita a D&D, un
@@ -52,13 +57,19 @@ esterno obbligatorio.
   banco prestiti (raggiungibile dalla scheda evento) chi ritira ogni
   copia e chi la restituisce, con l'orario preso automaticamente e delle
   note libere; la lista delle copie disponibili mostra solo le scatole
-  che non sono fuori in quel momento. Una copia restituita può tornare
-  in prestito subito dopo, e il registro tiene traccia di ogni passaggio
-  della serata. Abbassare il numero di copie di un gioco può far sparire
-  i prestiti registrati sulla copia tolta: l'app cerca di eliminare per
-  prima una copia senza storico, ma se tutte quelle libere ne hanno uno
-  procede comunque, perché l'unica alternativa sarebbe cancellare
-  l'intero evento.
+  che non sono fuori in quel momento. Se il gioco ha un contenuto della
+  scatola registrato, la restituzione mostra la lista da spuntare voce
+  per voce: una casella per "tutto tornato", un numero per segnalare
+  quanto manca, e una voce lasciata così com'è resta "non verificata" —
+  un terzo stato distinto, non un tornato per default. Niente blocca la
+  riconsegna: si registra solo cosa non è tornato, una restituzione
+  completa non lascia traccia nel registro. Una copia restituita può
+  tornare in prestito subito dopo, e il registro tiene traccia di ogni
+  passaggio della serata. Abbassare il numero di copie di un gioco può
+  far sparire i prestiti registrati sulla copia tolta: l'app cerca di
+  eliminare per prima una copia senza storico, ma se tutte quelle libere
+  ne hanno uno procede comunque, perché l'unica alternativa sarebbe
+  cancellare l'intero evento.
 - **Giochi senza prenotazione**: un gioco può stare in un evento senza
   essere prenotabile — un riempitivo sempre disponibile al tavolo, tipo
   Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio
