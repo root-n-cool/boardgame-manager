@@ -69,7 +69,13 @@ esterno obbligatorio.
   far sparire i prestiti registrati sulla copia tolta: l'app cerca di
   eliminare per prima una copia senza storico, ma se tutte quelle libere
   ne hanno uno procede comunque, perché l'unica alternativa sarebbe
-  cancellare l'intero evento.
+  cancellare l'intero evento. Un gioco la cui riconsegna ha segnalato
+  pezzi davvero mancanti (non semplicemente non verificati) resta
+  marcato "Incompleto" nel catalogo e al banco prestiti finché un admin
+  non lo chiude dalla scheda del gioco; una nuova riconsegna carente lo
+  riapre da sola. La scheda del gioco ha anche il registro completo dei
+  suoi prestiti, di ogni serata, con le riconsegne incomplete evidenziate
+  e il dettaglio di cosa mancava.
 - **Giochi senza prenotazione**: un gioco può stare in un evento senza
   essere prenotabile — un riempitivo sempre disponibile al tavolo, tipo
   Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio
