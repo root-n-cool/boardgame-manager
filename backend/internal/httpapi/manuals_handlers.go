@@ -404,7 +404,14 @@ func (s *Server) buildPDFChunks(ctx context.Context, raw []byte) ([]detailedChun
 // scarto sul contenuto, vedi maxContentDeviationRatio in ai/segment.go):
 // per questo la pagina di un chunk si ritrova con un'ancora (vedi
 // pageStartsInSegmented), non con un offset già noto.
+//
+// Prima di unire, le pagine passano per reflowPages: una pagina estratta
+// da un PDF impaginato è una riga sola, e su una riga sola il modello
+// scrive il titolo in testa al testo invece che su una riga propria — cosa
+// che fa rifiutare al controllo di fedeltà una lettura corretta (vedi il
+// commento su ReflowSentences per il guasto per esteso).
 func (s *Server) pdfTextChunks(ctx context.Context, pages []manuals.Page) ([]detailedChunk, error) {
+	pages = reflowPages(pages)
 	joined, _ := concatTextsTracked(pageTexts(pages))
 	segmented, err := s.segmenter(ctx).Segment(ctx, joined)
 	if err != nil {
@@ -593,6 +600,26 @@ func pageTexts(pages []manuals.Page) []string {
 	out := make([]string, len(pages))
 	for i, p := range pages {
 		out[i] = p.Text
+	}
+	return out
+}
+
+// reflowPages manda a capo per frase il testo di ogni pagina (vedi
+// manuals.ReflowSentences), restituendo pagine nuove e lasciando intatte
+// quelle ricevute.
+//
+// Il punto delicato non è il reflow in sé, è DOVE si applica: il testo
+// riformattato deve diventare l'unica versione che il resto del percorso
+// vede. pageStartsInSegmented ritrova l'inizio di ogni pagina cercando
+// dentro il segmentato un'ancora presa dal testo della pagina: se si
+// spezzasse solo il testo mandato al modello, l'ancora verrebbe da un
+// testo che nel segmentato non esiste più — e ogni pagina dopo la prima
+// finirebbe attribuita a quella precedente. Reflow una volta sola, qui a
+// monte, e testo inviato e ancore restano la stessa cosa.
+func reflowPages(pages []manuals.Page) []manuals.Page {
+	out := make([]manuals.Page, len(pages))
+	for i, p := range pages {
+		out[i] = manuals.Page{Number: p.Number, Text: manuals.ReflowSentences(p.Text)}
 	}
 	return out
 }

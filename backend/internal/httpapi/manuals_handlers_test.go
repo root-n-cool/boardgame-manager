@@ -1530,3 +1530,46 @@ func testPNGBytes(t *testing.T, w, h int) []byte {
 	}
 	return buf.Bytes()
 }
+
+// TestIndexMedia_TextLayerPDFReachesTheModelOneSentencePerLine è la
+// correzione del guasto visto in produzione sul manuale di Ticket to Ride:
+// ExtractText restituisce una pagina impaginata come UNA SOLA RIGA (lì
+// 8.666 caratteri), il modello ci mette il titolo in testa a quella riga
+// invece che su una riga propria, e il controllo di fedeltà di ai.Segment
+// — che per confrontare il contenuto scarta l'intera riga di titolo —
+// conta come "titolo" il testo di mezza pagina e rifiuta una lettura
+// perfettamente fedele ("La lettura di questo file non è affidabile").
+//
+// Il testo va quindi al modello già spezzato per frase (ReflowSentences):
+// quel che al più si perde è una frase, non una pagina.
+func TestIndexMedia_TextLayerPDFReachesTheModelOneSentencePerLine(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	seg := &fakeSegmenter{}
+	server.Segmenter = seg
+
+	page1 := "Mettete la mappa al centro del tavolo. Ogni giocatore prende 45 vagoni colorati. Siete pronti a iniziare."
+	page2 := "Il gioco termina quando un giocatore resta con due vagoni. Poi si contano i punti."
+	raw := newTwoPageTextPDF(page1, page2)
+	assertHasRealTextLayer(t, raw)
+
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID, mediaID := seedGameWithFile(t, server, raw, "manuale.pdf", "")
+
+	if rec := postIndex(cookie, router, gameID, mediaID); rec.Code != http.StatusOK {
+		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+	if seg.calls != 1 {
+		t.Fatalf("Segment doveva essere chiamato una volta, chiamato %d", seg.calls)
+	}
+	for _, joined := range []string{"tavolo. Ogni", "colorati. Siete", "vagoni. Poi"} {
+		if strings.Contains(seg.lastIn, joined) {
+			t.Fatalf("il testo mandato al modello ha ancora due frasi sulla stessa riga (%q): %q", joined, seg.lastIn)
+		}
+	}
+	for _, broken := range []string{"tavolo.\nOgni", "colorati.\nSiete", "vagoni.\nPoi"} {
+		if !strings.Contains(seg.lastIn, broken) {
+			t.Fatalf("il testo mandato al modello non è spezzato dopo la fine di frase (%q): %q", broken, seg.lastIn)
+		}
+	}
+}
