@@ -1214,15 +1214,20 @@ button.back-link:active {
   margin: 0 0 1.75rem;
 }
 
+/* Inchiostro e non colore d'allarme: `--danger` sul suo stesso fondo sta a
+   4.48:1, sotto la soglia AA per un testo di questa misura. L'allarme lo
+   danno già il fondo, il bordo e le parole. */
 .missing-notice-head {
   margin: 0 0 0.3rem;
   font-weight: 600;
-  color: var(--danger);
+  color: var(--ink);
 }
 
+/* In `Body` e non nel mono dei dati: "carte 35 di 40 — dal 7 settembre" è
+   una frase con dentro dei numeri, non un codice da ricopiare. Stessa
+   scelta già fatta per `.material-issues` nel registro del banco. */
 .missing-notice-list {
   margin: 0 0 0.9rem;
-  font-family: 'Data', monospace;
   font-size: 0.88rem;
   color: var(--ink);
 }
@@ -1785,8 +1790,12 @@ form.panel-form > .form-actions {
   letter-spacing: 0.02em;
 }
 
+/* Fondo cartoncino e non `--danger-bg`: il rosso su quel fondo sta a 4.48:1,
+   sotto AA per un testo da 0.72rem, e una pastiglia che sta sopra una
+   copertina qualsiasi ha comunque bisogno di un fondo pieno. Così il testo
+   sta a 5.15:1 in tutte e due le collocazioni. */
 .state-chip.is-danger {
-  background: var(--danger-bg);
+  background: var(--card);
   color: var(--danger);
   border: 1px solid var(--danger);
 }
