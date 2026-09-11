@@ -67,14 +67,20 @@ const missingLabel = computed(() => {
   const parts = pieces.map((p) => `${p.name} ${p.returned} di ${p.expected}`)
   // Il server raggruppa per nome e ordina alfabeticamente, non per data:
   // pieces[0] è solo la prima voce in ordine alfabetico, non la più
-  // vecchia. La data che la segnalazione mostra è quando si è aperta —
-  // cioè la più vecchia fra tutte le voci — non quella di una voce a caso.
+  // vecchia. Ogni `since` è l'ULTIMA volta che quella voce è risultata
+  // corta, quindi il minimo qui sotto è la voce rilevata meno di recente
+  // — "da almeno quando", non la data in cui la segnalazione si è aperta,
+  // che il server non calcola.
   // Confronto su Date, non sulla stringa RFC3339: l'offset di fuso può
   // variare da una voce all'altra e renderebbe l'ordine testuale sbagliato.
   const oldest = new Date(Math.min(...pieces.map((p) => new Date(p.since).getTime())))
+  // Con l'anno: il marchio resta finché un admin non lo chiude, e una
+  // mancanza di due anni fa non deve leggersi come quella di settimana
+  // scorsa.
   const since = oldest.toLocaleDateString('it-IT', {
     day: 'numeric',
     month: 'long',
+    year: 'numeric',
   })
   // "dal 11 settembre" non è italiano: undici e otto cominciano per vocale e
   // vogliono l'elisione. Sono gli unici due giorni del mese a volerla, quindi
@@ -84,6 +90,9 @@ const missingLabel = computed(() => {
 })
 
 async function resolveMaterials() {
+  // Come ogni altra azione della pagina: un errore rimasto da un'azione
+  // precedente non deve restare a schermo accanto a un esito riuscito.
+  error.value = ''
   resolving.value = true
   try {
     game.value = await api.post<GameDetail>(`/games/${gameId}/materials/resolve`)
@@ -457,7 +466,7 @@ onMounted(async () => {
             Vedi i prestiti
           </router-link>
           <button type="button" class="btn-secondary" :disabled="resolving" @click="resolveMaterials">
-            {{ resolving ? 'Registrazione…' : 'Segna come completo' }}
+            {{ resolving ? 'Salvataggio…' : 'Segna come completo' }}
           </button>
         </div>
       </div>
