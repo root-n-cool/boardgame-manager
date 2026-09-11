@@ -26,3 +26,11 @@ export function formatEventDateTime(eventDate: string, startTime: string): strin
   }
   return `${dateFormatter.format(parsed)} · ${startTime}`
 }
+
+/** "2026-10-01" → "gio 1 ott 2026", senza orario: il registro dei prestiti
+ *  di un gioco elenca serate diverse e non ha un orario per riga, solo la
+ *  data di ciascuna. */
+export function formatEventDate(eventDate: string): string {
+  const parsed = parseEventDate(eventDate, '00:00')
+  return parsed ? dateFormatter.format(parsed) : eventDate
+}

@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
+import { issuesLabel, type MaterialIssue } from '../utils/loans'
 
 /** Una prenotazione attiva su una copia, come la manda il banco. */
 interface CopyBooking {
@@ -24,13 +25,6 @@ interface Material {
   id: number
   name: string
   quantity: number
-}
-
-interface MaterialIssue {
-  name: string
-  expected: number
-  /** null = voce non verificata al momento della riconsegna. */
-  returned: number | null
 }
 
 interface DeskCopy {
@@ -173,26 +167,6 @@ function returnedLabel(row: ReturnedLoan) {
   const copy = desk.value.copies.find((c) => c.eventGameId === row.eventGameId)
   const copies = copy?.copies ?? 2
   return copies > 1 ? `${row.gameName} #${row.copyIndex}` : row.gameName
-}
-
-/**
- * "mancano: carte 35/40 · non verificate: dadi" — il problema si legge dalla
- * lista, senza aprire niente. Un prestito pulito non ha esiti e non stampa
- * nessuna riga.
- */
-function issuesLabel(issues: MaterialIssue[]) {
-  const missing = issues
-    .filter((i) => i.returned !== null)
-    .map((i) => `${i.name} ${i.returned}/${i.expected}`)
-  const unchecked = issues.filter((i) => i.returned === null).map((i) => i.name)
-  const parts: string[] = []
-  if (missing.length) {
-    parts.push(`mancano: ${missing.join(', ')}`)
-  }
-  if (unchecked.length) {
-    parts.push(`non verificate: ${unchecked.join(', ')}`)
-  }
-  return parts.join(' · ')
 }
 
 /** "da 25 minuti", che al tavolo è più utile di un orario. */

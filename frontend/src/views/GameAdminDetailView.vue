@@ -357,6 +357,10 @@ onMounted(async () => {
           <p class="page-meta">
             <template v-if="game.owner">Proprietario: {{ game.owner }} · </template>
             <router-link :to="`/games/${game.id}/leaderboard`">Classifica</router-link>
+            ·
+            <router-link :to="{ name: 'admin-game-loans', params: { id: game.id } }">
+              Prestiti
+            </router-link>
           </p>
         </div>
         <div class="page-head-actions">

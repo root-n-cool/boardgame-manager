@@ -4033,6 +4033,51 @@ tbody tr:nth-child(3) .rank-medal {
   letter-spacing: 0.02em;
 }
 
+/* Registro prestiti di un gioco (GameLoansView): una riga per prestito, dal
+   più recente, ognuna già una card — niente `.panel-card` a contenerle,
+   quindi si spoglia come `.loan-list` e non come `.admin-list`/
+   `.game-materials-list`, che invece delegano il fondo al pannello. Il
+   bordo c'è sempre, `--card-line` a riposo: la riga con mancanze lo tinge
+   insieme al fondo (`--danger-bg`/`--danger`) invece di aggiungerne uno
+   solo suo, così tutte le righe restano alla stessa altezza. */
+.game-loans-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  background: none;
+  border: none;
+  border-radius: 0;
+  overflow: visible;
+  box-shadow: none;
+}
+
+.game-loans-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  background: var(--card);
+  /* Nome di chi ha preso e titolo evento sono testo libero: a 390px, senza
+     questo, una parola lunga (o un nome incollato senza spazi) spinge la
+     riga fuori dal foglio invece di andare a capo — stessa difesa di
+     `.loan-row-text`. */
+  overflow-wrap: anywhere;
+}
+
+.game-loans-list li.has-issues {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+.game-loans-title {
+  font-weight: 600;
+}
+
 /* Stessa spoliazione di `.loan-list`: la lista è una pila di bottoni dentro
    la modale, non una card, e la cornice della regola globale `ul` la
    incastonava dentro una seconda scatola. */
