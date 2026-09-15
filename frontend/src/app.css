@@ -2411,13 +2411,15 @@ ul.game-grid {
 
 .booking-consent {
   display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
   align-items: flex-start;
-  gap: 0.5em;
+  gap: 0.3rem 0.35rem;
   font-weight: 400;
 }
 
 .booking-consent input[type='checkbox'] {
-  margin-top: 0.2em;
+  margin-top: 0.15rem;
 }
 
 /* Quattro scatole per riga su desktop, due sul telefono: le colonne sono
