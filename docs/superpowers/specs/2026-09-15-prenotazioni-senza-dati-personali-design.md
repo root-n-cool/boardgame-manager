@@ -46,6 +46,13 @@ per loro non è mai stato chiesto), ma non c'è modo di ricostruirla, e
 non è un dato che serve a fini di query o retention — conta solo la
 presenza del campo per le prenotazioni create da qui in avanti.
 
+Il default della colonna (`datetime('now')`) basta anche per le nuove
+prenotazioni: nessun codice Go legge mai `terms_accepted_at` indietro
+(non è esposto da nessuna risposta API), quindi non serve passarlo
+esplicitamente né aggiungerlo alla struct `Booking` — la colonna resta
+solo prova di consenso ispezionabile a mano nel DB, popolata dalla
+colonna stessa esattamente come `created_at` già fa.
+
 ## Backend
 
 ### `events.Store.CreateBooking`
@@ -56,23 +63,23 @@ Firma senza `phone`:
 func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, name string, now time.Time) (Booking, error)
 ```
 
-L'INSERT scrive solo `participant_name`, `booking_code`, `status`,
-`terms_accepted_at` (= `now`). Il ramo che mappava una violazione
-UNIQUE su `ErrDuplicatePhoneBooking` sparisce insieme all'errore
-stesso: l'unico UNIQUE rimasto è `booking_code`, la cui collisione
-(spazio 33^8) resta un errore generico non gestito diversamente da
-oggi. `isUniqueConstraintErr` in `events/store.go` resta: la usa
-anche `events/loans.go`, non è specifica di questo vincolo — si
-rimuove solo la chiamata dentro `CreateBooking`.
+L'INSERT scrive solo `participant_name`, `booking_code`, `status`;
+`terms_accepted_at` prende il default della colonna. Il ramo che
+mappava una violazione UNIQUE su `ErrDuplicatePhoneBooking` sparisce
+insieme all'errore stesso: l'unico UNIQUE rimasto è `booking_code`, la
+cui collisione (spazio 33^8) resta un errore generico non gestito
+diversamente da oggi. `isUniqueConstraintErr` in `events/store.go`
+resta: la usa anche `events/loans.go`, non è specifica di questo
+vincolo — si rimuove solo la chiamata dentro `CreateBooking`.
 
-`Booking` perde i campi `ParticipantEmail`/`ParticipantPhone` e
-guadagna `TermsAcceptedAt time.Time`. Stesso taglio in
-`BookingWithGame`, `getBookingByID`, `LookupBooking`,
-`ListBookingsForEvent`.
+`Booking` perde i campi `ParticipantEmail`/`ParticipantPhone` (nessun
+nuovo campo Go: `terms_accepted_at` non è letto da nessun codice
+Go). Stesso taglio in `BookingWithGame`, `getBookingByID`,
+`LookupBooking`, `ListBookingsForEvent`.
 
-`TestInsertBooking` (store.go) smette di generare/inserire `phone` e
-aggiunge `terms_accepted_at` all'INSERT (può usare `now()` diretto,
-non serve più generarlo distinto per evitare collisioni).
+`TestInsertBooking` (store.go) smette di generare/inserire `phone`;
+`terms_accepted_at` prende anche qui il default della colonna, senza
+bisogno di comparire nell'INSERT.
 
 ### Email: solo effimera
 
