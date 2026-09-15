@@ -37,8 +37,6 @@ interface BookingAdminInfo {
   copyIndex: number
   seats: number
   participantName: string
-  participantEmail: string
-  participantPhone: string
   createdAt: string
 }
 
@@ -394,10 +392,7 @@ onMounted(async () => {
             <li v-for="b in group.rows" :key="b.id">
               <div class="admin-row">
                 <span class="admin-pawn" aria-hidden="true">{{ initial(b.participantName) }}</span>
-                <span class="admin-email booking-who">
-                  {{ b.participantName }}
-                  <span class="row-meta">{{ b.participantEmail }} · {{ b.participantPhone }}</span>
-                </span>
+                <span class="admin-email booking-who">{{ b.participantName }}</span>
                 <div class="admin-row-actions">
                   <button type="button" @click="cancelBooking(b)">Annulla</button>
                 </div>

@@ -10,7 +10,6 @@ import { clockTime, issuesLabel, type MaterialIssue } from '../utils/loans'
 interface CopyBooking {
   id: number
   name: string
-  phone: string
 }
 
 interface OpenLoan {
@@ -223,19 +222,20 @@ function startLending(copy: DeskCopy) {
   lending.value = copy
   lendError.value = ''
   lendNotes.value = ''
-  // Con una prenotazione sola non c'è niente da scegliere: si precompila.
+  // Con una prenotazione sola non c'è niente da scegliere: si precompila il
+  // nome. Il telefono non viene più dalla prenotazione (non lo raccoglie
+  // più): va sempre digitato a mano, qui come quando ci sono più
+  // prenotazioni tra cui scegliere.
   if (copy.activeBookings.length === 1) {
     borrowerName.value = copy.activeBookings[0].name
-    borrowerPhone.value = copy.activeBookings[0].phone
   } else {
     borrowerName.value = ''
-    borrowerPhone.value = ''
   }
+  borrowerPhone.value = ''
 }
 
 function pickBooking(booking: CopyBooking) {
   borrowerName.value = booking.name
-  borrowerPhone.value = booking.phone
 }
 
 /** La prenotazione da agganciare al prestito: quella col nome scelto. */
@@ -466,7 +466,6 @@ onMounted(async () => {
             <li v-for="b in lending.activeBookings" :key="b.id">
               <button type="button" @click="pickBooking(b)">
                 {{ b.name }}
-                <span class="row-meta">{{ b.phone }}</span>
               </button>
             </li>
           </ul>
