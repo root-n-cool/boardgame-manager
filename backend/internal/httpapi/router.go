@@ -101,6 +101,7 @@ func NewRouter(s *Server) http.Handler {
 	askLimiter := newRateLimiter(20, time.Minute)
 
 	r.Get("/api/health", healthHandler)
+	r.Get("/api/site", s.getSiteHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
 	r.Post("/api/bootstrap", s.bootstrapHandler)
 	r.Post("/api/login", s.loginHandler)
