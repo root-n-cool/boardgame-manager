@@ -46,6 +46,15 @@ type settingsResponse struct {
 	SMTPPasswordSet    bool   `json:"smtpPasswordSet"`
 	SMTPPasswordMasked string `json:"smtpPasswordMasked,omitempty"`
 	SMTPConfigured     bool   `json:"smtpConfigured"`
+	// SiteTitle esce grezzo (vuoto se non impostato): è il campo che
+	// l'admin edita, e mostrargli già "BoardGames Manager" lo farebbe
+	// sembrare un valore salvato quando non lo è. Il fallback si applica
+	// solo in GET /api/site, nel webui e nelle email.
+	SiteTitle       string `json:"siteTitle"`
+	LogoFilename    string `json:"logoFilename"`
+	FaviconFilename string `json:"faviconFilename"`
+	TermsMarkdown   string `json:"termsMarkdown"`
+	PrivacyMarkdown string `json:"privacyMarkdown"`
 }
 
 func maskKey(key string) string {
@@ -89,6 +98,11 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		resp.SMTPPasswordMasked = maskKey(cfg.SMTPPassword)
 	}
 	resp.SMTPConfigured = smtpConfigFrom(cfg).Configured()
+	resp.SiteTitle = cfg.SiteTitle
+	resp.LogoFilename = cfg.LogoFilename
+	resp.FaviconFilename = cfg.FaviconFilename
+	resp.TermsMarkdown = cfg.TermsMarkdown
+	resp.PrivacyMarkdown = cfg.PrivacyMarkdown
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -107,6 +121,9 @@ type updateSettingsRequest struct {
 	SMTPFromAddress string        `json:"smtpFromAddress"`
 	SMTPFromName    string        `json:"smtpFromName"`
 	SMTPTLSMode     string        `json:"smtpTlsMode"`
+	SiteTitle       string        `json:"siteTitle"`
+	TermsMarkdown   string        `json:"termsMarkdown"`
+	PrivacyMarkdown string        `json:"privacyMarkdown"`
 }
 
 // smtpPortValue decodes SMTPPort tolerantly. No SMTP field is required, so a
@@ -215,6 +232,11 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		SMTPFromAddress: strings.TrimSpace(req.SMTPFromAddress),
 		SMTPFromName:    strings.TrimSpace(req.SMTPFromName),
 		SMTPTLSMode:     tlsMode,
+		SiteTitle:       strings.TrimSpace(req.SiteTitle),
+		LogoFilename:    current.LogoFilename,
+		FaviconFilename: current.FaviconFilename,
+		TermsMarkdown:   req.TermsMarkdown,
+		PrivacyMarkdown: req.PrivacyMarkdown,
 	}
 	if req.BGGAPIToken != "" {
 		next.BGGAPIToken = req.BGGAPIToken

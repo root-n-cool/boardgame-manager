@@ -645,3 +645,50 @@ func TestSMTPTest_FailureReturns502WithTheRealError(t *testing.T) {
 		t.Errorf("expected the real SMTP error in the response, got: %s", rec.Body.String())
 	}
 }
+
+func TestPutSettings_SavesSiteTitleRawWithoutTheFallback(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	// Il fallback "BoardGames Manager" non è ancora impostato: la lettura
+	// grezza deve tornare la stringa vuota, non il fallback che GET
+	// /api/site userebbe.
+	if got := getSettings(t, router, cookie)["siteTitle"]; got != "" {
+		t.Fatalf("expected an empty siteTitle before it is set, got %v", got)
+	}
+
+	rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"siteTitle":       "Ludoteca Vicolo Corto",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := getSettings(t, router, cookie)["siteTitle"]; got != "Ludoteca Vicolo Corto" {
+		t.Fatalf("expected the saved site title, got %v", got)
+	}
+}
+
+func TestPutSettings_SavesTermsAndPrivacyMarkdown(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"termsMarkdown":   "# Termini\n\nTesto di prova.",
+		"privacyMarkdown": "# Privacy\n\nTesto di prova.",
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	got := getSettings(t, router, cookie)
+	if got["termsMarkdown"] != "# Termini\n\nTesto di prova." {
+		t.Errorf("termsMarkdown = %v", got["termsMarkdown"])
+	}
+	if got["privacyMarkdown"] != "# Privacy\n\nTesto di prova." {
+		t.Errorf("privacyMarkdown = %v", got["privacyMarkdown"])
+	}
+}
