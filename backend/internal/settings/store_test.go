@@ -180,3 +180,44 @@ func TestUpdate_RoundTripsTheVisionModel(t *testing.T) {
 		t.Fatalf("expected an empty vision model, got %q", cleared.AIVisionModel)
 	}
 }
+
+func TestUpdateAndGet_RoundTripsSiteBranding(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	in := settings.Settings{
+		DefaultLanguage:  "it",
+		SiteTitle:        "Ludoteca Vicolo Corto",
+		LogoFilename:     "abc123.png",
+		FaviconFilename:  "def456.png",
+		TermsMarkdown:    "# Termini\n\nTesto.",
+		PrivacyMarkdown:  "# Privacy\n\nTesto.",
+	}
+	if err := store.Update(ctx, in); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+
+	out, err := store.Get(ctx)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if out.SiteTitle != in.SiteTitle || out.LogoFilename != in.LogoFilename ||
+		out.FaviconFilename != in.FaviconFilename || out.TermsMarkdown != in.TermsMarkdown ||
+		out.PrivacyMarkdown != in.PrivacyMarkdown {
+		t.Fatalf("unexpected branding settings after update: %+v", out)
+	}
+}
+
+// Un'installazione appena migrata deve leggere questi campi come stringa
+// vuota, non come errore: sono tutti opzionali, come public_base_url.
+func TestGet_SiteBrandingEmptyAfterMigration(t *testing.T) {
+	store := newTestStore(t)
+	out, err := store.Get(context.Background())
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if out.SiteTitle != "" || out.LogoFilename != "" || out.FaviconFilename != "" ||
+		out.TermsMarkdown != "" || out.PrivacyMarkdown != "" {
+		t.Fatalf("expected empty site branding on a fresh instance, got %+v", out)
+	}
+}
