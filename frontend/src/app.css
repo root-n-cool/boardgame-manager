@@ -2409,6 +2409,17 @@ ul.game-grid {
   box-shadow: none;
 }
 
+.booking-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5em;
+  font-weight: 400;
+}
+
+.booking-consent input[type='checkbox'] {
+  margin-top: 0.2em;
+}
+
 /* Quattro scatole per riga su desktop, due sul telefono: le colonne sono
    elastiche (`1fr`) e il minimo basso, così il tavolo si riempie sempre
    invece di lasciare una fascia di feltro vuota a destra. */

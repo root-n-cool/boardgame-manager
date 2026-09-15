@@ -7,6 +7,7 @@ import GameDifficulty from '../components/GameDifficulty.vue'
 import MarkdownText from '../components/MarkdownText.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
+import { listMyBookings, removeMyBooking, saveMyBooking, type MyBooking } from '../utils/myBookings'
 
 interface EventGameInfo {
   eventGameId: number
@@ -74,9 +75,10 @@ const selectedEventGameId = ref<number | null>(null)
 const bookingOpen = ref(false)
 const participantName = ref('')
 const participantEmail = ref('')
-const participantPhone = ref('')
+const termsAccepted = ref(false)
 const bookingError = ref('')
 const bookingResult = ref<BookingResult | null>(null)
+const chipActionError = ref('')
 
 /**
  * I codici già confermati restano qui, e nessuno li cancella: al tavolo un
@@ -85,6 +87,24 @@ const bookingResult = ref<BookingResult | null>(null)
  * sparire quello di prima.
  */
 const confirmed = ref<ConfirmedBooking[]>([])
+
+/**
+ * Le prenotazioni di questo evento che il browser ricorda di aver già
+ * fatto: sostituiscono, lato client, il vecchio vincolo server "un
+ * booking attivo per telefono" — qui non è un'enforcement, solo un
+ * promemoria per non riprenotare lo stesso tavolo per errore.
+ */
+const myBookingsForEvent = ref<MyBooking[]>(
+  listMyBookings().filter((b) => b.eventId === Number(eventId)),
+)
+
+function refreshMyBookings() {
+  myBookingsForEvent.value = listMyBookings().filter((b) => b.eventId === Number(eventId))
+}
+
+function myBookingFor(g: EventGameInfo): MyBooking | null {
+  return myBookingsForEvent.value.find((b) => b.eventGameId === g.eventGameId) ?? null
+}
 
 async function load() {
   event.value = await api.get<EventDetail>(`/events/${eventId}`)
@@ -113,14 +133,14 @@ const hasStarted = computed(() => {
 
 /**
  * Il form riparte vuoto a ogni tavolo: chi prenota una seconda copia è
- * un'altra persona — un solo booking attivo per telefono — e ritrovare i
- * dati del compagno precompilati porta solo a prenotare a nome suo.
+ * un'altra persona, e ritrovare i dati del compagno precompilati (nome,
+ * email, consenso già spuntato) porta solo a prenotare a nome suo.
  */
 function startBooking(eventGameId: number) {
   selectedEventGameId.value = eventGameId
   participantName.value = ''
   participantEmail.value = ''
-  participantPhone.value = ''
+  termsAccepted.value = false
   bookingError.value = ''
   bookingResult.value = null
   bookingOpen.value = true
@@ -181,26 +201,53 @@ function tableOnly(g: EventGameInfo) {
 
 async function submitBooking() {
   bookingError.value = ''
-  if (selectedEventGameId.value === null) {
+  const eventGameId = selectedEventGameId.value
+  if (eventGameId === null) {
     return
   }
   try {
     const result = await api.post<BookingResult>(`/events/${eventId}/bookings`, {
-      eventGameId: selectedEventGameId.value,
+      eventGameId,
       participantName: participantName.value,
       participantEmail: participantEmail.value,
-      participantPhone: participantPhone.value,
+      termsAccepted: termsAccepted.value,
     })
     bookingResult.value = result
+    const multiSeat = !!selectedGame.value && selectedGame.value.seats > 1
     confirmed.value.push({
       code: result.bookingCode,
       label: selectedLabel.value,
-      multiSeat: !!selectedGame.value && selectedGame.value.seats > 1,
+      multiSeat,
       mailed: result.mailQueued,
     })
+    saveMyBooking({
+      id: result.id,
+      bookingCode: result.bookingCode,
+      eventId: Number(eventId),
+      eventGameId,
+      gameLabel: selectedLabel.value,
+      multiSeat,
+    })
+    refreshMyBookings()
     await load()
   } catch (e) {
     bookingError.value = (e as Error).message
+  }
+}
+
+/** Annulla dalla pastiglia "Prenotato" sulla scheda evento, non dalla modale. */
+async function cancelMyBooking(entry: MyBooking) {
+  if (!window.confirm(`Annullare la prenotazione per ${entry.gameLabel}?`)) {
+    return
+  }
+  chipActionError.value = ''
+  try {
+    await api.post(`/bookings/${entry.id}/cancel`, { bookingCode: entry.bookingCode })
+    removeMyBooking(entry.id)
+    refreshMyBookings()
+    await load()
+  } catch (e) {
+    chipActionError.value = (e as Error).message
   }
 }
 
@@ -283,6 +330,7 @@ onMounted(async () => {
     <p v-if="hasStarted" class="table-note">
       Questo evento è già iniziato: non è più possibile prenotare.
     </p>
+    <p v-if="chipActionError" class="error">{{ chipActionError }}</p>
 
     <ul class="event-games">
       <li v-for="g in event.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
@@ -326,8 +374,20 @@ onMounted(async () => {
           </p>
         </div>
         <div class="event-game-actions">
+          <template v-if="myBookingFor(g)">
+            <span class="status-badge status-active">Prenotato</span>
+            <button type="button" class="btn-danger" @click="cancelMyBooking(myBookingFor(g)!)">
+              Annulla prenotazione
+            </button>
+            <router-link
+              class="detail-link"
+              :to="{ name: 'booking-score', params: { code: myBookingFor(g)!.bookingCode } }"
+            >
+              Aggiungi risultato
+            </router-link>
+          </template>
           <button
-            v-if="!hasStarted && !isFull(g) && !tableOnly(g)"
+            v-else-if="!hasStarted && !isFull(g) && !tableOnly(g)"
             type="button"
             @click="startBooking(g.eventGameId)"
           >
@@ -380,11 +440,16 @@ onMounted(async () => {
       </label>
       <label>
         Email
-        <input v-model="participantEmail" type="email" required />
+        <input v-model="participantEmail" type="email" />
       </label>
-      <label>
-        Telefono
-        <input v-model="participantPhone" required />
+      <p class="field-hint">
+        Facoltativa: verrà usata solo per inviarti la conferma della prenotazione.
+      </p>
+      <label class="booking-consent">
+        <input v-model="termsAccepted" type="checkbox" required />
+        Accetto i
+        <router-link :to="{ name: 'terms' }" target="_blank">termini e condizioni</router-link>
+        e ho letto l'<router-link :to="{ name: 'privacy' }" target="_blank">informativa privacy</router-link>
       </label>
       <p v-if="bookingError" class="error">{{ bookingError }}</p>
       <div class="form-actions">
