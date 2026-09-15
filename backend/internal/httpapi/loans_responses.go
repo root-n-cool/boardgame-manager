@@ -98,7 +98,7 @@ func (s *Server) toLoanDeskResponse(ctx context.Context, eventID int64) (map[str
 	bookingsByCopy := map[int64][]map[string]any{}
 	for _, b := range bookings {
 		bookingsByCopy[b.EventGameID] = append(bookingsByCopy[b.EventGameID], map[string]any{
-			"id": b.ID, "name": b.ParticipantName, "phone": b.ParticipantPhone,
+			"id": b.ID, "name": b.ParticipantName,
 		})
 	}
 

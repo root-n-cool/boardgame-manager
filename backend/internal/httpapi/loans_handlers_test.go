@@ -17,9 +17,8 @@ import (
 // Le tre forme di risposta del banco prestiti, come struct: un typo in un
 // nome di campo diventa un test rosso invece di un nil silenzioso.
 type deskBookingBody struct {
-	ID    int64  `json:"id"`
-	Name  string `json:"name"`
-	Phone string `json:"phone"`
+	ID   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 type openLoanBody struct {
@@ -322,10 +321,9 @@ func TestReturnLoan_UnknownIDIs404(t *testing.T) {
 
 func TestLoanDesk_ShowsActiveBookingsOfACopy(t *testing.T) {
 	router, cookie, eventID, eventGames := loanFixture(t, 1)
-	// La prenotazione entra dall'endpoint pubblico, così nome e telefono
-	// sono quelli veri.
+	// La prenotazione entra dall'endpoint pubblico, così il nome è quello vero.
 	booking := fmt.Sprintf(
-		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","participantPhone":"3331234567"}`,
+		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","termsAccepted":true}`,
 		eventGames[0].ID)
 	if rec := doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), nil, booking); rec.Code != http.StatusCreated {
 		t.Fatalf("booking: %d %s", rec.Code, rec.Body.String())
@@ -337,15 +335,15 @@ func TestLoanDesk_ShowsActiveBookingsOfACopy(t *testing.T) {
 		t.Fatalf("activeBookings = %d righe, want 1", len(desk.Copies[0].ActiveBookings))
 	}
 	row := desk.Copies[0].ActiveBookings[0]
-	if row.Name != "Anna" || row.Phone != "3331234567" {
-		t.Errorf("activeBookings[0] = %+v, want Anna / 3331234567", row)
+	if row.Name != "Anna" {
+		t.Errorf("activeBookings[0] = %+v, want Anna", row)
 	}
 }
 
 func TestCreateLoan_FromABookingLinksIt(t *testing.T) {
 	router, cookie, eventID, eventGames := loanFixture(t, 1)
 	booking := fmt.Sprintf(
-		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","participantPhone":"3331234567"}`,
+		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","termsAccepted":true}`,
 		eventGames[0].ID)
 	if rec := doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), nil, booking); rec.Code != http.StatusCreated {
 		t.Fatalf("booking: %d %s", rec.Code, rec.Body.String())

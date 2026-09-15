@@ -180,64 +180,17 @@ func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mail
 	}
 }
 
-func bookingCancelledMail(d bookingMailData, eventURL string, byAdmin bool) mailer.Message {
-	// Testo e HTML dicono la stessa frase: una variabile sola, così non
-	// possono divergere a una modifica futura.
-	opening := fmt.Sprintf("la tua prenotazione per %s è stata annullata, come hai chiesto.", d.GameLabel)
-	closing := "Se hai cambiato idea puoi prenotare di nuovo, se restano posti."
-	if byAdmin {
-		opening = fmt.Sprintf("la tua prenotazione per %s è stata annullata dall'organizzazione.", d.GameLabel)
-		closing = "Il posto è tornato libero: puoi prenotare un altro gioco della serata."
-	}
-
-	text := strings.Join([]string{
-		fmt.Sprintf("Ciao %s,", d.ParticipantName),
-		"",
-		opening,
-		"",
-		"Evento:   " + d.EventTitle,
-		"Data:     " + d.EventDate,
-		"Gioco:    " + d.GameLabel,
-		"",
-		closing,
-		eventURL,
-		"",
-		"Il codice " + d.BookingCode + " non è più valido.",
-	}, "\n")
-
-	facts := `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px;border-collapse:collapse;">` +
-		mailFactRow("Evento", d.EventTitle) +
-		mailFactRow("Data", d.EventDate) +
-		mailFactRow("Gioco", d.GameLabel) +
-		`</table>`
-
-	body := mailParagraph(fmt.Sprintf("Ciao %s,", d.ParticipantName)) +
-		mailParagraph(opening) +
-		facts +
-		mailParagraph(closing) +
-		mailButton("Vedi la serata", eventURL) +
-		mailNote("Il codice " + d.BookingCode + " non è più valido.")
-
-	return mailer.Message{
-		To:       d.ParticipantEmail,
-		ToName:   d.ParticipantName,
-		Subject:  fmt.Sprintf("Prenotazione annullata: %s — %s", d.GameLabel, d.EventDate),
-		TextBody: text,
-		HTMLBody: mailShell("Prenotazione annullata", body),
-	}
-}
-
 // smtpTestMail è la mail del bottone "Invia email di prova": deve
 // spiegarsi da sola a chi la trova in casella fra sei mesi.
 func smtpTestMail(siteName, to string) mailer.Message {
 	text := strings.Join([]string{
 		fmt.Sprintf("Se stai leggendo questa mail, la configurazione SMTP di %s funziona.", siteName),
 		"",
-		"Da qui in poi partiranno da sole: l'invito di un amministratore, la conferma di una prenotazione con il codice e i link, e l'avviso di annullamento.",
+		"Da qui in poi partiranno da sole: l'invito di un amministratore e la conferma di una prenotazione con il codice e i link.",
 	}, "\n")
 
 	body := mailParagraph(fmt.Sprintf("Se stai leggendo questa mail, la configurazione SMTP di %s funziona.", siteName)) +
-		mailParagraph("Da qui in poi partiranno da sole: l'invito di un amministratore, la conferma di una prenotazione con il codice e i link, e l'avviso di annullamento.")
+		mailParagraph("Da qui in poi partiranno da sole: l'invito di un amministratore e la conferma di una prenotazione con il codice e i link.")
 
 	return mailer.Message{
 		To:       to,

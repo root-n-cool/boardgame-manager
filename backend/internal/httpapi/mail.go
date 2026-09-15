@@ -165,21 +165,24 @@ func (s *Server) bookingMailDataFor(ctx context.Context, b events.Booking) (book
 	}
 
 	return bookingMailData{
-		ParticipantName:  b.ParticipantName,
-		ParticipantEmail: b.ParticipantEmail,
-		BookingCode:      b.BookingCode,
-		GameLabel:        label,
-		EventTitle:       event.Title,
-		EventDate:        event.EventDate,
-		StartTime:        event.StartTime,
-		EventID:          b.EventID,
-		SharedTable:      eventGame.Seats > 1,
+		ParticipantName: b.ParticipantName,
+		BookingCode:     b.BookingCode,
+		GameLabel:       label,
+		EventTitle:      event.Title,
+		EventDate:       event.EventDate,
+		StartTime:       event.StartTime,
+		EventID:         b.EventID,
+		SharedTable:     eventGame.Seats > 1,
 	}, nil
 }
 
 // sendBookingConfirmation manda la conferma, o non fa niente se non c'è
-// posta. Raccoglie i dati in modo sincrono — servono il context della
-// richiesta e il database — e spedisce in modo asincrono.
+// posta o non c'è un indirizzo a cui mandarla — l'email non si salva più sul
+// booking, quindi arriva qui come parametro esplicito, letto dalla richiesta
+// che ha appena creato la prenotazione.
+//
+// Raccoglie i dati in modo sincrono — servono il context della richiesta e
+// il database — e spedisce in modo asincrono.
 //
 // Un errore nel raccogliere i dati non risale: la prenotazione è già
 // fatta, e non mandare una mail è meglio che rispondere con un errore
@@ -194,9 +197,9 @@ func (s *Server) bookingMailDataFor(ctx context.Context, b events.Booking) (book
 // mailSender, publicBaseURL (via r) e bookingMailDataFor leggono tutte da
 // qui, così l'intera raccolta — non solo l'invio — sopravvive alla
 // disconnessione del client.
-func (s *Server) sendBookingConfirmation(r *http.Request, b events.Booking) {
+func (s *Server) sendBookingConfirmation(r *http.Request, b events.Booking, participantEmail string) {
 	r = r.WithContext(context.WithoutCancel(r.Context()))
-	if !s.mailEnabled(r.Context()) {
+	if !s.mailEnabled(r.Context()) || participantEmail == "" {
 		return
 	}
 	data, err := s.bookingMailDataFor(r.Context(), b)
@@ -204,35 +207,11 @@ func (s *Server) sendBookingConfirmation(r *http.Request, b events.Booking) {
 		log.Printf("mail: could not gather booking %d data: %v", b.ID, err)
 		return
 	}
+	data.ParticipantEmail = participantEmail
 	base := s.publicBaseURL(r)
 	s.sendMailAsync(s.mailSender(r.Context()), bookingConfirmationMail(
 		data,
 		bookingManageURL(base, b.BookingCode),
 		bookingScoreURL(base, b.BookingCode),
-	))
-}
-
-// sendBookingCancelled avvisa il partecipante. byAdmin cambia il testo,
-// non il destinatario: la mail va sempre a chi aveva prenotato, ed è
-// nel caso dell'admin che serve davvero — è l'unico modo in cui il
-// partecipante scopre di non avere più il posto.
-//
-// Come sendBookingConfirmation, raccoglie con un context senza
-// cancellazione: non è la richiesta che deve arrivare a chi disdice, è
-// la mail a chi aveva prenotato.
-func (s *Server) sendBookingCancelled(r *http.Request, b events.Booking, byAdmin bool) {
-	r = r.WithContext(context.WithoutCancel(r.Context()))
-	if !s.mailEnabled(r.Context()) {
-		return
-	}
-	data, err := s.bookingMailDataFor(r.Context(), b)
-	if err != nil {
-		log.Printf("mail: could not gather cancelled booking %d data: %v", b.ID, err)
-		return
-	}
-	s.sendMailAsync(s.mailSender(r.Context()), bookingCancelledMail(
-		data,
-		eventPublicURL(s.publicBaseURL(r), data.EventID),
-		byAdmin,
 	))
 }

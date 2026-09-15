@@ -10,10 +10,10 @@ import (
 )
 
 type createBookingRequest struct {
-	EventGameID int64  `json:"eventGameId"`
-	Name        string `json:"participantName"`
-	Email       string `json:"participantEmail"`
-	Phone       string `json:"participantPhone"`
+	EventGameID   int64  `json:"eventGameId"`
+	Name          string `json:"participantName"`
+	Email         string `json:"participantEmail"`
+	TermsAccepted bool   `json:"termsAccepted"`
 }
 
 func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -23,12 +23,12 @@ func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req createBookingRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || req.Email == "" || req.Phone == "" {
-		writeError(w, http.StatusBadRequest, "participantName, participantEmail and participantPhone are required")
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Name == "" || !req.TermsAccepted {
+		writeError(w, http.StatusBadRequest, "participantName is required and termsAccepted must be true")
 		return
 	}
 
-	booking, err := s.Events.CreateBooking(r.Context(), eventID, req.EventGameID, req.Name, req.Email, req.Phone, time.Now())
+	booking, err := s.Events.CreateBooking(r.Context(), eventID, req.EventGameID, req.Name, time.Now())
 	switch {
 	case errors.Is(err, events.ErrNotFound):
 		writeError(w, http.StatusNotFound, "event or game not found")
@@ -36,19 +36,17 @@ func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "l'evento è già iniziato")
 	case errors.Is(err, events.ErrGameSoldOut):
 		writeError(w, http.StatusConflict, "non ci sono più posti prenotabili su questa copia")
-	case errors.Is(err, events.ErrDuplicatePhoneBooking):
-		writeError(w, http.StatusConflict, "hai già una prenotazione attiva per questo evento")
 	case errors.Is(err, events.ErrGameNotBookable):
 		writeError(w, http.StatusConflict, "questo gioco non è prenotabile: è a disposizione al tavolo")
 	case err != nil:
 		writeError(w, http.StatusInternalServerError, "could not create booking")
 	default:
-		s.sendBookingConfirmation(r, booking)
+		s.sendBookingConfirmation(r, booking, req.Email)
 		resp := toBookingResponse(booking)
-		// mailQueued dice alla pagina se promettere una mail: senza SMTP
-		// il codice a schermo è l'unica cosa che il partecipante si porta
-		// via, e la pagina lo dice così com'è sempre stato.
-		resp["mailQueued"] = s.mailEnabled(r.Context())
+		// mailQueued dice alla pagina se promettere una mail: vero solo se
+		// SMTP è configurato E chi prenota ha lasciato un'email — altrimenti
+		// non parte niente, e prometterla sarebbe peggio che non dirla.
+		resp["mailQueued"] = s.mailEnabled(r.Context()) && req.Email != ""
 		writeJSON(w, http.StatusCreated, resp)
 	}
 }
@@ -100,7 +98,6 @@ func (s *Server) cancelBookingHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not cancel booking")
 		return
 	}
-	s.sendBookingCancelled(r, booking, false)
 	resp, err := s.toBookingDetailResponse(r.Context(), booking)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not build response")
@@ -118,7 +115,7 @@ func (s *Server) adminCancelBookingHandler(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusBadRequest, "invalid booking id")
 		return
 	}
-	booking, err := s.Events.AdminCancelBooking(r.Context(), id)
+	_, err = s.Events.AdminCancelBooking(r.Context(), id)
 	if errors.Is(err, events.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "booking not found")
 		return
@@ -126,8 +123,5 @@ func (s *Server) adminCancelBookingHandler(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusInternalServerError, "could not cancel booking")
 		return
 	}
-	// La prenotazione serve per sapere chi avvisare: è l'unico modo in cui
-	// il partecipante scopre che il suo posto è stato liberato.
-	s.sendBookingCancelled(r, booking, true)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "cancelled"})
 }

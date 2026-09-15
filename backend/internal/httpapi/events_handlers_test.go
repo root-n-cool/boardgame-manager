@@ -802,7 +802,7 @@ func TestCreateEvent_StoresBookableFalseAndRefusesTheBooking(t *testing.T) {
 
 	// E prenotarla non si può, nemmeno chiamando l'endpoint a mano.
 	booking := fmt.Sprintf(
-		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","participantPhone":"3331234567"}`,
+		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","termsAccepted":true}`,
 		detail.Games[0].EventGameID)
 	rec = doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", created.ID), nil, booking)
 	if rec.Code != http.StatusConflict {
@@ -824,7 +824,7 @@ func TestUpdateEvent_UnbookableWithActiveBookingsIs409(t *testing.T) {
 	}
 	detail := getEventDetailGames(t, router, event.ID)
 	booking := fmt.Sprintf(
-		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","participantPhone":"3331234567"}`,
+		`{"eventGameId":%d,"participantName":"Anna","participantEmail":"anna@example.com","termsAccepted":true}`,
 		detail.Games[0].EventGameID)
 	if rec := doLoanRequest(router, http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", event.ID), nil, booking); rec.Code != http.StatusCreated {
 		t.Fatalf("booking: %d %s", rec.Code, rec.Body.String())

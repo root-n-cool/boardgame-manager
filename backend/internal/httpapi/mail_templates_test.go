@@ -97,28 +97,6 @@ func TestBookingConfirmationMail_MentionsASharedTableOnlyWhenItIsOne(t *testing.
 	}
 }
 
-func TestBookingCancelledMail_DistinguishesWhoCancelled(t *testing.T) {
-	byParticipant := bookingCancelledMail(testBookingData(), "https://giochi.example.org/events/7", false)
-	byAdmin := bookingCancelledMail(testBookingData(), "https://giochi.example.org/events/7", true)
-
-	if byParticipant.TextBody == byAdmin.TextBody {
-		t.Fatal("le due varianti devono dire cose diverse: chi ha annullato cambia il senso della mail")
-	}
-	if !strings.Contains(byAdmin.TextBody, "organizzazione") {
-		t.Errorf("la variante admin deve dire chi ha annullato:\n%s", byAdmin.TextBody)
-	}
-	for _, body := range []string{
-		byParticipant.TextBody, byParticipant.HTMLBody, byAdmin.TextBody, byAdmin.HTMLBody,
-	} {
-		if !strings.Contains(body, "https://giochi.example.org/events/7") {
-			t.Errorf("manca il link all'evento per riprenotare:\n%s", body)
-		}
-		if !strings.Contains(body, "Catan #2") {
-			t.Errorf("manca il gioco annullato:\n%s", body)
-		}
-	}
-}
-
 func TestSMTPTestMail_IsSelfExplanatory(t *testing.T) {
 	m := smtpTestMail("BoardGames Manager", "admin@example.com")
 	if m.To != "admin@example.com" {
@@ -138,7 +116,6 @@ func TestTemplates_LeaveNoPlaceholders(t *testing.T) {
 	}{
 		{"invito", inviteMail("BoardGames Manager", "a@b.org", "c@d.org", "https://x/invito/t")},
 		{"conferma", bookingConfirmationMail(testBookingData(), "https://x/m", "https://x/s")},
-		{"annullamento", bookingCancelledMail(testBookingData(), "https://x/e", true)},
 		{"prova", smtpTestMail("BoardGames Manager", "a@b.org")},
 	}
 	for _, tc := range messages {

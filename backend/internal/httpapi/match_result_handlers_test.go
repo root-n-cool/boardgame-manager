@@ -22,7 +22,7 @@ func createTestBooking(t *testing.T, router http.Handler, eventID, eventGameID i
 	t.Helper()
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGameID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))

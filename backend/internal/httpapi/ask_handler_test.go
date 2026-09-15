@@ -717,7 +717,7 @@ func TestBookingDetail_ExposesCanAsk(t *testing.T) {
 	detail := getEventDetailGames(t, router, created.ID)
 
 	booking := fmt.Sprintf(
-		`{"eventGameId":%d,"participantName":"Ada","participantEmail":"ada@example.com","participantPhone":"3330000000"}`,
+		`{"eventGameId":%d,"participantName":"Ada","participantEmail":"ada@example.com","termsAccepted":true}`,
 		detail.Games[0].EventGameID)
 	rec = doLoanRequest(router, http.MethodPost,
 		fmt.Sprintf("/api/events/%d/bookings", created.ID), nil, booking)

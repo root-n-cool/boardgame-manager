@@ -40,7 +40,7 @@ func TestCreateBooking_Succeeds(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
@@ -70,7 +70,7 @@ func TestCreateBooking_SoldOutReturns409(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
@@ -101,7 +101,7 @@ func TestCreateBooking_SoldOutOnATableReturnsATruthfulMessage(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
@@ -131,7 +131,7 @@ func TestLookupAndCancelBooking_FullFlow(t *testing.T) {
 
 	createPayload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	createRec := httptest.NewRecorder()
 	router.ServeHTTP(createRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(createPayload)))
@@ -209,7 +209,7 @@ func TestLookupBooking_IncludesNullMatchResultWhenNoneSubmitted(t *testing.T) {
 
 	marioPayload, _ := json.Marshal(map[string]any{
 		"eventGameId": tableEventGameID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	marioRec := httptest.NewRecorder()
 	router.ServeHTTP(marioRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(marioPayload)))
@@ -249,7 +249,7 @@ func TestLookupBooking_IncludesNullMatchResultWhenNoneSubmitted(t *testing.T) {
 	// non distinguerebbe il conteggio da una costante).
 	luigiPayload, _ := json.Marshal(map[string]any{
 		"eventGameId": tableEventGameID, "participantName": "Luigi Verdi",
-		"participantEmail": "luigi@example.com", "participantPhone": "3339876543",
+		"participantEmail": "luigi@example.com", "termsAccepted": true,
 	})
 	luigiRec := httptest.NewRecorder()
 	router.ServeHTTP(luigiRec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(luigiPayload)))
@@ -317,7 +317,7 @@ func TestAdminCancelBooking_RemovesItFromTheEventBookings(t *testing.T) {
 	eventID := createTestEvent(t, server, gameID, 2)
 	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
 	booking, err := server.Events.CreateBooking(context.Background(), eventID, eventGames[0].ID,
-		"Mario Rossi", "mario@example.com", "3331234567", time.Now())
+		"Mario Rossi", time.Now())
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -351,7 +351,7 @@ func TestAdminCancelBooking_UnknownOrAlreadyCancelledReturns404(t *testing.T) {
 	eventID := createTestEvent(t, server, gameID, 1)
 	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
 	booking, err := server.Events.CreateBooking(context.Background(), eventID, eventGames[0].ID,
-		"Mario Rossi", "mario@example.com", "3331234567", time.Now())
+		"Mario Rossi", time.Now())
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -377,7 +377,7 @@ func TestAdminCancelBooking_RequiresAuth(t *testing.T) {
 	eventID := createTestEvent(t, server, gameID, 1)
 	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
 	booking, err := server.Events.CreateBooking(context.Background(), eventID, eventGames[0].ID,
-		"Mario Rossi", "mario@example.com", "3331234567", time.Now())
+		"Mario Rossi", time.Now())
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -405,7 +405,7 @@ func TestCreateBooking_EmailsTheCodeAndBothLinks(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload))
@@ -453,7 +453,7 @@ func TestCreateBooking_WithoutSMTPBehavesExactlyAsBefore(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
@@ -488,7 +488,7 @@ func TestCreateBooking_SMTPFailureKeepsTheBooking(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
@@ -520,7 +520,7 @@ func TestCreateBooking_MailLabelsTheCopyOnlyWithMoreThanOne(t *testing.T) {
 
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGames[1].ID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
@@ -540,7 +540,7 @@ func bookForMailTest(t *testing.T, router http.Handler, eventID, eventGameID int
 	t.Helper()
 	payload, _ := json.Marshal(map[string]any{
 		"eventGameId": eventGameID, "participantName": "Mario Rossi",
-		"participantEmail": "mario@example.com", "participantPhone": "3331234567",
+		"participantEmail": "mario@example.com", "termsAccepted": true,
 	})
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
@@ -555,68 +555,6 @@ func bookForMailTest(t *testing.T, router http.Handler, eventID, eventGameID int
 		t.Fatalf("decode booking: %v", err)
 	}
 	return body.ID, body.BookingCode
-}
-
-func TestCancelBooking_EmailsTheParticipantAReceipt(t *testing.T) {
-	mail := newFakeMailer()
-	server, _ := newTestServerWithMailer(t, mail)
-	router := httpapi.NewRouter(server)
-	gameID := createTestGameForEvent(t, server.Games, "Catan")
-	eventID := createTestEvent(t, server, gameID, 1)
-	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
-	bookingID, code := bookForMailTest(t, router, eventID, eventGames[0].ID)
-	mail.waitForMail(t) // la conferma di prenotazione
-
-	payload, _ := json.Marshal(map[string]string{"bookingCode": code})
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/cancel", bookingID), bytes.NewReader(payload))
-	req.Host = "giochi.local"
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	m := mail.waitForMail(t)
-	if m.To != "mario@example.com" {
-		t.Errorf("recipient = %q", m.To)
-	}
-	if !strings.Contains(strings.ToLower(m.Subject), "annullata") {
-		t.Errorf("subject = %q", m.Subject)
-	}
-	if strings.Contains(m.TextBody, "organizzazione") {
-		t.Errorf("a self-cancellation must not blame the organisers:\n%s", m.TextBody)
-	}
-	if !strings.Contains(m.TextBody, fmt.Sprintf("http://giochi.local/events/%d", eventID)) {
-		t.Errorf("missing the event link to book again:\n%s", m.TextBody)
-	}
-}
-
-func TestAdminCancelBooking_EmailsTheParticipantThatTheSeatIsFreed(t *testing.T) {
-	mail := newFakeMailer()
-	server, _ := newTestServerWithMailer(t, mail)
-	router := httpapi.NewRouter(server)
-	cookie := bootstrapFirstAdmin(t, router, "capo@example.com", "supersecret1")
-	gameID := createTestGameForEvent(t, server.Games, "Catan")
-	eventID := createTestEvent(t, server, gameID, 1)
-	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
-	bookingID, _ := bookForMailTest(t, router, eventID, eventGames[0].ID)
-	mail.waitForMail(t) // la conferma di prenotazione
-
-	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/bookings/%d", bookingID), nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
-	}
-
-	m := mail.waitForMail(t)
-	if m.To != "mario@example.com" {
-		t.Errorf("recipient = %q", m.To)
-	}
-	if !strings.Contains(m.TextBody, "organizzazione") {
-		t.Errorf("the participant must learn who cancelled:\n%s", m.TextBody)
-	}
 }
 
 // Il vincolo globale, sui due annullamenti.
@@ -646,20 +584,3 @@ func TestCancelBooking_WithoutSMTPStillCancels(t *testing.T) {
 	}
 }
 
-// Una prenotazione che l'admin annulla e che non esiste più non deve
-// mandare niente: non c'è nessuno da avvisare.
-func TestAdminCancelBooking_UnknownSendsNoMail(t *testing.T) {
-	mail := newFakeMailer()
-	server, _ := newTestServerWithMailer(t, mail)
-	router := httpapi.NewRouter(server)
-	cookie := bootstrapFirstAdmin(t, router, "capo@example.com", "supersecret1")
-
-	req := httptest.NewRequest(http.MethodDelete, "/api/bookings/999", nil)
-	req.AddCookie(cookie)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("expected 404, got %d", rec.Code)
-	}
-	mail.expectNoMail(t)
-}

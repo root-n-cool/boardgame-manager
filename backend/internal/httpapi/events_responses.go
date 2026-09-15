@@ -169,9 +169,8 @@ func toBookingAdminResponse(b events.BookingWithGame) map[string]any {
 	return map[string]any{
 		"id": b.ID, "eventGameId": b.EventGameID, "gameId": b.GameID, "gameName": b.GameName,
 		"copyIndex": b.CopyIndex, "seats": b.Seats,
-		"participantName": b.ParticipantName, "participantEmail": b.ParticipantEmail,
-		"participantPhone": b.ParticipantPhone,
-		"createdAt":        b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"participantName": b.ParticipantName,
+		"createdAt":       b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 
