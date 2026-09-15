@@ -259,7 +259,9 @@ Dalla pagina "Impostazioni" (da admin autenticato):
   fino a 5MB); i testi in Markdown delle pagine `/terms` e `/privacy`,
   raggiungibili dal footer. Tutto opzionale: senza configurazione l'app
   si presenta come "BoardGames Manager" con l'icona di default, e le due
-  pagine legali restano vuote finché non ci scrivi qualcosa.
+  pagine legali restano vuote finché non ci scrivi qualcosa. Una volta
+  caricati, logo e favicon non si possono rimuovere dall'interfaccia:
+  si sostituiscono con un altro caricamento.
 
 ### Traduzione automatica delle descrizioni (opzionale)
 

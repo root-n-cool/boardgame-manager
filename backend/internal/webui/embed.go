@@ -4,6 +4,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"html"
 	"io/fs"
 	"log"
 	"net/http"
@@ -79,8 +80,8 @@ func handlerFor(root fs.FS, store SettingsReader) (http.Handler, error) {
 			}
 		}
 		body := strings.NewReplacer(
-			"__SITE_TITLE__", title,
-			"__FAVICON_URL__", faviconHref,
+			"__SITE_TITLE__", html.EscapeString(title),
+			"__FAVICON_URL__", html.EscapeString(faviconHref),
 		).Replace(string(indexTemplate))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(body))

@@ -12,7 +12,7 @@ type legalPageResponse struct {
 // getTermsHandler e getPrivacyHandler rispondono sempre 200: un testo
 // vuoto è uno stato valido (l'admin non ha ancora scritto niente), e la
 // view pubblica mostra un messaggio neutro invece di un errore — vedi
-// TermsView/PrivacyView.
+// LegalPageView.
 func (s *Server) getTermsHandler(w http.ResponseWriter, r *http.Request) {
 	cfg, err := s.Settings.Get(r.Context())
 	if err != nil {

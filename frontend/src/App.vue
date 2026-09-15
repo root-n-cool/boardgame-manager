@@ -1,8 +1,15 @@
 <script setup lang="ts">
+import { onMounted } from 'vue'
 import { useRoute } from 'vue-router'
+import { useSiteStore } from './stores/site'
 import AppShell from './components/AppShell.vue'
 
 const route = useRoute()
+const site = useSiteStore()
+
+onMounted(() => {
+  site.load()
+})
 </script>
 
 <template>

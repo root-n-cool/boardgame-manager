@@ -15,6 +15,11 @@ onMounted(async () => {
   try {
     const res = await api.get<{ markdown: string }>(props.apiPath, { skipAuthRedirect: true })
     markdown.value = res.markdown
+  } catch (e) {
+    // La pagina si degrada già correttamente (resta "Contenuto non ancora
+    // disponibile."): questo catch serve solo a evitare una promise
+    // rifiutata senza gestore in console.
+    console.error('could not load the legal page content', e)
   } finally {
     loaded.value = true
   }

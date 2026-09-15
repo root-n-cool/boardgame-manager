@@ -142,7 +142,6 @@ function onKeydown(e: KeyboardEvent) {
 let media: MediaQueryList | null = null
 
 onMounted(() => {
-  site.load()
   media = window.matchMedia(DESKTOP_QUERY)
   media.addEventListener('change', onMediaChange)
   document.addEventListener('keydown', onKeydown)

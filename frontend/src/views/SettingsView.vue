@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api/client'
+import { useSiteStore } from '../stores/site'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 
 interface SettingsResponse {
@@ -30,6 +31,7 @@ interface SettingsResponse {
   smtpConfigured: boolean
 }
 
+const site = useSiteStore()
 const defaultLanguage = ref('it')
 const publicBaseUrl = ref('')
 const siteTitle = ref('')
@@ -179,6 +181,7 @@ async function onLogoSelected(event: Event) {
   try {
     await api.post('/settings/logo', formData)
     await load()
+    await site.load()
   } catch (e) {
     brandingError.value = (e as Error).message
   } finally {
@@ -198,6 +201,7 @@ async function onFaviconSelected(event: Event) {
   try {
     await api.post('/settings/favicon', formData)
     await load()
+    await site.load()
   } catch (e) {
     brandingError.value = (e as Error).message
   } finally {
@@ -278,6 +282,8 @@ onMounted(async () => {
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 class="visually-hidden"
+                tabindex="-1"
+                aria-hidden="true"
                 @change="onLogoSelected"
               />
             </div>
@@ -300,6 +306,8 @@ onMounted(async () => {
                 type="file"
                 accept="image/png,image/jpeg,image/webp"
                 class="visually-hidden"
+                tabindex="-1"
+                aria-hidden="true"
                 @change="onFaviconSelected"
               />
             </div>

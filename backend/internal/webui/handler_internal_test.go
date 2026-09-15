@@ -42,7 +42,7 @@ func TestHandlerFor_ErrorsWhenIndexHTMLMissing(t *testing.T) {
 	}
 }
 
-func indexFS(title string) fstest.MapFS {
+func indexFS() fstest.MapFS {
 	return fstest.MapFS{
 		"index.html": {Data: []byte(
 			`<title>__SITE_TITLE__</title><link rel="icon" href="__FAVICON_URL__" /><div id="app"></div>`,
@@ -52,7 +52,7 @@ func indexFS(title string) fstest.MapFS {
 }
 
 func TestHandlerFor_ServesIndexHTMLForClientRoutes(t *testing.T) {
-	handler, err := handlerFor(indexFS(""), fakeSettingsReader{})
+	handler, err := handlerFor(indexFS(), fakeSettingsReader{})
 	if err != nil {
 		t.Fatalf("handlerFor: %v", err)
 	}
@@ -83,7 +83,7 @@ func TestHandlerFor_ServesIndexHTMLForClientRoutes(t *testing.T) {
 }
 
 func TestHandlerFor_InjectsTheConfiguredTitleAndFavicon(t *testing.T) {
-	handler, err := handlerFor(indexFS(""), fakeSettingsReader{
+	handler, err := handlerFor(indexFS(), fakeSettingsReader{
 		cfg: settings.Settings{SiteTitle: "Ludoteca Vicolo Corto", FaviconFilename: "abc123.png"},
 	})
 	if err != nil {
@@ -103,7 +103,7 @@ func TestHandlerFor_InjectsTheConfiguredTitleAndFavicon(t *testing.T) {
 }
 
 func TestHandlerFor_FallsBackToDefaultsWhenNothingIsConfigured(t *testing.T) {
-	handler, err := handlerFor(indexFS(""), fakeSettingsReader{})
+	handler, err := handlerFor(indexFS(), fakeSettingsReader{})
 	if err != nil {
 		t.Fatalf("handlerFor: %v", err)
 	}
@@ -123,7 +123,7 @@ func TestHandlerFor_FallsBackToDefaultsWhenNothingIsConfigured(t *testing.T) {
 // Un DB irraggiungibile non deve mai rompere il caricamento della pagina:
 // meglio i default che una pagina bianca.
 func TestHandlerFor_FallsBackToDefaultsWhenSettingsFail(t *testing.T) {
-	handler, err := handlerFor(indexFS(""), fakeSettingsReader{err: errTestSettingsUnavailable})
+	handler, err := handlerFor(indexFS(), fakeSettingsReader{err: errTestSettingsUnavailable})
 	if err != nil {
 		t.Fatalf("handlerFor: %v", err)
 	}
@@ -137,5 +137,25 @@ func TestHandlerFor_FallsBackToDefaultsWhenSettingsFail(t *testing.T) {
 	body := rec.Body.String()
 	if !strings.Contains(body, "<title>BoardGames Manager</title>") || !strings.Contains(body, `href="/favicon.svg"`) {
 		t.Errorf("expected the defaults on a settings error, got: %s", body)
+	}
+}
+
+func TestHandlerFor_EscapesTheConfiguredTitle(t *testing.T) {
+	handler, err := handlerFor(indexFS(), fakeSettingsReader{
+		cfg: settings.Settings{SiteTitle: `</title><script>alert(1)</script>`},
+	})
+	if err != nil {
+		t.Fatalf("handlerFor: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+
+	body := rec.Body.String()
+	if strings.Contains(body, "<script>alert(1)</script>") {
+		t.Fatalf("expected the site title to be HTML-escaped, got raw markup in: %s", body)
+	}
+	if !strings.Contains(body, "&lt;/title&gt;&lt;script&gt;") {
+		t.Fatalf("expected an escaped title, got: %s", body)
 	}
 }

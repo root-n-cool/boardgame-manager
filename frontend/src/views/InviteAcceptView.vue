@@ -3,10 +3,12 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { useAuthStore } from '../stores/auth'
+import { useSiteStore } from '../stores/site'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const site = useSiteStore()
 
 // Il backend distingue apposta un token morto (404 "invite not found") da un
 // guasto infrastrutturale (500): solo il primo caso è un invito da
@@ -94,7 +96,7 @@ async function submit() {
     <template v-else>
       <h1>Imposta la tua password</h1>
       <p>
-        Sei stato invitato come amministratore di BoardGames Manager. La password
+        Sei stato invitato come amministratore di {{ site.siteTitle }}. La password
         la scegli tu: chi ti ha invitato non la conoscerà.
       </p>
       <form @submit.prevent="submit">

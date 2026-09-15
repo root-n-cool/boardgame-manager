@@ -186,12 +186,12 @@ func TestUpdateAndGet_RoundTripsSiteBranding(t *testing.T) {
 	ctx := context.Background()
 
 	in := settings.Settings{
-		DefaultLanguage:  "it",
-		SiteTitle:        "Ludoteca Vicolo Corto",
-		LogoFilename:     "abc123.png",
-		FaviconFilename:  "def456.png",
-		TermsMarkdown:    "# Termini\n\nTesto.",
-		PrivacyMarkdown:  "# Privacy\n\nTesto.",
+		DefaultLanguage: "it",
+		SiteTitle:       "Ludoteca Vicolo Corto",
+		LogoFilename:    "abc123.png",
+		FaviconFilename: "def456.png",
+		TermsMarkdown:   "# Termini\n\nTesto.",
+		PrivacyMarkdown: "# Privacy\n\nTesto.",
 	}
 	if err := store.Update(ctx, in); err != nil {
 		t.Fatalf("update: %v", err)
