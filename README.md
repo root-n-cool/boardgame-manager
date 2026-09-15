@@ -254,6 +254,12 @@ Dalla pagina "Impostazioni" (da admin autenticato):
   annullamento. Se assente, l'app funziona esattamente come prima: il
   codice di prenotazione resta a schermo e il link d'invito si copia a
   mano. Dettagli sotto.
+- **Sito**: titolo usato nel titolo della pagina e, quando non c'è un
+  logo, nell'header; logo e favicon personalizzati (JPEG, PNG o WebP,
+  fino a 5MB); i testi in Markdown delle pagine `/terms` e `/privacy`,
+  raggiungibili dal footer. Tutto opzionale: senza configurazione l'app
+  si presenta come "BoardGames Manager" con l'icona di default, e le due
+  pagine legali restano vuote finché non ci scrivi qualcosa.
 
 ### Traduzione automatica delle descrizioni (opzionale)
 

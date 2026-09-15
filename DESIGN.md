@@ -1234,6 +1234,14 @@ l'azione sta in basso a destra, dove il pollice la trova.
   (`.language-tabs`, che ci aggiunge solo l'azione "Aggiungi lingua" in
   fondo) e il periodo degli eventi. Dentro un `.section-group` la barra è la
   testata del gruppo e rinuncia al fondo, che glielo dà già il tappeto.
+- **Marchio del sito** (`.brand`): omino + nome per default; se l'admin
+  carica un logo (Impostazioni → Sito), il logo lo sostituisce **per
+  intero** — mai icona e logo insieme — alla stessa altezza (22px) che
+  occupava l'icona, così la topbar non cambia misura.
+- **Footer legale** (`.app-footer`): striscia minima in fondo a ogni
+  pagina della shell, due link testuali a `/terms` e `/privacy`. Non è una
+  voce di sidebar: le due pagine restano fuori dal menù di navigazione,
+  raggiungibili solo da qui o da un indirizzo diretto.
 
 ### Tabelle / Scoreboard
 - **Header:** feltro verde, testo cartoncino uppercase tracciato — lo
