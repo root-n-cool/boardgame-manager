@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api/client'
+import MarkdownEditor from '../components/MarkdownEditor.vue'
 
 interface SettingsResponse {
   defaultLanguage: string
   publicBaseUrl: string
+  siteTitle: string
+  logoFilename: string
+  faviconFilename: string
+  termsMarkdown: string
+  privacyMarkdown: string
   bggApiTokenSet: boolean
   bggApiTokenMasked?: string
   aiBaseUrl: string
@@ -26,6 +32,16 @@ interface SettingsResponse {
 
 const defaultLanguage = ref('it')
 const publicBaseUrl = ref('')
+const siteTitle = ref('')
+const logoFilename = ref('')
+const faviconFilename = ref('')
+const termsMarkdown = ref('')
+const privacyMarkdown = ref('')
+const logoInput = ref<HTMLInputElement | null>(null)
+const faviconInput = ref<HTMLInputElement | null>(null)
+const logoUploading = ref(false)
+const faviconUploading = ref(false)
+const brandingError = ref('')
 const bggApiToken = ref('')
 const bggApiTokenMasked = ref('')
 const aiBaseUrl = ref('')
@@ -54,6 +70,11 @@ async function load() {
   const s = await api.get<SettingsResponse>('/settings')
   defaultLanguage.value = s.defaultLanguage
   publicBaseUrl.value = s.publicBaseUrl || ''
+  siteTitle.value = s.siteTitle || ''
+  logoFilename.value = s.logoFilename || ''
+  faviconFilename.value = s.faviconFilename || ''
+  termsMarkdown.value = s.termsMarkdown || ''
+  privacyMarkdown.value = s.privacyMarkdown || ''
   bggApiTokenMasked.value = s.bggApiTokenMasked || ''
   aiBaseUrl.value = s.aiBaseUrl || ''
   aiModel.value = s.aiModel || ''
@@ -76,6 +97,9 @@ async function save() {
     await api.put('/settings', {
       defaultLanguage: defaultLanguage.value,
       publicBaseUrl: publicBaseUrl.value,
+      siteTitle: siteTitle.value,
+      termsMarkdown: termsMarkdown.value,
+      privacyMarkdown: privacyMarkdown.value,
       bggApiToken: bggApiToken.value,
       aiBaseUrl: aiBaseUrl.value,
       aiApiKey: aiApiKey.value,
@@ -133,6 +157,54 @@ async function sendTestEmail() {
   }
 }
 
+function pickLogo() {
+  brandingError.value = ''
+  logoInput.value?.click()
+}
+
+function pickFavicon() {
+  brandingError.value = ''
+  faviconInput.value?.click()
+}
+
+async function onLogoSelected(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  target.value = ''
+  if (!file) return
+  brandingError.value = ''
+  logoUploading.value = true
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    await api.post('/settings/logo', formData)
+    await load()
+  } catch (e) {
+    brandingError.value = (e as Error).message
+  } finally {
+    logoUploading.value = false
+  }
+}
+
+async function onFaviconSelected(event: Event) {
+  const target = event.target as HTMLInputElement
+  const file = target.files?.[0]
+  target.value = ''
+  if (!file) return
+  brandingError.value = ''
+  faviconUploading.value = true
+  const formData = new FormData()
+  formData.append('file', file)
+  try {
+    await api.post('/settings/favicon', formData)
+    await load()
+  } catch (e) {
+    brandingError.value = (e as Error).message
+  } finally {
+    faviconUploading.value = false
+  }
+}
+
 onMounted(async () => {
   try {
     await load()
@@ -171,6 +243,81 @@ onMounted(async () => {
           Serve a comporre i link che mandi fuori dall'app, come l'invito di un
           amministratore. Se lo lasci vuoto si usa l'indirizzo da cui stai navigando.
         </p>
+      </div>
+
+      <div class="panel-card">
+        <div class="section-head">
+          <h2>Sito</h2>
+        </div>
+        <p class="field-hint">
+          Rimarchizza l'installazione: il titolo compare nel titolo della pagina
+          e nell'header quando non c'è un logo, logo e favicon sono immagini
+          JPEG, PNG o WebP fino a 5MB.
+        </p>
+
+        <label>
+          Titolo del sito
+          <input v-model="siteTitle" placeholder="BoardGames Manager" />
+        </label>
+
+        <div class="field-row">
+          <div>
+            <span class="field-label">Logo</span>
+            <div class="branding-upload">
+              <img
+                v-if="logoFilename"
+                :src="`/api/uploads/${logoFilename}`"
+                class="branding-preview"
+                alt="Logo attuale"
+              />
+              <button type="button" class="btn-secondary" :disabled="logoUploading" @click="pickLogo">
+                {{ logoUploading ? 'Caricamento…' : logoFilename ? 'Cambia logo' : 'Carica logo' }}
+              </button>
+              <input
+                ref="logoInput"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                class="visually-hidden"
+                @change="onLogoSelected"
+              />
+            </div>
+          </div>
+
+          <div>
+            <span class="field-label">Favicon</span>
+            <div class="branding-upload">
+              <img
+                v-if="faviconFilename"
+                :src="`/api/uploads/${faviconFilename}`"
+                class="branding-preview branding-preview-small"
+                alt="Favicon attuale"
+              />
+              <button type="button" class="btn-secondary" :disabled="faviconUploading" @click="pickFavicon">
+                {{ faviconUploading ? 'Caricamento…' : faviconFilename ? 'Cambia favicon' : 'Carica favicon' }}
+              </button>
+              <input
+                ref="faviconInput"
+                type="file"
+                accept="image/png,image/jpeg,image/webp"
+                class="visually-hidden"
+                @change="onFaviconSelected"
+              />
+            </div>
+          </div>
+        </div>
+        <p v-if="brandingError" class="error">{{ brandingError }}</p>
+
+        <label>
+          Termini e condizioni
+          <MarkdownEditor v-model="termsMarkdown" aria-label="Termini e condizioni" />
+        </label>
+        <p class="field-hint">Pubblicati alla pagina <code>/terms</code>, raggiungibile dal footer.</p>
+
+        <label>
+          Privacy
+          <MarkdownEditor v-model="privacyMarkdown" aria-label="Privacy" />
+        </label>
+        <p class="field-hint">Pubblicata alla pagina <code>/privacy</code>, raggiungibile dal footer.</p>
       </div>
 
       <div class="panel-card">
