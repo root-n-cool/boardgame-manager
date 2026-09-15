@@ -826,15 +826,16 @@ button.btn-with-icon svg {
 }
 
 /* Una card è larga quanto la colonna — liste, tabelle e form si allineano
-   allo stesso bordo, altrimenti la pagina sembra montata con pezzi di
-   misure diverse. Il campo però non segue la card: si ferma alla misura in
-   cui resta leggibile. Le pagine di auth restano l'eccezione: card unica e
-   centrata, senza nulla con cui allinearsi. */
+   allo stesso bordo. Il campo la segue: niente più tetto fisso a 30rem,
+   corretto dopo revisione utente — un pannello largo con un campo fermo
+   a 480px lasciava metà scheda vuota (Impostazioni, creazione
+   evento/gioco). Le pagine di auth restano strette perché lo è la card
+   stessa (nessuno con cui allinearsi), non per un limite sul campo. */
 form input,
 form select,
 form textarea,
 form .markdown-editor {
-  max-width: 30rem;
+  max-width: none;
 }
 
 .app-page form fieldset {
