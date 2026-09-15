@@ -603,6 +603,25 @@ label {
   color: var(--ink-muted);
 }
 
+/* Stesso aspetto di `label`, ma per un campo il cui controllo non è un
+   vero elemento di form (MarkdownEditor è un <div contenteditable> di
+   CodeMirror). Un <label> nudo attorno a un controllo non "labelable"
+   fa sì che il browser inoltri il click sul primo elemento davvero
+   focalizzabile trovato dentro — qui il primo bottone della toolbar
+   dell'editor (Grassetto) — quindi cliccare ovunque nell'area di
+   scrittura attivava il grassetto invece di posizionare il cursore.
+   MarkdownEditorImpl imposta già a mano l'aria-label sul nodo
+   editabile proprio perché l'associazione con <label> non arriva:
+   qui basta smettere di usare <label>. */
+.markdown-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ink-muted);
+}
+
 /* Checkbox + testo affiancati (selezione giochi in un evento). */
 label.checkbox-label {
   flex-direction: row;

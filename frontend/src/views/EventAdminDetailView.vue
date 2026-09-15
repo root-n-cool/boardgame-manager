@@ -335,10 +335,10 @@ onMounted(async () => {
           Titolo
           <input v-model="title" required />
         </label>
-        <label>
+        <div class="markdown-field">
           <span>Descrizione <span class="field-optional">(opzionale)</span></span>
           <MarkdownEditor v-model="description" placeholder="Supporta il Markdown: grassetto, elenchi, link…" />
-        </label>
+        </div>
         <label>
           Data
           <input v-model="eventDate" type="date" required />

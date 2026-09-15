@@ -608,10 +608,10 @@ onMounted(async () => {
               Nome
               <input v-model="editName" required />
             </label>
-            <label>
+            <div class="markdown-field">
               Descrizione
               <MarkdownEditor v-model="editDescription" placeholder="Supporta il Markdown: grassetto, elenchi, link…" />
-            </label>
+            </div>
             <p v-if="game.canTranslate && aiConfigured" class="field-hint">
               <button
                 type="button"

@@ -315,16 +315,16 @@ onMounted(async () => {
         </div>
         <p v-if="brandingError" class="error">{{ brandingError }}</p>
 
-        <label>
+        <div class="markdown-field">
           Termini e condizioni
           <MarkdownEditor v-model="termsMarkdown" aria-label="Termini e condizioni" />
-        </label>
+        </div>
         <p class="field-hint">Pubblicati alla pagina <code>/terms</code>, raggiungibile dal footer.</p>
 
-        <label>
+        <div class="markdown-field">
           Privacy
           <MarkdownEditor v-model="privacyMarkdown" aria-label="Privacy" />
-        </label>
+        </div>
         <p class="field-hint">Pubblicata alla pagina <code>/privacy</code>, raggiungibile dal footer.</p>
       </div>
 
