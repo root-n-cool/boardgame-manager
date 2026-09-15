@@ -27,7 +27,7 @@ func TestCreateBooking_Succeeds(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -68,7 +68,7 @@ func TestCreateBooking_RejectsWhenEventAlreadyStarted(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC) // after the 10:00 start
 
-	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if !errors.Is(err, events.ErrEventAlreadyStarted) {
 		t.Fatalf("expected ErrEventAlreadyStarted, got %v", err)
 	}
@@ -90,39 +90,12 @@ func TestCreateBooking_RejectsWhenSoldOut(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331111111", now); err != nil {
+	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now); err != nil {
 		t.Fatalf("first booking: %v", err)
 	}
-	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Luigi Verdi", "luigi@example.com", "3332222222", now)
+	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Luigi Verdi", now)
 	if !errors.Is(err, events.ErrGameSoldOut) {
 		t.Fatalf("expected ErrGameSoldOut, got %v", err)
-	}
-}
-
-func TestCreateBooking_RejectsDuplicatePhoneForSameEvent(t *testing.T) {
-	eventStore, gameStore := newTestStore(t)
-	ctx := context.Background()
-	// Plenty of seats on this one copy so the duplicate-phone rule is
-	// exercised on its own, not masked by the copy selling out.
-	gameID := mustCreateGameWithSeats(t, gameStore, "Catan", 5)
-	event, err := eventStore.CreateEvent(ctx, events.EventInput{
-		Title:     "Serata giochi",
-		EventDate: "2026-10-01",
-		StartTime: "20:00",
-		Games:     []events.EventGameInput{{GameID: gameID, Copies: 1}},
-	})
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
-	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-
-	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now); err != nil {
-		t.Fatalf("first booking: %v", err)
-	}
-	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario2@example.com", "3331234567", now)
-	if !errors.Is(err, events.ErrDuplicatePhoneBooking) {
-		t.Fatalf("expected ErrDuplicatePhoneBooking, got %v", err)
 	}
 }
 
@@ -141,38 +114,9 @@ func TestCreateBooking_UnknownEventGameReturnsNotFound(t *testing.T) {
 	}
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	_, err = eventStore.CreateBooking(ctx, event.ID, 999, "Mario Rossi", "mario@example.com", "3331234567", now)
+	_, err = eventStore.CreateBooking(ctx, event.ID, 999, "Mario Rossi", now)
 	if !errors.Is(err, events.ErrNotFound) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
-	}
-}
-
-func TestCreateBooking_AllowsSamePhoneAfterCancellation(t *testing.T) {
-	eventStore, gameStore := newTestStore(t)
-	ctx := context.Background()
-	gameID := mustCreateGame(t, gameStore, "Catan")
-	event, err := eventStore.CreateEvent(ctx, events.EventInput{
-		Title:     "Serata giochi",
-		EventDate: "2026-10-01",
-		StartTime: "20:00",
-		Games:     []events.EventGameInput{{GameID: gameID, Copies: 5}},
-	})
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
-	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-
-	first, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
-	if err != nil {
-		t.Fatalf("first booking: %v", err)
-	}
-	if _, err := eventStore.CancelBooking(ctx, first.ID, first.BookingCode); err != nil {
-		t.Fatalf("cancel: %v", err)
-	}
-
-	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now); err != nil {
-		t.Fatalf("expected the same phone to be able to book again after cancelling, got %v", err)
 	}
 }
 
@@ -192,7 +136,7 @@ func TestLookupBooking_FindsActiveBookingByCode(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -222,7 +166,7 @@ func TestLookupBooking_WrongCodeReturnsGenericError(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now); err != nil {
+	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now); err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
 
@@ -247,7 +191,7 @@ func TestLookupBooking_CancelledBookingIsNotFound(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -276,7 +220,7 @@ func TestCancelBooking_RejectsWrongCode(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -312,11 +256,11 @@ func TestListBookingsForEvent_ReturnsOnlyActiveWithGameName(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	active, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331111111", now)
+	active, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create active booking: %v", err)
 	}
-	toCancel, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Luigi Verdi", "luigi@example.com", "3332222222", now)
+	toCancel, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Luigi Verdi", now)
 	if err != nil {
 		t.Fatalf("create booking to cancel: %v", err)
 	}
@@ -352,7 +296,7 @@ func TestAdminCancelBooking_CancelsWithoutTheCodeAndFreesTheCopy(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -395,7 +339,7 @@ func TestAdminCancelBooking_DropsTheSubmittedScore(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -433,7 +377,7 @@ func TestAdminCancelBooking_AlreadyCancelledOrUnknownIsNotFound(t *testing.T) {
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	created, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -461,9 +405,9 @@ func TestCreateBooking_FillsAllSeatsOfATable(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
 	codes := map[string]bool{}
-	for i, phone := range []string{"3330000001", "3330000002", "3330000003"} {
+	for i := range []string{"3330000001", "3330000002", "3330000003"} {
 		b, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-			fmt.Sprintf("Giocatore %d", i+1), fmt.Sprintf("p%d@example.com", i+1), phone, now)
+			fmt.Sprintf("Giocatore %d", i+1), now)
 		if err != nil {
 			t.Fatalf("booking %d: %v", i+1, err)
 		}
@@ -475,71 +419,9 @@ func TestCreateBooking_FillsAllSeatsOfATable(t *testing.T) {
 
 	// Quarto posto su un tavolo da tre: pieno.
 	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Quarto", "quarto@example.com", "3330000004", now)
+		"Quarto", now)
 	if !errors.Is(err, events.ErrGameSoldOut) {
 		t.Fatalf("expected ErrGameSoldOut, got %v", err)
-	}
-}
-
-func TestCreateBooking_PhoneConstraintHoldsInsideATable(t *testing.T) {
-	eventStore, gameStore := newTestStore(t)
-	ctx := context.Background()
-	gameID := mustCreateGameWithSeats(t, gameStore, "D&D", 5)
-	event := mustCreateEvent(t, eventStore, "Serata", "2026-10-01", "20:00", gameID)
-	eventGames, err := eventStore.ListEventGames(ctx, event.ID)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-
-	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Mario", "mario@example.com", "3331111111", now); err != nil {
-		t.Fatalf("first booking: %v", err)
-	}
-	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Mario di nuovo", "mario@example.com", "3331111111", now)
-	if !errors.Is(err, events.ErrDuplicatePhoneBooking) {
-		t.Fatalf("expected ErrDuplicatePhoneBooking, got %v", err)
-	}
-}
-
-// TestCreateBooking_PhoneConstraintHoldsAcrossCopiesOfTheSameEvent pins the
-// actual shape of the partial unique index:
-// idx_one_active_booking_per_phone_per_event is scoped to (event_id, phone),
-// tables included, not to event_game_id. Two copies of the *same* game are
-// used on purpose rather than two different games: that keeps event_game_id
-// as the only thing that differs between the two bookings, so a regression
-// that accidentally scoped the constraint to event_game_id instead of
-// event_id — which would let one phone hold a seat at every table of an
-// evening, one booking per table — cannot hide behind a difference in
-// game_id.
-func TestCreateBooking_PhoneConstraintHoldsAcrossCopiesOfTheSameEvent(t *testing.T) {
-	eventStore, gameStore := newTestStore(t)
-	ctx := context.Background()
-	gameID := mustCreateGameWithSeats(t, gameStore, "D&D", 5)
-	event, err := eventStore.CreateEvent(ctx, events.EventInput{
-		Title:     "Serata",
-		EventDate: "2026-10-01",
-		StartTime: "20:00",
-		Games:     []events.EventGameInput{{GameID: gameID, Copies: 2}},
-	})
-	if err != nil {
-		t.Fatalf("create event: %v", err)
-	}
-	eventGames, err := eventStore.ListEventGames(ctx, event.ID)
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-
-	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Mario", "mario@example.com", "3331111111", now); err != nil {
-		t.Fatalf("first table booking: %v", err)
-	}
-	_, err = eventStore.CreateBooking(ctx, event.ID, eventGames[1].ID,
-		"Mario di nuovo", "mario@example.com", "3331111111", now)
-	if !errors.Is(err, events.ErrDuplicatePhoneBooking) {
-		t.Fatalf("expected ErrDuplicatePhoneBooking on the second table, got %v", err)
 	}
 }
 
@@ -562,7 +444,7 @@ func TestListBookingsForEvent_CarriesTheCopy(t *testing.T) {
 	}
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[1].ID,
-		"Mario", "mario@example.com", "3331111111", now); err != nil {
+		"Mario", now); err != nil {
 		t.Fatalf("booking: %v", err)
 	}
 
@@ -588,9 +470,9 @@ func TestCountActiveBookingsForEventGame(t *testing.T) {
 		t.Fatalf("list: %v", err)
 	}
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	for i, phone := range []string{"3330000001", "3330000002"} {
+	for i := 0; i < 2; i++ {
 		if _, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-			fmt.Sprintf("G%d", i), fmt.Sprintf("g%d@example.com", i), phone, now); err != nil {
+			fmt.Sprintf("G%d", i), now); err != nil {
 			t.Fatalf("booking: %v", err)
 		}
 	}
@@ -645,12 +527,12 @@ func TestCancelBooking_KeepsTheTableResultWhileSomeoneRemains(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
 	first, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Mario", "mario@example.com", "3331111111", now)
+		"Mario", now)
 	if err != nil {
 		t.Fatalf("first booking: %v", err)
 	}
 	second, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Luigi", "luigi@example.com", "3332222222", now)
+		"Luigi", now)
 	if err != nil {
 		t.Fatalf("second booking: %v", err)
 	}
@@ -701,7 +583,7 @@ func TestCreateBookingRefusesAnUnbookableCopy(t *testing.T) {
 	}
 
 	_, err = store.CreateBooking(context.Background(), event.ID, copies[0].ID,
-		"Anna", "anna@example.com", "3331234567", time.Date(2029, 12, 31, 20, 0, 0, 0, time.UTC))
+		"Anna", time.Date(2029, 12, 31, 20, 0, 0, 0, time.UTC))
 	if !errors.Is(err, events.ErrGameNotBookable) {
 		t.Fatalf("err = %v, want ErrGameNotBookable", err)
 	}

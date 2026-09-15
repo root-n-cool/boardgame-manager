@@ -25,7 +25,7 @@ func TestSubmitMatchResult_CreatesAndReturnsPlayers(t *testing.T) {
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -58,7 +58,7 @@ func TestSubmitMatchResult_ResubmittingReplacesPlayersWithoutDuplicating(t *test
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestSubmitMatchResult_RejectsWrongCode(t *testing.T) {
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -126,7 +126,7 @@ func TestSubmitMatchResult_RejectsCancelledBooking(t *testing.T) {
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestSubmitMatchResult_RejectsEmptyPlayers(t *testing.T) {
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestCancelBooking_DeletesExistingMatchResult(t *testing.T) {
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -219,7 +219,7 @@ func TestGetMatchResultForEventGame_ReturnsNilWhenNoneSubmitted(t *testing.T) {
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331234567", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -242,12 +242,12 @@ func TestSubmitMatchResult_IsSharedByTheWholeTable(t *testing.T) {
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
 	first, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Mario", "mario@example.com", "3331111111", now)
+		"Mario", now)
 	if err != nil {
 		t.Fatalf("first booking: %v", err)
 	}
 	second, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-		"Luigi", "luigi@example.com", "3332222222", now)
+		"Luigi", now)
 	if err != nil {
 		t.Fatalf("second booking: %v", err)
 	}
@@ -309,8 +309,7 @@ func TestListMatchResultsForEvent_OneRowPerCopy(t *testing.T) {
 
 	for i, eg := range eventGames {
 		b, err := eventStore.CreateBooking(ctx, event.ID, eg.ID,
-			fmt.Sprintf("G%d", i), fmt.Sprintf("g%d@example.com", i),
-			fmt.Sprintf("33300000%02d", i), now)
+			fmt.Sprintf("G%d", i), now)
 		if err != nil {
 			t.Fatalf("booking on copy %d: %v", i+1, err)
 		}

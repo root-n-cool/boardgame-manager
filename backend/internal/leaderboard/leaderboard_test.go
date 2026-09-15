@@ -48,7 +48,7 @@ func TestGetLeaderboard_AggregatesWinsAndAveragesAcrossEvents(t *testing.T) {
 	event1Games, _ := eventStore.ListEventGames(ctx, event1.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 
-	booking1, err := eventStore.CreateBooking(ctx, event1.ID, event1Games[0].ID, "Mario Rossi", "mario@example.com", "3331111111", now)
+	booking1, err := eventStore.CreateBooking(ctx, event1.ID, event1Games[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking 1: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestGetLeaderboard_AggregatesWinsAndAveragesAcrossEvents(t *testing.T) {
 		t.Fatalf("create event 2: %v", err)
 	}
 	event2Games, _ := eventStore.ListEventGames(ctx, event2.ID)
-	booking2, err := eventStore.CreateBooking(ctx, event2.ID, event2Games[0].ID, "Luigi Verdi", "luigi2@example.com", "3332222222", now)
+	booking2, err := eventStore.CreateBooking(ctx, event2.ID, event2Games[0].ID, "Luigi Verdi", now)
 	if err != nil {
 		t.Fatalf("create booking 2: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestGetLeaderboard_TiedTopScoreBothCountAsWinners(t *testing.T) {
 	}
 	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
 	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
-	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", "mario@example.com", "3331111111", now)
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
 	if err != nil {
 		t.Fatalf("create booking: %v", err)
 	}
@@ -177,8 +177,7 @@ func TestGetLeaderboard_CountsATableOnce(t *testing.T) {
 	// risultato: la partita giocata resta una.
 	for i := 0; i < 5; i++ {
 		b, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID,
-			fmt.Sprintf("G%d", i), fmt.Sprintf("g%d@example.com", i),
-			fmt.Sprintf("33300000%02d", i), now)
+			fmt.Sprintf("G%d", i), now)
 		if err != nil {
 			t.Fatalf("booking %d: %v", i, err)
 		}

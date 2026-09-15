@@ -11,15 +11,13 @@ import (
 )
 
 type Booking struct {
-	ID               int64
-	EventID          int64
-	EventGameID      int64
-	ParticipantName  string
-	ParticipantEmail string
-	ParticipantPhone string
-	BookingCode      string
-	Status           string
-	CreatedAt        time.Time
+	ID              int64
+	EventID         int64
+	EventGameID     int64
+	ParticipantName string
+	BookingCode     string
+	Status          string
+	CreatedAt       time.Time
 }
 
 const (
@@ -30,7 +28,6 @@ const (
 var (
 	ErrEventAlreadyStarted       = errors.New("event already started")
 	ErrGameSoldOut               = errors.New("game sold out")
-	ErrDuplicatePhoneBooking     = errors.New("phone already has an active booking for this event")
 	ErrInvalidBookingCredentials = errors.New("invalid email or booking code")
 	ErrGameNotBookable           = errors.New("game is not bookable at this event")
 )
@@ -53,7 +50,7 @@ func generateBookingCode() (string, error) {
 	return string(code), nil
 }
 
-func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, name, email, phone string, now time.Time) (Booking, error) {
+func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, name string, now time.Time) (Booking, error) {
 	event, err := s.GetEvent(ctx, eventID)
 	if err != nil {
 		return Booking{}, err
@@ -92,20 +89,18 @@ func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, n
 	// Single atomic statement: the WHERE clause re-checks capacity as part of
 	// the same write, so SQLite's write-lock makes this race-safe against
 	// concurrent bookings for the last remaining seat — no separate
-	// check-then-insert window. A collision on the (event_id, phone) unique
-	// index (a duplicate booking that slipped past an earlier read) surfaces
-	// here too and is mapped to ErrDuplicatePhoneBooking below.
+	// check-then-insert window. terms_accepted_at takes the column's own
+	// default (datetime('now')), exactly like created_at: the row is only
+	// ever written after the handler has checked termsAccepted, so the
+	// insert instant doubles as the consent instant.
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO bookings (event_id, event_game_id, participant_name, participant_email, participant_phone, booking_code, status)
-		 SELECT ?, ?, ?, ?, ?, ?, 'active'
+		`INSERT INTO bookings (event_id, event_game_id, participant_name, booking_code, status)
+		 SELECT ?, ?, ?, ?, 'active'
 		 WHERE (SELECT COUNT(*) FROM bookings WHERE event_game_id = ? AND status = 'active') <
 		       (SELECT seats FROM event_games WHERE id = ?)`,
-		eventID, eventGameID, name, email, phone, code, eventGameID, eventGameID,
+		eventID, eventGameID, name, code, eventGameID, eventGameID,
 	)
 	if err != nil {
-		if isUniqueConstraintErr(err) {
-			return Booking{}, ErrDuplicatePhoneBooking
-		}
 		return Booking{}, err
 	}
 	affected, err := res.RowsAffected()
@@ -127,9 +122,9 @@ func (s *Store) getBookingByID(ctx context.Context, id int64) (Booking, error) {
 	var b Booking
 	var createdAt string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, event_id, event_game_id, participant_name, participant_email, participant_phone, booking_code, status, created_at
+		`SELECT id, event_id, event_game_id, participant_name, booking_code, status, created_at
 		 FROM bookings WHERE id = ?`, id,
-	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.ParticipantEmail, &b.ParticipantPhone, &b.BookingCode, &b.Status, &createdAt)
+	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.BookingCode, &b.Status, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Booking{}, ErrNotFound
 	}
@@ -145,9 +140,9 @@ func (s *Store) LookupBooking(ctx context.Context, code string) (Booking, error)
 	var b Booking
 	var createdAt string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, event_id, event_game_id, participant_name, participant_email, participant_phone, booking_code, status, created_at
+		`SELECT id, event_id, event_game_id, participant_name, booking_code, status, created_at
 		 FROM bookings WHERE booking_code = ? AND status = 'active'`, code,
-	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.ParticipantEmail, &b.ParticipantPhone, &b.BookingCode, &b.Status, &createdAt)
+	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.BookingCode, &b.Status, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Booking{}, ErrInvalidBookingCredentials
 	}
@@ -234,7 +229,7 @@ type BookingWithGame struct {
 
 func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]BookingWithGame, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT b.id, b.event_id, b.event_game_id, b.participant_name, b.participant_email, b.participant_phone,
+		`SELECT b.id, b.event_id, b.event_game_id, b.participant_name,
 		        b.booking_code, b.status, b.created_at, g.id, g.name, eg.copy_index, eg.seats
 		 FROM bookings b
 		 JOIN event_games eg ON b.event_game_id = eg.id
@@ -250,8 +245,8 @@ func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]Book
 	for rows.Next() {
 		var bg BookingWithGame
 		var createdAt string
-		if err := rows.Scan(&bg.ID, &bg.EventID, &bg.EventGameID, &bg.ParticipantName, &bg.ParticipantEmail,
-			&bg.ParticipantPhone, &bg.BookingCode, &bg.Status, &createdAt, &bg.GameID, &bg.GameName,
+		if err := rows.Scan(&bg.ID, &bg.EventID, &bg.EventGameID, &bg.ParticipantName,
+			&bg.BookingCode, &bg.Status, &createdAt, &bg.GameID, &bg.GameName,
 			&bg.CopyIndex, &bg.Seats); err != nil {
 			return nil, err
 		}

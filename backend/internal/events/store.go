@@ -616,19 +616,16 @@ func (s *Store) DeleteEvent(ctx context.Context, id int64) error {
 // the bookings/lookup/cancel tests added in later tasks) can set up booking
 // fixtures without a circular dependency on CreateBooking's own tests.
 func (s *Store) TestInsertBooking(eventID, eventGameID int64, status string) error {
-	// Each call must generate a distinct booking_code and participant_phone.
-	// The counter increment ensures uniqueness even when called multiple times with
-	// identical eventGameID and status parameters. Without it, the formula
-	// (eventGameID*10+len(status)) would collide, violating:
-	// (a) booking_code UNIQUE constraint, and
-	// (b) idx_one_active_booking_per_phone_per_event partial unique index.
+	// Each call must generate a distinct booking_code: the counter increment
+	// ensures uniqueness even when called multiple times with identical
+	// eventGameID and status parameters, which would otherwise collide on
+	// the booking_code UNIQUE constraint.
 	counter := atomic.AddInt64(&testBookingCounter, 1)
 	code := fmt.Sprintf("TEST%04d%d", eventGameID*10+int64(len(status)), counter)
-	phone := fmt.Sprintf("TEST%04d%d", eventGameID*10+int64(len(status)), counter)
 	_, err := s.db.Exec(
-		`INSERT INTO bookings (event_id, event_game_id, participant_name, participant_email, participant_phone, booking_code, status)
-		 VALUES (?, ?, 'Test Participant', 'test@example.com', ?, ?, ?)`,
-		eventID, eventGameID, phone, code, status,
+		`INSERT INTO bookings (event_id, event_game_id, participant_name, booking_code, status)
+		 VALUES (?, ?, 'Test Participant', ?, ?)`,
+		eventID, eventGameID, code, status,
 	)
 	return err
 }
