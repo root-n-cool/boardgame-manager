@@ -18,6 +18,7 @@ import EventsAdminView from '../views/EventsAdminView.vue'
 import EventNewView from '../views/EventNewView.vue'
 import EventAdminDetailView from '../views/EventAdminDetailView.vue'
 import LoanDeskView from '../views/LoanDeskView.vue'
+import LegalPageView from '../views/LegalPageView.vue'
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -35,6 +36,20 @@ const router = createRouter({
     { path: '/', name: 'events', component: EventsView, meta: { public: true } },
     { path: '/events/:id', name: 'event-detail', component: EventDetailView, meta: { public: true } },
     { path: '/manage-booking', name: 'manage-booking', component: ManageBookingView, meta: { public: true } },
+    {
+      path: '/terms',
+      name: 'terms',
+      component: LegalPageView,
+      props: { title: 'Termini e condizioni', apiPath: '/legal/terms' },
+      meta: { public: true },
+    },
+    {
+      path: '/privacy',
+      name: 'privacy',
+      component: LegalPageView,
+      props: { title: 'Privacy', apiPath: '/legal/privacy' },
+      meta: { public: true },
+    },
     // I due link che partono nella mail di conferma. Stesso componente di
     // /manage-booking: la pagina sa già fare entrambe le cose, e il path
     // decide solo se il codice arriva dall'indirizzo o dal form.
