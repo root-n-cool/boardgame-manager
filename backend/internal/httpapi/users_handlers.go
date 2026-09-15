@@ -92,7 +92,7 @@ func (s *Server) createUserHandler(w http.ResponseWriter, r *http.Request) {
 			inviter = actor.Email
 		}
 		link := inviteURL(s.publicBaseURL(r), token)
-		s.sendMailAsync(s.mailSender(r.Context()), inviteMail(email, inviter, link))
+		s.sendMailAsync(s.mailSender(r.Context()), inviteMail(s.siteName(r.Context()), email, inviter, link))
 	}
 
 	resp := userResponse(user)

@@ -99,6 +99,18 @@ func (s *Server) publicBaseURL(r *http.Request) string {
 	return scheme + "://" + r.Host
 }
 
+// siteName è il nome che le email usano per presentare l'app: il titolo
+// configurato dall'admin, o "BoardGames Manager" quando non è impostato —
+// lo stesso fallback di GET /api/site e di webui.
+func (s *Server) siteName(ctx context.Context) string {
+	if s.Settings != nil {
+		if cfg, err := s.Settings.Get(ctx); err == nil && cfg.SiteTitle != "" {
+			return cfg.SiteTitle
+		}
+	}
+	return defaultSiteTitle
+}
+
 // Gli indirizzi che finiscono nelle mail. Stanno insieme perché devono
 // restare allineati alle rotte del frontend: cambiare un path in
 // frontend/src/router/index.ts vuol dire cambiare qui.

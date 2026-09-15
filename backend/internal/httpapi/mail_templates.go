@@ -101,11 +101,11 @@ func mailFactRow(label, value string) string {
 </tr>`
 }
 
-func inviteMail(to, invitedBy, inviteURL string) mailer.Message {
+func inviteMail(siteName, to, invitedBy, inviteURL string) mailer.Message {
 	text := strings.Join([]string{
 		"Ciao,",
 		"",
-		fmt.Sprintf("%s ti ha aggiunto come amministratore di BoardGames Manager.", invitedBy),
+		fmt.Sprintf("%s ti ha aggiunto come amministratore di %s.", invitedBy, siteName),
 		"",
 		"Apri questo link per scegliere la tua password ed entrare:",
 		inviteURL,
@@ -114,7 +114,7 @@ func inviteMail(to, invitedBy, inviteURL string) mailer.Message {
 	}, "\n")
 
 	body := mailParagraph("Ciao,") +
-		mailParagraph(fmt.Sprintf("%s ti ha aggiunto come amministratore di BoardGames Manager.", invitedBy)) +
+		mailParagraph(fmt.Sprintf("%s ti ha aggiunto come amministratore di %s.", invitedBy, siteName)) +
 		mailParagraph("Scegli la tua password ed entra:") +
 		mailButton("Attiva il tuo accesso", inviteURL) +
 		mailNote("Il link è personale e vale una volta sola: chi ti ha invitato non vedrà mai la password che scegli.")
@@ -123,7 +123,7 @@ func inviteMail(to, invitedBy, inviteURL string) mailer.Message {
 		To:       to,
 		Subject:  "Il tuo accesso da amministratore",
 		TextBody: text,
-		HTMLBody: mailShell("BoardGames Manager", body),
+		HTMLBody: mailShell(siteName, body),
 	}
 }
 
@@ -229,19 +229,19 @@ func bookingCancelledMail(d bookingMailData, eventURL string, byAdmin bool) mail
 
 // smtpTestMail è la mail del bottone "Invia email di prova": deve
 // spiegarsi da sola a chi la trova in casella fra sei mesi.
-func smtpTestMail(to string) mailer.Message {
+func smtpTestMail(siteName, to string) mailer.Message {
 	text := strings.Join([]string{
-		"Se stai leggendo questa mail, la configurazione SMTP di BoardGames Manager funziona.",
+		fmt.Sprintf("Se stai leggendo questa mail, la configurazione SMTP di %s funziona.", siteName),
 		"",
 		"Da qui in poi partiranno da sole: l'invito di un amministratore, la conferma di una prenotazione con il codice e i link, e l'avviso di annullamento.",
 	}, "\n")
 
-	body := mailParagraph("Se stai leggendo questa mail, la configurazione SMTP di BoardGames Manager funziona.") +
+	body := mailParagraph(fmt.Sprintf("Se stai leggendo questa mail, la configurazione SMTP di %s funziona.", siteName)) +
 		mailParagraph("Da qui in poi partiranno da sole: l'invito di un amministratore, la conferma di una prenotazione con il codice e i link, e l'avviso di annullamento.")
 
 	return mailer.Message{
 		To:       to,
-		Subject:  "Email di prova da BoardGames Manager",
+		Subject:  fmt.Sprintf("Email di prova da %s", siteName),
 		TextBody: text,
 		HTMLBody: mailShell("Email di prova", body),
 	}

@@ -38,7 +38,7 @@ func bothBodies(t *testing.T, subject, text, html string) []string {
 }
 
 func TestInviteMail_CarriesTheLinkAndWhoInvited(t *testing.T) {
-	m := inviteMail("nuovo@example.com", "admin@example.com", "https://giochi.example.org/invito/tok123")
+	m := inviteMail("BoardGames Manager", "nuovo@example.com", "admin@example.com", "https://giochi.example.org/invito/tok123")
 
 	if m.To != "nuovo@example.com" {
 		t.Errorf("To = %q", m.To)
@@ -120,7 +120,7 @@ func TestBookingCancelledMail_DistinguishesWhoCancelled(t *testing.T) {
 }
 
 func TestSMTPTestMail_IsSelfExplanatory(t *testing.T) {
-	m := smtpTestMail("admin@example.com")
+	m := smtpTestMail("BoardGames Manager", "admin@example.com")
 	if m.To != "admin@example.com" {
 		t.Errorf("To = %q", m.To)
 	}
@@ -136,10 +136,10 @@ func TestTemplates_LeaveNoPlaceholders(t *testing.T) {
 		name string
 		m    mailer.Message
 	}{
-		{"invito", inviteMail("a@b.org", "c@d.org", "https://x/invito/t")},
+		{"invito", inviteMail("BoardGames Manager", "a@b.org", "c@d.org", "https://x/invito/t")},
 		{"conferma", bookingConfirmationMail(testBookingData(), "https://x/m", "https://x/s")},
 		{"annullamento", bookingCancelledMail(testBookingData(), "https://x/e", true)},
-		{"prova", smtpTestMail("a@b.org")},
+		{"prova", smtpTestMail("BoardGames Manager", "a@b.org")},
 	}
 	for _, tc := range messages {
 		for _, body := range []string{tc.m.Subject, tc.m.TextBody, tc.m.HTMLBody} {
@@ -148,6 +148,24 @@ func TestTemplates_LeaveNoPlaceholders(t *testing.T) {
 					t.Errorf("%s: placeholder non sostituito %q in:\n%s", tc.name, bad, body)
 				}
 			}
+		}
+	}
+}
+
+func TestInviteMail_UsesTheConfiguredSiteName(t *testing.T) {
+	m := inviteMail("Ludoteca Vicolo Corto", "nuovo@example.com", "admin@example.com", "https://x/invito/t")
+	for _, body := range bothBodies(t, m.Subject, m.TextBody, m.HTMLBody) {
+		if !strings.Contains(body, "Ludoteca Vicolo Corto") {
+			t.Errorf("expected the configured site name, got:\n%s", body)
+		}
+	}
+}
+
+func TestSMTPTestMail_UsesTheConfiguredSiteName(t *testing.T) {
+	m := smtpTestMail("Ludoteca Vicolo Corto", "admin@example.com")
+	for _, body := range bothBodies(t, m.Subject, m.TextBody, m.HTMLBody) {
+		if !strings.Contains(body, "Ludoteca Vicolo Corto") {
+			t.Errorf("expected the configured site name, got:\n%s", body)
 		}
 	}
 }

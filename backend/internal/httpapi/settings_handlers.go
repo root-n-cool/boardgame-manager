@@ -292,7 +292,7 @@ func (s *Server) testSMTPHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), mailSendTimeout)
 	defer cancel()
 
-	err := s.mailSender(ctx).Send(ctx, smtpTestMail(admin.Email))
+	err := s.mailSender(ctx).Send(ctx, smtpTestMail(s.siteName(r.Context()), admin.Email))
 	if errors.Is(err, mailer.ErrNotConfigured) {
 		writeError(w, http.StatusConflict, "SMTP non configurato: compila server, porta e indirizzo mittente, poi salva")
 		return
