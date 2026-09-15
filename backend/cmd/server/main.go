@@ -60,7 +60,7 @@ func main() {
 
 	apiRouter := httpapi.NewRouter(server)
 
-	uiHandler, err := webui.Handler()
+	uiHandler, err := webui.Handler(server.Settings)
 	if err != nil {
 		log.Fatalf("load embedded frontend: %v", err)
 	}

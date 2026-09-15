@@ -1,25 +1,33 @@
 package webui
 
 import (
+	"context"
+	"errors"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"boardgames-manager/internal/settings"
 )
 
-// TestHandlerFor_ErrorsWhenIndexHTMLMissing guards against the frontend
-// silently not being built. //go:embed dist/* matches the tracked
-// dist/.gitkeep placeholder on its own, so the package compiles fine with no
-// real build output; before this check the SPA fallback then asked
-// http.FileServer to serve "/" from a directory with no index file, which
-// answers with a 200 and a browsable file listing rather than any error.
+var errTestSettingsUnavailable = errors.New("settings store unavailable")
+
+type fakeSettingsReader struct {
+	cfg settings.Settings
+	err error
+}
+
+func (f fakeSettingsReader) Get(ctx context.Context) (settings.Settings, error) {
+	return f.cfg, f.err
+}
+
 func TestHandlerFor_ErrorsWhenIndexHTMLMissing(t *testing.T) {
-	// Mirrors a fresh clone's dist/: the placeholder and nothing else.
 	gitkeepOnly := fstest.MapFS{
 		".gitkeep": {Data: []byte{}},
 	}
 
-	handler, err := handlerFor(gitkeepOnly)
+	handler, err := handlerFor(gitkeepOnly, fakeSettingsReader{})
 	if err == nil {
 		t.Fatal("expected an error when dist/ has no index.html, got nil")
 	}
@@ -34,13 +42,17 @@ func TestHandlerFor_ErrorsWhenIndexHTMLMissing(t *testing.T) {
 	}
 }
 
-func TestHandlerFor_ServesIndexHTMLForClientRoutes(t *testing.T) {
-	built := fstest.MapFS{
-		"index.html":       {Data: []byte("<div id=\"app\"></div>")},
+func indexFS(title string) fstest.MapFS {
+	return fstest.MapFS{
+		"index.html": {Data: []byte(
+			`<title>__SITE_TITLE__</title><link rel="icon" href="__FAVICON_URL__" /><div id="app"></div>`,
+		)},
 		"assets/index.css": {Data: []byte(".layout{}")},
 	}
+}
 
-	handler, err := handlerFor(built)
+func TestHandlerFor_ServesIndexHTMLForClientRoutes(t *testing.T) {
+	handler, err := handlerFor(indexFS(""), fakeSettingsReader{})
 	if err != nil {
 		t.Fatalf("handlerFor: %v", err)
 	}
@@ -68,4 +80,62 @@ func TestHandlerFor_ServesIndexHTMLForClientRoutes(t *testing.T) {
 			t.Fatalf("expected the asset body, got %q", got)
 		}
 	})
+}
+
+func TestHandlerFor_InjectsTheConfiguredTitleAndFavicon(t *testing.T) {
+	handler, err := handlerFor(indexFS(""), fakeSettingsReader{
+		cfg: settings.Settings{SiteTitle: "Ludoteca Vicolo Corto", FaviconFilename: "abc123.png"},
+	})
+	if err != nil {
+		t.Fatalf("handlerFor: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "<title>Ludoteca Vicolo Corto</title>") {
+		t.Errorf("expected the configured title, got: %s", body)
+	}
+	if !strings.Contains(body, `href="/api/uploads/abc123.png"`) {
+		t.Errorf("expected the configured favicon URL, got: %s", body)
+	}
+}
+
+func TestHandlerFor_FallsBackToDefaultsWhenNothingIsConfigured(t *testing.T) {
+	handler, err := handlerFor(indexFS(""), fakeSettingsReader{})
+	if err != nil {
+		t.Fatalf("handlerFor: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "<title>BoardGames Manager</title>") {
+		t.Errorf("expected the default title, got: %s", body)
+	}
+	if !strings.Contains(body, `href="/favicon.svg"`) {
+		t.Errorf("expected the default favicon, got: %s", body)
+	}
+}
+
+// Un DB irraggiungibile non deve mai rompere il caricamento della pagina:
+// meglio i default che una pagina bianca.
+func TestHandlerFor_FallsBackToDefaultsWhenSettingsFail(t *testing.T) {
+	handler, err := handlerFor(indexFS(""), fakeSettingsReader{err: errTestSettingsUnavailable})
+	if err != nil {
+		t.Fatalf("handlerFor: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest("GET", "/", nil))
+
+	if rec.Code != 200 {
+		t.Fatalf("got status %d, want 200", rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, "<title>BoardGames Manager</title>") || !strings.Contains(body, `href="/favicon.svg"`) {
+		t.Errorf("expected the defaults on a settings error, got: %s", body)
+	}
 }

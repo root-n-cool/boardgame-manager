@@ -1,12 +1,20 @@
 package webui_test
 
 import (
+	"context"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/webui"
 )
+
+type fakeSiteSettings struct{}
+
+func (fakeSiteSettings) Get(ctx context.Context) (settings.Settings, error) {
+	return settings.Settings{}, nil
+}
 
 // TestHandler_SPAFallbackDoesNotMutateOriginalRequest guards against a
 // regression where constructing the index.html fallback request aliased the
@@ -15,7 +23,7 @@ import (
 // a side effect. Any middleware that inspects r.URL.Path after ServeHTTP
 // returns (access logging, tracing, etc.) would then see the wrong path.
 func TestHandler_SPAFallbackDoesNotMutateOriginalRequest(t *testing.T) {
-	handler, err := webui.Handler()
+	handler, err := webui.Handler(fakeSiteSettings{})
 	if err != nil {
 		t.Fatalf("webui.Handler: %v", err)
 	}
@@ -43,7 +51,7 @@ func TestHandler_SPAFallbackDoesNotMutateOriginalRequest(t *testing.T) {
 // "frontend really got built" contract; see handlerFor's own tests for the
 // missing-index.html case, which needs an alternate filesystem to exercise.
 func TestHandler_SucceedsWithEmbeddedBuildOutput(t *testing.T) {
-	if _, err := webui.Handler(); err != nil {
+	if _, err := webui.Handler(fakeSiteSettings{}); err != nil {
 		t.Fatalf("Handler() failed — is the frontend built? %v", err)
 	}
 }
