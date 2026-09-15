@@ -1737,16 +1737,16 @@ git commit -m "feat: show the configured logo and site title in the header, add 
 ## Task 10: Rotte e view pubbliche `/terms` e `/privacy`
 
 **Files:**
-- Create: `frontend/src/views/TermsView.vue`
-- Create: `frontend/src/views/PrivacyView.vue`
+- Create: `frontend/src/views/LegalPageView.vue`
 - Modify: `frontend/src/router/index.ts`
 
 **Interfaces:**
 - Consumes: `GET /api/legal/terms`, `GET /api/legal/privacy` da Task 5; `MarkdownText.vue` (prop `text: string`).
+- Un solo componente per le due pagine, guidato da props — stesso schema di `ManageBookingView`, che il router già usa per più rotte (`/manage-booking`, `/prenotazione/:code`, `/prenotazione/:code/punteggio`) passando `mode` come prop invece di duplicare il componente.
 
-- [ ] **Step 1: Crea le due view**
+- [ ] **Step 1: Crea la view**
 
-Crea `frontend/src/views/TermsView.vue`:
+Crea `frontend/src/views/LegalPageView.vue`:
 
 ```vue
 <script setup lang="ts">
@@ -1754,12 +1754,17 @@ import { onMounted, ref } from 'vue'
 import { api } from '../api/client'
 import MarkdownText from '../components/MarkdownText.vue'
 
+const props = defineProps<{
+  title: string
+  apiPath: '/legal/terms' | '/legal/privacy'
+}>()
+
 const markdown = ref('')
 const loaded = ref(false)
 
 onMounted(async () => {
   try {
-    const res = await api.get<{ markdown: string }>('/legal/terms', { skipAuthRedirect: true })
+    const res = await api.get<{ markdown: string }>(props.apiPath, { skipAuthRedirect: true })
     markdown.value = res.markdown
   } finally {
     loaded.value = true
@@ -1769,37 +1774,7 @@ onMounted(async () => {
 
 <template>
   <div>
-    <h1>Termini e condizioni</h1>
-    <MarkdownText v-if="markdown" :text="markdown" />
-    <p v-else-if="loaded" class="field-hint">Contenuto non ancora disponibile.</p>
-  </div>
-</template>
-```
-
-Crea `frontend/src/views/PrivacyView.vue` (identica, sul path e sul titolo):
-
-```vue
-<script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { api } from '../api/client'
-import MarkdownText from '../components/MarkdownText.vue'
-
-const markdown = ref('')
-const loaded = ref(false)
-
-onMounted(async () => {
-  try {
-    const res = await api.get<{ markdown: string }>('/legal/privacy', { skipAuthRedirect: true })
-    markdown.value = res.markdown
-  } finally {
-    loaded.value = true
-  }
-})
-</script>
-
-<template>
-  <div>
-    <h1>Privacy</h1>
+    <h1>{{ title }}</h1>
     <MarkdownText v-if="markdown" :text="markdown" />
     <p v-else-if="loaded" class="field-hint">Contenuto non ancora disponibile.</p>
   </div>
@@ -1808,19 +1783,30 @@ onMounted(async () => {
 
 - [ ] **Step 2: Aggiungi le rotte**
 
-In `frontend/src/router/index.ts`, aggiungi gli import in cima:
+In `frontend/src/router/index.ts`, aggiungi l'import in cima:
 
 ```typescript
-import TermsView from '../views/TermsView.vue'
-import PrivacyView from '../views/PrivacyView.vue'
+import LegalPageView from '../views/LegalPageView.vue'
 ```
 
-E le due rotte, subito dopo quella di `/manage-booking`:
+E le due rotte, subito dopo quella di `/manage-booking`, entrambe sullo stesso componente con props diverse (come già fanno le rotte di `ManageBookingView` più sotto):
 
 ```typescript
     { path: '/manage-booking', name: 'manage-booking', component: ManageBookingView, meta: { public: true } },
-    { path: '/terms', name: 'terms', component: TermsView, meta: { public: true } },
-    { path: '/privacy', name: 'privacy', component: PrivacyView, meta: { public: true } },
+    {
+      path: '/terms',
+      name: 'terms',
+      component: LegalPageView,
+      props: { title: 'Termini e condizioni', apiPath: '/legal/terms' },
+      meta: { public: true },
+    },
+    {
+      path: '/privacy',
+      name: 'privacy',
+      component: LegalPageView,
+      props: { title: 'Privacy', apiPath: '/legal/privacy' },
+      meta: { public: true },
+    },
 ```
 
 - [ ] **Step 3: Build e verifica nel browser**
@@ -1834,7 +1820,7 @@ Con l'app in esecuzione, apri `/terms` e `/privacy` in Claude in Chrome: senza c
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/views/TermsView.vue frontend/src/views/PrivacyView.vue frontend/src/router/index.ts
+git add frontend/src/views/LegalPageView.vue frontend/src/router/index.ts
 git commit -m "feat: publish /terms and /privacy pages"
 ```
 
