@@ -193,7 +193,11 @@ watch(
         </svg>
       </button>
 
-      <router-link :to="{ name: 'events' }" class="brand">
+      <router-link
+        :to="{ name: 'events' }"
+        class="brand"
+        :aria-label="site.logoFilename ? site.siteTitle : undefined"
+      >
         <img
           v-if="site.logoFilename"
           :src="`/api/uploads/${site.logoFilename}`"
