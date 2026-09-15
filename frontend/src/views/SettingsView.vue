@@ -389,17 +389,17 @@ onMounted(async () => {
           <h2>Configurazione Email (SMTP)</h2>
         </div>
         <p class="field-hint">
-          Se lo configuri, l'app manda da sé l'invito di un amministratore, la
-          conferma di una prenotazione — con il codice e i link per disdire o
-          segnare i punti — e l'avviso di annullamento. Lasciandolo vuoto
-          funziona come prima: il codice resta solo a schermo e il link di
-          invito si copia a mano.
+          Se lo configuri, l'app manda da sé l'invito di un amministratore e
+          la conferma di una prenotazione — con il codice e i link per
+          disdire o segnare i punti — quando chi prenota lascia un'email
+          (è facoltativa). Lasciandolo vuoto funziona come prima: il codice
+          resta solo a schermo e il link di invito si copia a mano.
         </p>
         <p v-if="smtpConfigured && !publicBaseUrl" class="field-hint">
           Manca l'indirizzo pubblico, qui sopra in "Generale": senza,
-          l'invito di un amministratore e l'avviso di annullamento portano
-          un link composto dall'indirizzo con cui stai navigando adesso, che
-          chi lo riceve potrebbe non riuscire a raggiungere.
+          l'invito di un amministratore porta un link composto
+          dall'indirizzo con cui stai navigando adesso, che chi lo riceve
+          potrebbe non riuscire a raggiungere.
         </p>
 
         <label>

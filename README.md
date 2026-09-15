@@ -250,10 +250,11 @@ Dalla pagina "Impostazioni" (da admin autenticato):
   funziona come prima: descrizioni in inglese, nessun comando di
   traduzione, nessuna chat sul manuale. Dettagli sotto.
 - **Email (SMTP)**: se configurato, l'app manda da sé l'invito di un
-  amministratore, la conferma di una prenotazione e l'avviso di
-  annullamento. Se assente, l'app funziona esattamente come prima: il
-  codice di prenotazione resta a schermo e il link d'invito si copia a
-  mano. Dettagli sotto.
+  amministratore e la conferma di una prenotazione (se chi prenota ha
+  lasciato un'email — è facoltativa e non viene mai salvata). Se
+  assente, l'app funziona esattamente come prima: il codice di
+  prenotazione resta a schermo e il link d'invito si copia a mano.
+  Dettagli sotto.
 - **Sito**: titolo usato nel titolo della pagina e, quando non c'è un
   logo, nell'header; logo e favicon personalizzati (JPEG, PNG o WebP,
   fino a 5MB); i testi in Markdown delle pagine `/terms` e `/privacy`,
@@ -386,13 +387,13 @@ Senza un server SMTP configurato l'app funziona esattamente come prima:
 il `booking_code` resta a schermo dopo la prenotazione e il link
 d'invito di un amministratore si copia e recapita a mano. Configurando
 un server nella sezione "Configurazione Email (SMTP)" della pagina
-Impostazioni partono da sole tre email:
+Impostazioni partono da sole due email:
 
 - **invito di un amministratore**, con il link per attivare l'accesso;
 - **conferma di prenotazione**, col codice, il link per gestirla o
-  disdirla e quello per inserire il punteggio a fine partita;
-- **avviso di annullamento**, sia quando è il partecipante a disdire sia
-  quando lo fa un organizzatore.
+  disdirla e quello per inserire il punteggio a fine partita — solo se
+  chi prenota ha lasciato un'email: è facoltativa e non viene mai
+  salvata sul database.
 
 I valori (server, porta, sicurezza, utente, password, mittente) si
 inseriscono nella pagina Impostazioni e restano nel database — **non**

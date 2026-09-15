@@ -1,6 +1,6 @@
-// Package mailer manda email via SMTP. Nel progetto serve alle tre
-// comunicazioni verso l'esterno: l'invito di un amministratore, la
-// conferma di una prenotazione e l'avviso di annullamento.
+// Package mailer manda email via SMTP. Nel progetto serve alle due
+// comunicazioni verso l'esterno: l'invito di un amministratore e la
+// conferma di una prenotazione.
 //
 // Come internal/ai, è un sottosistema opzionale: senza configurazione
 // restituisce ErrNotConfigured, che per il chiamante non è un guasto ma

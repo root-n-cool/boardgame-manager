@@ -112,16 +112,24 @@ risultato di una sessione di brainstorming con l'utente.
 
 **Prenotazioni & punteggi**
 
-- Prenotazioni anonime: nome, email, telefono. Vincolo: un solo booking
-  attivo per coppia `(event_id, telefono)`.
+- Prenotazioni anonime: solo nome, più un consenso obbligatorio a
+  termini e privacy (checkbox in fase di prenotazione, verificato anche
+  lato server; la prova è un timestamp sul booking). Niente telefono:
+  non si raccoglie più. L'email è facoltativa e non viene mai salvata —
+  si usa solo al volo per la mail di conferma, se lasciata. Il "non hai
+  già prenotato questo tavolo" non è più un vincolo server: il browser
+  di chi prenota lo ricorda da sé (localStorage) e mostra una pastiglia
+  "Prenotato" al posto del bottone, con le azioni annulla/segna
+  punteggio.
 - Alla prenotazione si genera un `booking_code` mostrato a schermo.
   L'invio email è **opzionale**: configurando un server SMTP nelle
   impostazioni partono la conferma di prenotazione (col codice e i link
-  diretti a disdetta e punteggi), l'invito di un amministratore e
-  l'avviso di annullamento. Senza SMTP l'app funziona per intero come
-  prima — il codice resta a schermo e il link d'invito si copia a mano.
-  Vale la stessa regola del provider AI: nessun campo obbligatorio,
-  nessun errore in UI perché la posta manca.
+  diretti a disdetta e punteggi, solo se è stata lasciata un'email) e
+  l'invito di un amministratore. Senza SMTP l'app funziona per intero
+  come prima — il codice resta a schermo e il link d'invito si copia a
+  mano. Non esiste più un avviso di annullamento via mail: senza
+  l'email salvata sul booking non c'è più un indirizzo a cui mandarlo,
+  né quando annulla il partecipante né quando annulla l'admin.
 - Il `booking_code` da solo permette poi di cancellare la prenotazione
   oppure inserire il punteggio finale (nomi giocatori liberi +
   punteggio numerico per ciascuno, vince il punteggio più alto).

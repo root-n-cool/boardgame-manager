@@ -54,8 +54,9 @@ binario/container, SQLite come unico storage.
 ## Capabilities and Constraints
 
 - Un solo ruolo autenticato (admin); i partecipanti non hanno mai un
-  account, si identificano solo con nome + telefono alla prenotazione
-  e successivamente con il solo `booking_code`.
+  account, si identificano solo con il nome alla prenotazione (email
+  facoltativa, mai salvata; telefono non richiesto) e successivamente
+  con il solo `booking_code`.
 - Catalogo giochi arricchito da BoardGameGeek (copertina, dati base);
   ricerca automatica di manuali/tutorial è opzionale e richiede
   chiavi API configurate dall'admin.
@@ -65,8 +66,8 @@ binario/container, SQLite come unico storage.
 - Email/SMTP opzionale: senza configurazione il `booking_code` resta
   l'unico strumento di gestione post-prenotazione, mostrato a schermo;
   configurando un server SMTP nelle impostazioni l'app manda anche una
-  conferma di prenotazione, un avviso di annullamento e l'invito di un
-  amministratore.
+  conferma di prenotazione (se chi prenota ha lasciato un'email) e
+  l'invito di un amministratore.
 
 ## Brand Commitments
 
