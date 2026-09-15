@@ -131,6 +131,8 @@ func NewRouter(s *Server) http.Handler {
 		protected.Get("/api/settings", s.getSettingsHandler)
 		protected.Put("/api/settings", s.putSettingsHandler)
 		protected.With(smtpTestLimiter.middleware).Post("/api/settings/smtp/test", s.testSMTPHandler)
+		protected.Post("/api/settings/logo", s.uploadLogoHandler)
+		protected.Post("/api/settings/favicon", s.uploadFaviconHandler)
 		protected.Get("/api/games/search", s.searchGamesHandler)
 		protected.With(geocodeLimiter.middleware).Get("/api/geocode/search", s.searchPlacesHandler)
 		protected.Post("/api/games", s.createGameHandler)
