@@ -220,6 +220,14 @@ a {
   height: 22px;
 }
 
+/* Il logo sostituisce icona e nome insieme: stessa altezza dell'icona che
+   rimpiazza, larghezza libera per non deformare loghi non quadrati. */
+.brand-logo {
+  flex: none;
+  height: 22px;
+  width: auto;
+}
+
 /* Sotto i 520px il nome per esteso lascia posto alla sola carta-marchio:
    hamburger, marchio e pallina utente devono stare su una riga sola. */
 @media (max-width: 520px) {
@@ -375,6 +383,32 @@ body.has-open-drawer {
 @media (max-width: 640px) {
   .app-page {
     padding: 1.75rem 1rem 3rem;
+  }
+}
+
+/* Striscia minima in fondo a ogni pagina della shell: le due pagine
+   legali non hanno una voce nel menù, solo qui e da link diretto. */
+.app-footer {
+  display: flex;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 100%;
+  max-width: 56rem;
+  margin: 0 auto;
+  padding: 1rem 1.5rem 2rem;
+  font-size: 0.82rem;
+  color: var(--ink-muted);
+}
+
+.app-footer a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+@media (max-width: 640px) {
+  .app-footer {
+    padding: 1rem 1rem 1.75rem;
   }
 }
 

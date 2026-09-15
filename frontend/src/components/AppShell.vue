@@ -2,6 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useSiteStore } from '../stores/site'
 import UserMenu from './UserMenu.vue'
 
 // Sopra questa soglia la sidebar aperta sta nel flusso accanto al contenuto;
@@ -11,6 +12,7 @@ const STORAGE_KEY = 'bgm.sidebar'
 const BODY_LOCK_CLASS = 'has-open-drawer'
 
 const auth = useAuthStore()
+const site = useSiteStore()
 const route = useRoute()
 
 interface NavItem {
@@ -140,6 +142,7 @@ function onKeydown(e: KeyboardEvent) {
 let media: MediaQueryList | null = null
 
 onMounted(() => {
+  site.load()
   media = window.matchMedia(DESKTOP_QUERY)
   media.addEventListener('change', onMediaChange)
   document.addEventListener('keydown', onKeydown)
@@ -191,14 +194,22 @@ watch(
       </button>
 
       <router-link :to="{ name: 'events' }" class="brand">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="5.6" r="2.6" fill="currentColor" />
-          <path
-            d="M9 9.2h6c1.6 0 2.6.1 3.3.5l.1 3c.05.7-.6 1.2-1.3 1l-1.7-.5-.4 2c.6 1.8.8 3.6.6 5.4h-2.3l-.6-4.6h-1.4l-.6 4.6H8.4c-.2-1.8 0-3.6.6-5.4l-.4-2-1.7.5c-.7.2-1.35-.3-1.3-1l.1-3c.7-.4 1.7-.5 3.3-.5Z"
-            fill="currentColor"
-          />
-        </svg>
-        <span class="brand-name">BoardGames Manager</span>
+        <img
+          v-if="site.logoFilename"
+          :src="`/api/uploads/${site.logoFilename}`"
+          class="brand-logo"
+          alt=""
+        />
+        <template v-else>
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="5.6" r="2.6" fill="currentColor" />
+            <path
+              d="M9 9.2h6c1.6 0 2.6.1 3.3.5l.1 3c.05.7-.6 1.2-1.3 1l-1.7-.5-.4 2c.6 1.8.8 3.6.6 5.4h-2.3l-.6-4.6h-1.4l-.6 4.6H8.4c-.2-1.8 0-3.6.6-5.4l-.4-2-1.7.5c-.7.2-1.35-.3-1.3-1l.1-3c.7-.4 1.7-.5 3.3-.5Z"
+              fill="currentColor"
+            />
+          </svg>
+          <span class="brand-name">{{ site.siteTitle }}</span>
+        </template>
       </router-link>
 
       <UserMenu v-if="auth.user" />
@@ -243,6 +254,11 @@ watch(
         <div class="app-page">
           <slot />
         </div>
+        <footer class="app-footer">
+          <router-link to="/terms">Termini e condizioni</router-link>
+          <span aria-hidden="true">·</span>
+          <router-link to="/privacy">Privacy</router-link>
+        </footer>
       </main>
     </div>
   </div>
