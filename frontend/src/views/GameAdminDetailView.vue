@@ -8,6 +8,7 @@ import GameMediaList from '../components/GameMediaList.vue'
 import BggFilesPicker, { type BggFile } from '../components/BggFilesPicker.vue'
 import ManualPrepPanel from '../components/ManualPrepPanel.vue'
 import GameMaterialsPanel from '../components/GameMaterialsPanel.vue'
+import MarkdownEditor from '../components/MarkdownEditor.vue'
 import SuggestedQuestionsPanel from '../components/SuggestedQuestionsPanel.vue'
 import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
 
@@ -609,7 +610,7 @@ onMounted(async () => {
             </label>
             <label>
               Descrizione
-              <textarea v-model="editDescription" rows="4"></textarea>
+              <MarkdownEditor v-model="editDescription" placeholder="Supporta il Markdown: grassetto, elenchi, link…" />
             </label>
             <p v-if="game.canTranslate && aiConfigured" class="field-hint">
               <button

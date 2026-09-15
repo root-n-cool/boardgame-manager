@@ -146,7 +146,11 @@ func (c *HTTPClient) Translate(ctx context.Context, text, targetLang string) (st
 	system := fmt.Sprintf(
 		"Traduci in %s il testo che ricevi. È la descrizione di un gioco da tavolo presa da BoardGameGeek. "+
 			"Rispondi con il solo testo tradotto: nessun commento, nessun preambolo, nessuna virgoletta intorno. "+
-			"Mantieni gli a capo e i paragrafi dell'originale. Lascia invariati i nomi propri, i titoli dei giochi e delle espansioni.",
+			"Mantieni gli a capo e i paragrafi dell'originale. Lascia invariati i nomi propri, i titoli dei giochi e delle espansioni. "+
+			"Puoi usare Markdown semplice (grassetto, corsivo, titoli, elenchi puntati o numerati) se aiuta a "+
+			"rendere leggibile la struttura del testo originale, ma non è un obbligo: se l'originale è un unico "+
+			"paragrafo di prosa, resta un unico paragrafo di prosa. Non racchiudere mai l'intera risposta in un "+
+			"blocco di codice.",
 		languageName(targetLang),
 	)
 

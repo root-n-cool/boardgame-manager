@@ -617,6 +617,64 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* Editor Markdown (descrizioni di giochi ed eventi, vedi
+   MarkdownEditorImpl.vue): sostituisce le textarea semplici, ma resta nella
+   stessa cornice dei campi di form. md-editor-v3 espone il proprio tema
+   solo via custom property --md-*: qui rimappiamo quelle sui token del
+   progetto invece di lasciare i colori di default della libreria. */
+.markdown-editor.md-editor {
+  --md-color: var(--ink);
+  --md-hover-color: var(--accent);
+  --md-bk-color: var(--card);
+  --md-bk-color-outstand: var(--card-alt);
+  --md-bk-hover-color: var(--card-alt);
+  --md-border-color: var(--card-line);
+  --md-border-hover-color: var(--ink-muted);
+  --md-border-active-color: var(--accent);
+  --md-modal-mask: rgb(36 31 24 / 45%);
+  --md-modal-shadow: var(--shadow-lift);
+  --md-scrollbar-bg-color: var(--card-alt);
+  --md-scrollbar-thumb-color: var(--card-line);
+  --md-scrollbar-thumb-hover-color: var(--ink-muted);
+  --md-scrollbar-thumb-active-color: var(--ink-muted);
+  height: 15rem;
+  font-family: 'Body', system-ui, sans-serif;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.markdown-editor.md-editor:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Sotto i 560px l'editor e l'anteprima affiancati si stringono a metà
+   colonna ciascuno, con le parole spezzate a metà: si impilano invece in
+   verticale. Il pannello che porta davvero lo split è
+   `.md-editor-custom-scrollbar` (non `.md-editor-input/preview-wrapper`,
+   che gli stanno dentro): la libreria gli scrive inline `width: 50%` sul
+   primo e `flex: 1 1 0%` sul secondo per il resize trascinabile, valori
+   che in colonna vanno riscritti — da qui gli `!important` — altrimenti
+   il secondo pannello resta alto 0. */
+@media (max-width: 560px) {
+  .markdown-editor.md-editor {
+    height: 26rem;
+  }
+
+  .markdown-editor .md-editor-content-wrapper {
+    flex-direction: column;
+  }
+
+  .markdown-editor .md-editor-content-wrapper > .md-editor-custom-scrollbar {
+    width: 100% !important;
+    flex: 1 1 50% !important;
+  }
+
+  .markdown-editor .md-editor-resize-operate {
+    display: none;
+  }
+}
+
 /* Sul feltro il rosso seme sta a 1.3:1 contro il fondo: l'anello di focus
    esiste ma non si vede. Sulla chrome verde il segnale passa al cartoncino. */
 .app-topbar :focus-visible,
@@ -721,7 +779,8 @@ button.btn-with-icon svg {
    centrata, senza nulla con cui allinearsi. */
 form input,
 form select,
-form textarea {
+form textarea,
+form .markdown-editor {
   max-width: 30rem;
 }
 
@@ -1696,7 +1755,8 @@ form.panel-form > .form-actions {
    riga lasciava mezzo pannello vuoto. */
 .panel-card form input,
 .panel-card form select,
-.panel-card form textarea {
+.panel-card form textarea,
+.panel-card form .markdown-editor {
   max-width: none;
 }
 
@@ -1820,6 +1880,88 @@ form.panel-form > .form-actions {
   margin: 0;
   color: var(--ink-muted);
   font-size: 0.9rem;
+}
+
+/* Descrizione di gioco/evento renderizzata da Markdown (vedi
+   MarkdownText.vue). Titoli ridimensionati: qui il blocco vive dentro una
+   card o sotto il titolo dell'evento, non è mai una vera intestazione di
+   pagina — altrimenti un "# Titolo" nel testo erediterebbe le misure di
+   h1/h2 sopra. Primo/ultimo figlio senza margine perché lo spazio intorno
+   lo dà già chi ospita il blocco. */
+.markdown-body :is(h1, h2, h3, h4, h5, h6) {
+  font-family: 'Display', system-ui, sans-serif;
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.3;
+  margin: 1.1em 0 0.4em;
+}
+
+.markdown-body h1 {
+  font-size: 1.25rem;
+}
+
+.markdown-body h2 {
+  font-size: 1.12rem;
+}
+
+.markdown-body h3 {
+  font-size: 1.02rem;
+}
+
+.markdown-body :is(h4, h5, h6) {
+  font-size: 0.92rem;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.5rem 0;
+  padding-inline-start: 1.4rem;
+}
+
+.markdown-body li + li {
+  margin-top: 0.2rem;
+}
+
+.markdown-body blockquote {
+  margin: 0.6rem 0;
+  padding-inline-start: 0.85rem;
+  border-inline-start: 3px solid var(--card-line);
+  color: var(--ink-muted);
+}
+
+.markdown-body code {
+  font-family: 'Data', monospace;
+  font-size: 0.88em;
+  background: var(--card-alt);
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}
+
+.markdown-body pre {
+  margin: 0.6rem 0;
+  padding: 0.75rem 0.9rem;
+  background: var(--card-alt);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.markdown-body pre code {
+  padding: 0;
+  background: none;
+}
+
+.markdown-body hr {
+  margin: 1rem 0;
+  border: none;
+  border-top: 1px solid var(--card-line);
+}
+
+.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.markdown-body > :last-child {
+  margin-bottom: 0;
 }
 
 /* Icona con la spunta dentro un submit: conferma l'esito dell'azione, non

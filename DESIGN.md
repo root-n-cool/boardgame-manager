@@ -1196,6 +1196,18 @@ l'azione sta in basso a destra, dove il pollice la trova.
   bordo).
 - **Checkbox inline** (`.checkbox-label`): riga orizzontale
   checkbox+testo, non la colonna verticale di default di `label`.
+- **Descrizioni in Markdown** (`MarkdownEditor.vue` / `MarkdownText.vue`):
+  le descrizioni di giochi ed eventi accettano Markdown semplice
+  (grassetto, corsivo, titoli, elenchi, citazioni, link, codice).
+  In scrittura, un editor con toolbar ridotta (niente immagini — nessun
+  endpoint di upload dedicato — né tabelle/mermaid/katex/github/catalogo)
+  sostituisce la textarea semplice, caricato via import dinamico perché è
+  un chunk pesante che non deve finire nel bundle delle pagine pubbliche.
+  In lettura, `.markdown-body` rende l'HTML con la stessa tipografia del
+  corpo pagina: titoli ridimensionati (non sono mai vere intestazioni di
+  pagina), primo/ultimo elemento senza margine perché lo spazio intorno lo
+  dà già la card che ospita il blocco. La traduzione automatica (vedi
+  `backend/internal/ai/client.go`) può restituire lo stesso Markdown.
 
 ### Navigation
 - **Sidebar** (`.app-sidebar`): feltro profondo, una voce per riga con

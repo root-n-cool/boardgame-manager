@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { api } from '../api/client'
 import EventImagePicker from '../components/EventImagePicker.vue'
 import EventGamesPicker, { type PickerGame, type SelectedGame } from '../components/EventGamesPicker.vue'
+import MarkdownEditor from '../components/MarkdownEditor.vue'
 import VenueSearchSelect, { type Venue } from '../components/VenueSearchSelect.vue'
 
 const router = useRouter()
@@ -119,7 +120,7 @@ onBeforeUnmount(releasePreview)
         </label>
         <label>
           <span>Descrizione <span class="field-optional">(opzionale)</span></span>
-          <textarea v-model="description"></textarea>
+          <MarkdownEditor v-model="description" placeholder="Supporta il Markdown: grassetto, elenchi, link…" />
         </label>
         <label>
           Data

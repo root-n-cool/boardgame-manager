@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import BookingConfirmation from '../components/BookingConfirmation.vue'
 import GameDifficulty from '../components/GameDifficulty.vue'
+import MarkdownText from '../components/MarkdownText.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
 
@@ -225,7 +226,7 @@ onMounted(async () => {
       decoding="async"
     />
     <h1>{{ event.title }}</h1>
-    <p v-if="event.description">{{ event.description }}</p>
+    <MarkdownText v-if="event.description" :text="event.description" />
     <p class="event-card-date">
       <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6" />

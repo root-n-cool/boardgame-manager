@@ -6,6 +6,7 @@ import { useAuthStore } from '../stores/auth'
 import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import ManualChat from '../components/ManualChat.vue'
+import MarkdownText from '../components/MarkdownText.vue'
 import type { GameDetail, GameLanguageInfo } from '../utils/game'
 
 const route = useRoute()
@@ -135,7 +136,7 @@ onMounted(async () => {
           <span class="lang-chip">{{ activeLangCode }}</span>
         </div>
         <h3 class="language-name">{{ activeLanguage()?.name }}</h3>
-        <p v-if="activeLanguage()?.description">{{ activeLanguage()?.description }}</p>
+        <MarkdownText v-if="activeLanguage()?.description" :text="activeLanguage()!.description!" />
         <p v-else class="empty-note">Nessuna descrizione per questa lingua.</p>
       </section>
 
