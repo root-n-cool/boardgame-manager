@@ -584,3 +584,99 @@ func TestCancelBooking_WithoutSMTPStillCancels(t *testing.T) {
 	}
 }
 
+
+// Senza email non parte niente, ma la prenotazione riesce comunque:
+// l'email è facoltativa e non viene mai salvata.
+func TestCreateBooking_WithoutEmailSucceedsAndSendsNoMail(t *testing.T) {
+	mail := newFakeMailer()
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	payload, _ := json.Marshal(map[string]any{
+		"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi",
+		"termsAccepted": true,
+	})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		MailQueued bool `json:"mailQueued"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.MailQueued {
+		t.Error("expected mailQueued to be false without an email, even with SMTP configured")
+	}
+	mail.expectNoMail(t)
+}
+
+// Il consenso a termini e privacy è obbligatorio anche lato server:
+// mancante o falso, la richiesta non passa.
+func TestCreateBooking_RejectsWithoutTermsAccepted(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	for _, payload := range []map[string]any{
+		{"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi", "participantEmail": "mario@example.com"},
+		{"eventGameId": eventGames[0].ID, "participantName": "Mario Rossi", "participantEmail": "mario@example.com", "termsAccepted": false},
+	} {
+		body, _ := json.Marshal(payload)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(body)))
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("payload %v: expected 400, got %d: %s", payload, rec.Code, rec.Body.String())
+		}
+	}
+}
+
+// L'avviso di annullamento non esiste più: senza email salvata sul booking
+// non c'è un indirizzo a cui mandarlo, nemmeno con SMTP configurato.
+func TestCancelBooking_SendsNoMailEvenWithSMTPConfigured(t *testing.T) {
+	mail := newFakeMailer()
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	bookingID, code := bookForMailTest(t, router, eventID, eventGames[0].ID)
+	mail.waitForMail(t) // la conferma di prenotazione
+
+	payload, _ := json.Marshal(map[string]string{"bookingCode": code})
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/bookings/%d/cancel", bookingID), bytes.NewReader(payload)))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	mail.expectNoMail(t)
+}
+
+// Stessa regola quando ad annullare è l'admin.
+func TestAdminCancelBooking_SendsNoMailEvenWithSMTPConfigured(t *testing.T) {
+	mail := newFakeMailer()
+	server, _ := newTestServerWithMailer(t, mail)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "capo@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Catan")
+	eventID := createTestEvent(t, server, gameID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	bookingID, _ := bookForMailTest(t, router, eventID, eventGames[0].ID)
+	mail.waitForMail(t) // la conferma di prenotazione
+
+	req := httptest.NewRequest(http.MethodDelete, fmt.Sprintf("/api/bookings/%d", bookingID), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	mail.expectNoMail(t)
+}

@@ -11,7 +11,6 @@ export interface MyBooking {
   eventId: number
   eventGameId: number
   gameLabel: string
-  multiSeat: boolean
 }
 
 const STORAGE_KEY = 'bgm:my-bookings'

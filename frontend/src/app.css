@@ -2409,16 +2409,17 @@ ul.game-grid {
   box-shadow: none;
 }
 
-.booking-consent {
-  display: flex;
-  flex-direction: row;
+/* Solo ciò che si aggiunge a checkbox-label: il testo del consenso va a
+   capo su più righe, mentre checkbox-label è pensata per etichette corte
+   su una riga sola. Il selettore ripete l'elemento perché altrimenti
+   `label.checkbox-label` vincerebbe su align-items e gap. */
+label.booking-consent {
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.3rem 0.35rem;
-  font-weight: 400;
 }
 
-.booking-consent input[type='checkbox'] {
+label.booking-consent input[type='checkbox'] {
   margin-top: 0.15rem;
 }
 

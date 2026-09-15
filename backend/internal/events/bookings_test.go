@@ -588,3 +588,29 @@ func TestCreateBookingRefusesAnUnbookableCopy(t *testing.T) {
 		t.Fatalf("err = %v, want ErrGameNotBookable", err)
 	}
 }
+
+func TestCreateBooking_SetsTermsAcceptedAt(t *testing.T) {
+	eventStore, gameStore, conn := newTestStoreWithConn(t)
+	ctx := context.Background()
+	gameID := mustCreateGame(t, gameStore, "Catan")
+	event := mustCreateEvent(t, eventStore, "Serata", "2026-10-01", "20:00", gameID)
+	eventGames, _ := eventStore.ListEventGames(ctx, event.ID)
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+
+	booking, err := eventStore.CreateBooking(ctx, event.ID, eventGames[0].ID, "Mario Rossi", now)
+	if err != nil {
+		t.Fatalf("create booking: %v", err)
+	}
+
+	// terms_accepted_at non sta sullo struct Booking (nessun codice Go la
+	// rilegge — vedi la spec di design), quindi si controlla con SQL
+	// grezzo, come già fanno gli altri test di questo pacchetto tramite
+	// newTestStoreWithConn.
+	var termsAcceptedAt string
+	if err := conn.QueryRow(`SELECT terms_accepted_at FROM bookings WHERE id = ?`, booking.ID).Scan(&termsAcceptedAt); err != nil {
+		t.Fatalf("query terms_accepted_at: %v", err)
+	}
+	if termsAcceptedAt == "" {
+		t.Fatal("expected terms_accepted_at to be set on a newly created booking, got empty string")
+	}
+}

@@ -10,13 +10,10 @@ import (
 	"time"
 )
 
-// testBookingCounter ensures unique booking_code and participant_phone values
-// across repeated TestInsertBooking calls. Without it, multiple insertions with
-// the same eventGameID and status would generate identical codes, violating:
-// - booking_code UNIQUE constraint
-// - idx_one_active_booking_per_phone_per_event partial unique index
-// (The brief's original code used only eventGameID*10+len(status), which collides
-// when called twice with identical parameters.)
+// testBookingCounter ensures unique booking_code values across repeated
+// TestInsertBooking calls. Without it, multiple insertions with the same
+// eventGameID and status parameters would generate identical codes,
+// violating the booking_code UNIQUE constraint.
 var testBookingCounter int64
 
 type Event struct {

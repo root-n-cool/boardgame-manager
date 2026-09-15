@@ -226,7 +226,6 @@ async function submitBooking() {
       eventId: Number(eventId),
       eventGameId,
       gameLabel: selectedLabel.value,
-      multiSeat,
     })
     refreshMyBookings()
     await load()
@@ -247,6 +246,12 @@ async function cancelMyBooking(entry: MyBooking) {
     refreshMyBookings()
     await load()
   } catch (e) {
+    // Se non è più attiva (già annullata altrove — dall'admin, o da
+    // "Gestisci prenotazione" su un altro dispositivo), il promemoria
+    // locale è ormai falso: va tolto comunque, non lasciato a mostrare
+    // "Prenotato" per un tavolo che si può riprenotare.
+    removeMyBooking(entry.id)
+    refreshMyBookings()
     chipActionError.value = (e as Error).message
   }
 }
@@ -387,7 +392,7 @@ onMounted(async () => {
             </router-link>
           </template>
           <button
-            v-else-if="!hasStarted && !isFull(g) && !tableOnly(g)"
+            v-if="!hasStarted && !isFull(g) && !tableOnly(g)"
             type="button"
             @click="startBooking(g.eventGameId)"
           >
@@ -445,7 +450,7 @@ onMounted(async () => {
       <p class="field-hint">
         Facoltativa: verrà usata solo per inviarti la conferma della prenotazione.
       </p>
-      <label class="booking-consent">
+      <label class="checkbox-label booking-consent">
         <input v-model="termsAccepted" type="checkbox" required />
         Accetto i
         <router-link :to="{ name: 'terms' }" target="_blank">termini e condizioni</router-link>

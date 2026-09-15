@@ -5,7 +5,7 @@
 Applicazione selfhost per gestire le serate di un'associazione di giochi
 da tavolo. Un admin mantiene un catalogo di giochi (arricchito con dati
 da BoardGameGeek) e crea eventi; i partecipanti prenotano un gioco per
-evento **senza account** (nome + email + telefono) e a fine partita
+evento **senza account** (nome; email facoltativa) e a fine partita
 inseriscono i punteggi, che alimentano una classifica storica per gioco.
 
 Un solo binario/container, SQLite come unico storage, nessun servizio

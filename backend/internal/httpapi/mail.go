@@ -131,10 +131,6 @@ func bookingScoreURL(base, code string) string {
 	return base + "/prenotazione/" + code + "/punteggio"
 }
 
-func eventPublicURL(base string, eventID int64) string {
-	return fmt.Sprintf("%s/events/%d", base, eventID)
-}
-
 // bookingMailDataFor raccoglie quello che le due mail di prenotazione
 // devono dire. Ripercorre la stessa strada di toBookingDetailResponse
 // perché le due superfici devono raccontare la stessa prenotazione: se

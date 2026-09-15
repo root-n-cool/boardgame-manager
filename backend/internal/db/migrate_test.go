@@ -2,6 +2,8 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
+	"os"
 	"testing"
 
 	"boardgames-manager/internal/db"
@@ -99,5 +101,74 @@ func TestMigrate_GamesSeatsDefaultsToOne(t *testing.T) {
 	}
 	if seats != 1 {
 		t.Fatalf("expected default seats 1, got %d", seats)
+	}
+}
+
+func TestMigration0020_AppliesToAnAlreadyPopulatedBookingsTable(t *testing.T) {
+	// sql.Open directly (not db.Open): this test doesn't need foreign_keys
+	// enforcement, and skipping it lets the row below use arbitrary
+	// event_id/event_game_id values without needing real events/event_games
+	// rows — the point of this test is the ALTER TABLE behavior on
+	// `bookings` itself, not the rest of the schema.
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer conn.Close()
+
+	// The bookings schema exactly as migration 0008 left it — the last
+	// shape it had before 0020 — with one row already in it, simulating
+	// a real installation upgrading to this branch.
+	if _, err := conn.Exec(`
+		CREATE TABLE bookings (
+		    id INTEGER PRIMARY KEY AUTOINCREMENT,
+		    event_id INTEGER NOT NULL,
+		    event_game_id INTEGER NOT NULL,
+		    participant_name TEXT NOT NULL,
+		    participant_email TEXT NOT NULL,
+		    participant_phone TEXT NOT NULL,
+		    booking_code TEXT NOT NULL UNIQUE,
+		    status TEXT NOT NULL CHECK (status IN ('active', 'cancelled')),
+		    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		)`); err != nil {
+		t.Fatalf("create pre-0020 bookings table: %v", err)
+	}
+	if _, err := conn.Exec(`
+		CREATE UNIQUE INDEX idx_one_active_booking_per_phone_per_event
+		    ON bookings(event_id, participant_phone) WHERE status = 'active'`); err != nil {
+		t.Fatalf("create pre-0020 index: %v", err)
+	}
+	if _, err := conn.Exec(`
+		INSERT INTO bookings (event_id, event_game_id, participant_name, participant_email, participant_phone, booking_code, status)
+		VALUES (1, 1, 'Mario Rossi', 'mario@example.com', '3331234567', 'ABCD1234', 'active')`); err != nil {
+		t.Fatalf("insert pre-existing booking: %v", err)
+	}
+
+	migrationSQL, err := os.ReadFile("migrations/0020_prenotazioni_senza_contatti.sql")
+	if err != nil {
+		t.Fatalf("read migration 0020: %v", err)
+	}
+	if _, err := conn.Exec(string(migrationSQL)); err != nil {
+		t.Fatalf("migration 0020 must apply to a bookings table that already has rows, got: %v", err)
+	}
+
+	var name, termsAcceptedAt string
+	if err := conn.QueryRow(`SELECT participant_name, terms_accepted_at FROM bookings WHERE booking_code = 'ABCD1234'`).Scan(&name, &termsAcceptedAt); err != nil {
+		t.Fatalf("query migrated row: %v", err)
+	}
+	if name != "Mario Rossi" {
+		t.Fatalf("expected the pre-existing row to survive the migration, got name %q", name)
+	}
+	if termsAcceptedAt == "" {
+		t.Fatal("expected terms_accepted_at to be backfilled for a pre-existing row, got empty string")
+	}
+
+	// participant_email/phone and the old index must actually be gone.
+	var count int
+	if err := conn.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('bookings') WHERE name IN ('participant_email', 'participant_phone')`).Scan(&count); err != nil {
+		t.Fatalf("check dropped columns: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("expected participant_email/participant_phone to be dropped, found %d matching columns", count)
 	}
 }

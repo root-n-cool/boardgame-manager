@@ -89,13 +89,15 @@ func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, n
 	// Single atomic statement: the WHERE clause re-checks capacity as part of
 	// the same write, so SQLite's write-lock makes this race-safe against
 	// concurrent bookings for the last remaining seat — no separate
-	// check-then-insert window. terms_accepted_at takes the column's own
-	// default (datetime('now')), exactly like created_at: the row is only
-	// ever written after the handler has checked termsAccepted, so the
-	// insert instant doubles as the consent instant.
+	// check-then-insert window. terms_accepted_at is written explicitly here,
+	// like every other column: its own default is the empty string, because
+	// SQLite refuses a non-constant default on an ALTER TABLE ADD COLUMN
+	// against an already-populated table (see migration 0020). The insert
+	// instant doubles as the consent instant: the row is only ever written
+	// after the handler has checked termsAccepted.
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO bookings (event_id, event_game_id, participant_name, booking_code, status)
-		 SELECT ?, ?, ?, ?, 'active'
+		`INSERT INTO bookings (event_id, event_game_id, participant_name, booking_code, status, terms_accepted_at)
+		 SELECT ?, ?, ?, ?, 'active', datetime('now')
 		 WHERE (SELECT COUNT(*) FROM bookings WHERE event_game_id = ? AND status = 'active') <
 		       (SELECT seats FROM event_games WHERE id = ?)`,
 		eventID, eventGameID, name, code, eventGameID, eventGameID,

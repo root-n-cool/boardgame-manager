@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, nextTick } from 'vue'
 import { api } from '../api/client'
+import { removeMyBooking } from '../utils/myBookings'
 
 /**
  * `code` arriva dai link mandati per mail: quando c'è, la pagina si
@@ -113,6 +114,10 @@ async function cancel() {
     booking.value = await api.post<BookingResult>(`/bookings/${booking.value.id}/cancel`, {
       bookingCode: booking.value.bookingCode,
     })
+    // Il promemoria nel browser deve sparire anche annullando da qui,
+    // altrimenti la pagina dell'evento continuerebbe a mostrare
+    // "Prenotato" per un tavolo ormai libero.
+    removeMyBooking(booking.value.id)
     cancelMessage.value = 'Prenotazione annullata.'
   } catch (e) {
     error.value = (e as Error).message

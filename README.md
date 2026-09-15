@@ -42,12 +42,13 @@ esterno obbligatorio.
   le mattonelle della mappa arrivano da openstreetmap.org, quindi serve
   una connessione verso l'esterno. Un indirizzo che la ricerca non trova
   si scrive a mano: resta sull'evento come riga di testo, senza mappa.
-- **Prenotazioni anonime**: nome, email, telefono — nessun account
-  richiesto. Alla prenotazione viene generato un codice che permette in
-  seguito di cancellarla o di inserire il punteggio finale. Su una copia
-  con più posti prenotabili il punteggio è **uno per copia**: lo inserisce
-  o lo corregge chiunque abbia prenotato lì, e resta finché la copia ha
-  almeno una prenotazione attiva.
+- **Prenotazioni anonime**: nome ed email facoltativa — nessun account
+  richiesto, nessun telefono. Va accettato un consenso a termini e
+  privacy per completare la prenotazione. Alla prenotazione viene generato
+  un codice che permette in seguito di cancellarla o di inserire il
+  punteggio finale. Su una copia con più posti prenotabili il punteggio è
+  **uno per copia**: lo inserisce o lo corregge chiunque abbia prenotato
+  lì, e resta finché la copia ha almeno una prenotazione attiva.
 - **Punteggi e classifiche**: a fine partita si registrano i punteggi dei
   giocatori (nomi liberi); la classifica per gioco aggrega partite
   giocate, vittorie e punteggio medio/totale nel tempo — ogni copia
