@@ -102,6 +102,8 @@ func NewRouter(s *Server) http.Handler {
 
 	r.Get("/api/health", healthHandler)
 	r.Get("/api/site", s.getSiteHandler)
+	r.Get("/api/legal/terms", s.getTermsHandler)
+	r.Get("/api/legal/privacy", s.getPrivacyHandler)
 	r.Get("/api/bootstrap/status", s.bootstrapStatusHandler)
 	r.Post("/api/bootstrap", s.bootstrapHandler)
 	r.Post("/api/login", s.loginHandler)
