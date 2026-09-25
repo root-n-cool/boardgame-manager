@@ -20,6 +20,8 @@ interface SettingsResponse {
   aiVisionModel: string
   aiApiKeySet: boolean
   aiApiKeyMasked?: string
+  tavilyApiKeySet: boolean
+  tavilyApiKeyMasked?: string
   aiConfigured: boolean
   smtpHost: string
   smtpPort: number
@@ -53,6 +55,8 @@ const aiModel = ref('')
 const aiVisionModel = ref('')
 const aiApiKey = ref('')
 const aiApiKeyMasked = ref('')
+const tavilyApiKey = ref('')
+const tavilyApiKeyMasked = ref('')
 const message = ref('')
 const error = ref('')
 const smtpHost = ref('')
@@ -85,6 +89,7 @@ async function load() {
   aiModel.value = s.aiModel || ''
   aiVisionModel.value = s.aiVisionModel || ''
   aiApiKeyMasked.value = s.aiApiKeyMasked || ''
+  tavilyApiKeyMasked.value = s.tavilyApiKeyMasked || ''
   smtpHost.value = s.smtpHost || ''
   smtpPort.value = s.smtpPort || 587
   smtpUsername.value = s.smtpUsername || ''
@@ -111,6 +116,7 @@ async function save() {
       aiApiKey: aiApiKey.value,
       aiModel: aiModel.value,
       aiVisionModel: aiVisionModel.value,
+      tavilyApiKey: tavilyApiKey.value,
       smtpHost: smtpHost.value,
       // v-model.number su un <input type="number"> svuotato torna la stringa
       // vuota, non NaN (looseToNumber la lascia com'è quando parseFloat
@@ -128,6 +134,7 @@ async function save() {
     // vuoto. L'indirizzo pubblico invece è un dato da rileggere, quindi resta.
     bggApiToken.value = ''
     aiApiKey.value = ''
+    tavilyApiKey.value = ''
     smtpPassword.value = ''
     // Un salvataggio cambia la configurazione che la prova userebbe:
     // l'esito precedente non vale più e resta a schermo mentendo.
@@ -394,6 +401,23 @@ onMounted(async () => {
           solo testo, la sua variante <code>deepseek-v4-flash-vision-exp</code> legge
           anche le pagine. Lasciandolo vuoto i manuali scansionati si trascrivono a
           mano.
+        </p>
+
+        <label>
+          Chiave Tavily per le FAQ di BoardGameGeek (opzionale)
+          <input
+            v-model="tavilyApiKey"
+            type="password"
+            autocomplete="new-password"
+            :placeholder="tavilyApiKeyMasked || 'non configurata'"
+          />
+        </label>
+        <p class="field-hint">
+          Con questa chiave l'assistente regole, quando il manuale non basta, cerca
+          la risposta nel forum Rules del gioco su BoardGameGeek e cita il commento.
+          Serve un gioco collegato a BGG. Il piano gratuito di
+          <a href="https://tavily.com" target="_blank" rel="noopener">Tavily</a>
+          dà 1.000 ricerche al mese, senza carta di credito.
         </p>
       </div>
 

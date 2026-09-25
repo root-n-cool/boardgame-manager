@@ -19,6 +19,7 @@ import (
 	"boardgames-manager/internal/settings"
 	"boardgames-manager/internal/storage"
 	"boardgames-manager/internal/users"
+	"boardgames-manager/internal/websearch"
 )
 
 type Server struct {
@@ -66,6 +67,10 @@ type Server struct {
 	// di materiali dal manuale. Stesso schema di AI/Vision/Segmenter/
 	// Suggester: nil in produzione, un finto nei test.
 	MaterialLister ai.MaterialLister
+	// WebSearch, quando è valorizzato, è la ricerca web da usare per le
+	// FAQ di BGG. Nil = costruita per richiesta dalla chiave Tavily nelle
+	// impostazioni, stesso schema di Asker; senza chiave, niente FAQ.
+	WebSearch websearch.Searcher
 }
 
 func NewRouter(s *Server) http.Handler {

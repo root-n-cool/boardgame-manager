@@ -4,16 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"boardgames-manager/internal/ai"
+	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/httpapi"
 	"boardgames-manager/internal/manuals"
+	"boardgames-manager/internal/websearch"
 )
 
 // fakeAsker cattura la AskRequest che l'handler costruisce: è lì che si
@@ -767,4 +771,316 @@ func canAsk(t *testing.T, router http.Handler, gameID int64) bool {
 		t.Fatalf("risposta non JSON: %v", err)
 	}
 	return body.CanAsk
+}
+
+type fakeWebSearch struct {
+	results []websearch.Result
+	// resultsSeq, quando presente, dà un risultato diverso per ciascuna
+	// chiamata (nell'ordine): serve ai test con più chiamate al tool FAQ
+	// nella stessa richiesta, dove la seconda ricerca deve trovare un
+	// thread diverso dalla prima.
+	resultsSeq [][]websearch.Result
+	err        error
+	calls      int
+}
+
+func (f *fakeWebSearch) Search(ctx context.Context, q string, d []string, max int) ([]websearch.Result, error) {
+	f.calls++
+	if f.resultsSeq != nil {
+		if f.calls > len(f.resultsSeq) {
+			return nil, f.err
+		}
+		return f.resultsSeq[f.calls-1], f.err
+	}
+	return f.results, f.err
+}
+
+// fakeFAQAsker è fakeAsker più una chiamata al tool FAQ: le citazioni FAQ
+// si popolano solo dalle hit che la closure restituisce davvero.
+type fakeFAQAsker struct {
+	fakeAsker
+	faqQuery  string
+	faqResult string
+	faqErr    error
+}
+
+func (f *fakeFAQAsker) Ask(ctx context.Context, req ai.AskRequest) (string, error) {
+	f.got = req
+	if req.SearchFAQ != nil && f.faqQuery != "" {
+		f.faqResult, f.faqErr = req.SearchFAQ(ctx, f.faqQuery)
+	}
+	return f.answer, nil
+}
+
+func setBGGID(t *testing.T, conn *sql.DB, gameID int64, bggID string) {
+	t.Helper()
+	if _, err := conn.Exec(`UPDATE games SET bgg_id = ? WHERE id = ?`, bggID, gameID); err != nil {
+		t.Fatalf("set bgg id: %v", err)
+	}
+}
+
+func birdfeederThread() bgg.Thread {
+	posted, _ := time.Parse("2006-01-02", "2019-01-07")
+	return bgg.Thread{
+		ID: "100", Subject: "Refreshing the birdfeeder", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "2", Body: "You reroll only if all dice match.",
+			Link: "https://boardgamegeek.com/thread/100/article/2#2", PostDate: posted}},
+	}
+}
+
+func TestAskHandler_FAQToolIsOffWithoutAKeyOrABGGID(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	// Nessuna chiave Tavily e nessun WebSearch iniettato.
+	setBGGID(t, conn, gameID, "266192")
+	postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if asker.got.SearchFAQ != nil {
+		t.Fatal("FAQ search must be off without a Tavily key")
+	}
+
+	// Ricerca disponibile, ma il gioco non ha un bggId.
+	server.WebSearch = &fakeWebSearch{}
+	other := seedGameWithManualPage4Text(t, conn, "altro")
+	postAsk(t, router, other, `{"messages":[{"role":"user","text":"?"}]}`)
+	if asker.got.SearchFAQ != nil {
+		t.Fatal("FAQ search must be off for a game without a bggId")
+	}
+}
+
+func TestAskHandler_LinksAFAQCitationToTheComment(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{results: []websearch.Result{{URL: "https://boardgamegeek.com/thread/100/refreshing"}}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": birdfeederThread()}}
+	asker := &fakeFAQAsker{faqQuery: "refresh birdfeeder"}
+	asker.answer = "Sul forum: BGG: Refreshing the birdfeeder, commento del 07/01/2019."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	want := "[BGG: Refreshing the birdfeeder, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/2#2)"
+	if !strings.Contains(body["text"], want) {
+		t.Fatalf("expected a link to the comment, got %q", body["text"])
+	}
+	// Il payload al modello ha la forma di cerca_nelle_fonti, con
+	// reference_type faq, e non espone gli URL.
+	if !strings.Contains(asker.faqResult, `"reference_type":"faq"`) || strings.Contains(asker.faqResult, "article/2") {
+		t.Fatalf("unexpected FAQ payload: %s", asker.faqResult)
+	}
+}
+
+func TestAskHandler_ListsForumThreadsWhenTheAnswerParaphrasesThem(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{results: []websearch.Result{{URL: "https://boardgamegeek.com/thread/100/refreshing"}}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": birdfeederThread()}}
+	asker := &fakeFAQAsker{faqQuery: "refresh birdfeeder"}
+	// Il modello riporta il forum senza copiare la reference: niente da
+	// linkare nel testo, quindi il thread va elencato in fondo.
+	asker.answer = "Sul forum di BGG un commento del 07/01/2019 dice che si ritira solo se i dadi sono uguali."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	want := "\n\nDal forum di BGG: [Refreshing the birdfeeder](https://boardgamegeek.com/thread/100)"
+	if !strings.HasSuffix(body["text"], want) {
+		t.Fatalf("expected the forum thread listed at the end, got %q", body["text"])
+	}
+}
+
+// fakeMultiFAQAsker chiama SearchFAQ una volta per ogni query in
+// faqQueries, nell'ordine, e registra ciascun risultato: serve ai test che
+// esercitano PIÙ chiamate al tool nella stessa richiesta (disambiguazione
+// delle reference fra chiamate, tetto sul numero di ricerche).
+type fakeMultiFAQAsker struct {
+	fakeAsker
+	faqQueries []string
+	faqResults []string
+}
+
+func (f *fakeMultiFAQAsker) Ask(ctx context.Context, req ai.AskRequest) (string, error) {
+	f.got = req
+	for _, q := range f.faqQueries {
+		out, _ := req.SearchFAQ(ctx, q)
+		f.faqResults = append(f.faqResults, out)
+	}
+	return f.answer, nil
+}
+
+// TestAskHandler_DisambiguatesFAQReferencesWithinOneToolCall: da Task S3
+// faq.Search non disambigua più da sola due thread con lo stesso Subject
+// (quello lo fa solo il controllo per-richiesta della closure searchFAQ,
+// vedi ask_handler.go). Questo test copre il caso che prima copriva
+// faq.TestSearch_DisambiguatesThreadsWithTheSameSubject, ma a livello di
+// handler: DUE thread con lo stesso Subject trovati da UNA sola chiamata al
+// tool devono comunque arrivare al modello, e finire nella risposta finale,
+// con reference e link distinti.
+func TestAskHandler_DisambiguatesFAQReferencesWithinOneToolCall(t *testing.T) {
+	posted, _ := time.Parse("2006-01-02", "2019-01-07")
+	threadA := bgg.Thread{
+		ID: "100", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "a", Body: "Answer A.",
+			Link: "https://boardgamegeek.com/thread/100/article/1#1", PostDate: posted}},
+	}
+	threadB := bgg.Thread{
+		ID: "200", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "b", Body: "Answer B.",
+			Link: "https://boardgamegeek.com/thread/200/article/1#1", PostDate: posted}},
+	}
+
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{results: []websearch.Result{
+		{URL: "https://boardgamegeek.com/thread/100/question"},
+		{URL: "https://boardgamegeek.com/thread/200/question"},
+	}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": threadA, "200": threadB}}
+	asker := &fakeFAQAsker{faqQuery: "question"}
+	asker.answer = "Vedi BGG: Question, commento del 07/01/2019, e anche BGG: Question #200, commento del 07/01/2019."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Il payload al modello (UNA sola chiamata al tool, entrambi i thread
+	// dentro) deve già portare le due reference disambiguate: senza,
+	// niente distinguerebbe le due FAQ nella risposta del modello.
+	if !strings.Contains(asker.faqResult, `"reference":"BGG: Question"`) ||
+		!strings.Contains(asker.faqResult, `"reference":"BGG: Question #200"`) {
+		t.Fatalf("FAQ payload does not disambiguate two threads with the same subject found in one call: %s", asker.faqResult)
+	}
+
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	wantFirst := "[BGG: Question, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/1#1)"
+	wantSecond := "[BGG: Question #200, commento del 07/01/2019](https://boardgamegeek.com/thread/200/article/1#1)"
+	if !strings.Contains(body["text"], wantFirst) {
+		t.Fatalf("first citation does not link to its own thread: %q", body["text"])
+	}
+	if !strings.Contains(body["text"], wantSecond) {
+		t.Fatalf("second citation does not link to its own thread: %q", body["text"])
+	}
+}
+
+func TestAskHandler_DisambiguatesFAQReferencesAcrossToolCalls(t *testing.T) {
+	// usedRefs in faq.Search vive DENTRO una chiamata a Search: due
+	// cerca_nelle_faq nella stessa domanda, che trovano due thread diversi
+	// con lo stesso Subject, produrrebbero altrimenti la stessa reference
+	// "BGG: Question" per entrambi, e i due link collasserebbero sullo
+	// stesso thread nella risposta finale.
+	posted, _ := time.Parse("2006-01-02", "2019-01-07")
+	threadA := bgg.Thread{
+		ID: "100", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "a", Body: "Answer A.",
+			Link: "https://boardgamegeek.com/thread/100/article/1#1", PostDate: posted}},
+	}
+	threadB := bgg.Thread{
+		ID: "200", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "b", Body: "Answer B.",
+			Link: "https://boardgamegeek.com/thread/200/article/1#1", PostDate: posted}},
+	}
+
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{resultsSeq: [][]websearch.Result{
+		{{URL: "https://boardgamegeek.com/thread/100/question"}},
+		{{URL: "https://boardgamegeek.com/thread/200/question"}},
+	}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": threadA, "200": threadB}}
+	asker := &fakeMultiFAQAsker{faqQueries: []string{"question one", "question two"}}
+	asker.answer = "Vedi BGG: Question, commento del 07/01/2019, e anche BGG: Question #200, commento del 07/01/2019."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(asker.faqResults) != 2 {
+		t.Fatalf("expected 2 FAQ tool results, got %d", len(asker.faqResults))
+	}
+	// Il secondo payload al modello deve già portare la reference
+	// disambiguata, non quella "nuda" che collide con la prima.
+	if !strings.Contains(asker.faqResults[1], `"reference":"BGG: Question #200"`) {
+		t.Fatalf("second FAQ payload does not use the disambiguated reference:\n%s", asker.faqResults[1])
+	}
+	if strings.Contains(asker.faqResults[0], "#") {
+		t.Fatalf("first FAQ payload should not be disambiguated: %s", asker.faqResults[0])
+	}
+
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	wantFirst := "[BGG: Question, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/1#1)"
+	wantSecond := "[BGG: Question #200, commento del 07/01/2019](https://boardgamegeek.com/thread/200/article/1#1)"
+	if !strings.Contains(body["text"], wantFirst) {
+		t.Fatalf("first citation does not link to its own thread: %q", body["text"])
+	}
+	if !strings.Contains(body["text"], wantSecond) {
+		t.Fatalf("second citation does not link to its own thread: %q", body["text"])
+	}
+}
+
+func TestAskHandler_CapsFAQSearchesPerRequest(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	ws := &fakeWebSearch{results: []websearch.Result{{URL: "https://boardgamegeek.com/thread/100/refreshing"}}}
+	server.WebSearch = ws
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": birdfeederThread()}}
+	asker := &fakeMultiFAQAsker{faqQueries: []string{"q1", "q2", "q3"}}
+	asker.answer = "ok"
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+
+	if ws.calls != 2 {
+		t.Fatalf("expected at most 2 web searches, the third must not hit Tavily: got %d calls", ws.calls)
+	}
+	if len(asker.faqResults) != 3 {
+		t.Fatalf("expected 3 FAQ tool invocations, got %d", len(asker.faqResults))
+	}
+	want := "Hai già cercato nel forum abbastanza per questa domanda: rispondi con quello che hai."
+	if asker.faqResults[2] != want {
+		t.Fatalf("unexpected third FAQ result: %q", asker.faqResults[2])
+	}
+}
+
+func TestAskHandler_FAQSearchErrorBecomesAnError(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{err: errors.New("tavily down")}
+	asker := &fakeFAQAsker{faqQuery: "x"}
+	asker.answer = "ok"
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a failing FAQ search must not fail the request: %d", rec.Code)
+	}
+	// L'errore torna all'agente, che lo trasforma nel messaggio per il
+	// modello (Task 5): l'handler non lo inghiotte.
+	if asker.faqErr == nil {
+		t.Fatal("expected the web search error to reach the agent")
+	}
 }

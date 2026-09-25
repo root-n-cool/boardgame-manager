@@ -33,6 +33,9 @@ type settingsResponse struct {
 	// AIConfigured è il booleano su cui la UI decide se mostrare i comandi
 	// di traduzione: servono tutti e tre i valori, non solo la chiave.
 	AIConfigured bool `json:"aiConfigured"`
+	// La chiave Tavily è un segreto e segue AIAPIKey: mai in chiaro.
+	TavilyAPIKeySet    bool   `json:"tavilyApiKeySet"`
+	TavilyAPIKeyMasked string `json:"tavilyApiKeyMasked,omitempty"`
 	// Host, porta, utente, mittente e modo TLS sono dati da rileggere e
 	// controllare, come PublicBaseURL; la password è un segreto e segue
 	// BGGAPIToken. SMTPConfigured è il booleano su cui la UI abilita la
@@ -88,6 +91,10 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		resp.AIAPIKeyMasked = maskKey(cfg.AIAPIKey)
 	}
 	resp.AIConfigured = cfg.AIBaseURL != "" && cfg.AIAPIKey != "" && cfg.AIModel != ""
+	resp.TavilyAPIKeySet = cfg.TavilyAPIKey != ""
+	if resp.TavilyAPIKeySet {
+		resp.TavilyAPIKeyMasked = maskKey(cfg.TavilyAPIKey)
+	}
 	resp.SMTPHost = cfg.SMTPHost
 	resp.SMTPPort = cfg.SMTPPort
 	resp.SMTPUsername = cfg.SMTPUsername
@@ -116,6 +123,7 @@ type updateSettingsRequest struct {
 	AIAPIKey        string        `json:"aiApiKey"`
 	AIModel         string        `json:"aiModel"`
 	AIVisionModel   string        `json:"aiVisionModel"`
+	TavilyAPIKey    string        `json:"tavilyApiKey"`
 	SMTPHost        string        `json:"smtpHost"`
 	SMTPPort        smtpPortValue `json:"smtpPort"`
 	SMTPUsername    string        `json:"smtpUsername"`
@@ -230,6 +238,7 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		AIModel:         strings.TrimSpace(req.AIModel),
 		AIVisionModel:   strings.TrimSpace(req.AIVisionModel),
 		AIAPIKey:        current.AIAPIKey,
+		TavilyAPIKey:    current.TavilyAPIKey,
 		SMTPHost:        strings.TrimSpace(req.SMTPHost),
 		SMTPPort:        int(req.SMTPPort),
 		SMTPUsername:    strings.TrimSpace(req.SMTPUsername),
@@ -260,6 +269,10 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	// c'è", perché il form la rimanda vuota dopo ogni salvataggio.
 	if req.SMTPPassword != "" {
 		next.SMTPPassword = req.SMTPPassword
+	}
+	// Come le altre credenziali: vuota vuol dire "lascia quella che c'è".
+	if req.TavilyAPIKey != "" {
+		next.TavilyAPIKey = strings.TrimSpace(req.TavilyAPIKey)
 	}
 
 	if err := s.Settings.Update(r.Context(), next); err != nil {

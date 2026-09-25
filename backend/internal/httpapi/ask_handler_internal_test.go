@@ -17,14 +17,14 @@ func TestLinkifyCitations(t *testing.T) {
 	cases := []struct {
 		name      string
 		answer    string
-		citations map[string]citationTarget
+		citations map[string]*citationTarget
 		want      string
 	}{
 		{
 			name:   "documento con pagina diventa un link con #page=N",
 			answer: "Vedi Regolamento base, pagina 7.",
-			citations: map[string]citationTarget{
-				"Regolamento base": {referenceType: "document", mediaPath: "manuale.pdf"},
+			citations: map[string]*citationTarget{
+				"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
 			},
 			want: "Vedi [Regolamento base, pagina 7](/api/uploads/manuale.pdf#page=7).",
 		},
@@ -35,28 +35,53 @@ func TestLinkifyCitations(t *testing.T) {
 			// come testo semplice.
 			name:   "reference_detail non numerico non genera un #page=",
 			answer: `Vedi Regolamento base, sezione «Preparazione».`,
-			citations: map[string]citationTarget{
-				"Regolamento base": {referenceType: "document", mediaPath: "manuale.pdf"},
+			citations: map[string]*citationTarget{
+				"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
 			},
 			want: `Vedi [Regolamento base](/api/uploads/manuale.pdf), sezione «Preparazione».`,
 		},
 		{
 			name:   "reference_detail assente: link senza frammento",
 			answer: "Lo dice Regolamento base.",
-			citations: map[string]citationTarget{
-				"Regolamento base": {referenceType: "document", mediaPath: "manuale.pdf"},
+			citations: map[string]*citationTarget{
+				"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
 			},
 			want: "Lo dice [Regolamento base](/api/uploads/manuale.pdf).",
 		},
 		{
-			// La reference di una FAQ è già l'URL della discussione: NON
-			// va prefissata con /api/uploads/.
-			name:   "faq: la reference è già l'URL, senza prefisso /api/uploads/",
-			answer: "Ne avevano già parlato qui: https://boardgamegeek.com/thread/123456.",
-			citations: map[string]citationTarget{
-				"https://boardgamegeek.com/thread/123456": {referenceType: "faq"},
+			name:   "faq: il commento citato porta al suo link",
+			answer: "Sul forum: BGG: Refreshing the birdfeeder, commento del 07/01/2019.",
+			citations: map[string]*citationTarget{
+				"BGG: Refreshing the birdfeeder": &citationTarget{
+					referenceType: "faq",
+					url:           "https://boardgamegeek.com/thread/100",
+					commentURLs: map[string]string{
+						"commento del 06/01/2019": "https://boardgamegeek.com/thread/100/article/1#1",
+						"commento del 07/01/2019": "https://boardgamegeek.com/thread/100/article/2#2",
+					},
+				},
 			},
-			want: "Ne avevano già parlato qui: [https://boardgamegeek.com/thread/123456](https://boardgamegeek.com/thread/123456).",
+			want: "Sul forum: [BGG: Refreshing the birdfeeder, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/2#2).",
+		},
+		{
+			name:   "faq: data che non corrisponde a nessun commento, il link va al thread",
+			answer: "Vedi BGG: Refreshing the birdfeeder, commento del 01/01/2020.",
+			citations: map[string]*citationTarget{
+				"BGG: Refreshing the birdfeeder": &citationTarget{
+					referenceType: "faq",
+					url:           "https://boardgamegeek.com/thread/100",
+					commentURLs:   map[string]string{"commento del 06/01/2019": "https://boardgamegeek.com/thread/100/article/1#1"},
+				},
+			},
+			want: "Vedi [BGG: Refreshing the birdfeeder, commento del 01/01/2020](https://boardgamegeek.com/thread/100).",
+		},
+		{
+			name:   "faq citata senza dettaglio: link al thread",
+			answer: "Ne parlano in BGG: Refreshing the birdfeeder.",
+			citations: map[string]*citationTarget{
+				"BGG: Refreshing the birdfeeder": &citationTarget{referenceType: "faq", url: "https://boardgamegeek.com/thread/100"},
+			},
+			want: "Ne parlano in [BGG: Refreshing the birdfeeder](https://boardgamegeek.com/thread/100).",
 		},
 		{
 			// Una reference che è prefisso letterale di un'altra: l'ordine
@@ -64,9 +89,9 @@ func TestLinkifyCitations(t *testing.T) {
 			// tronchi la lunga a metà nome.
 			name:   "una reference prefisso di un'altra non corrompe quella lunga",
 			answer: "Vedi Regolamento base, pagina 2, oppure Regolamento, pagina 5.",
-			citations: map[string]citationTarget{
-				"Regolamento":      {referenceType: "document", mediaPath: "corto.pdf"},
-				"Regolamento base": {referenceType: "document", mediaPath: "lungo.pdf"},
+			citations: map[string]*citationTarget{
+				"Regolamento":      &citationTarget{referenceType: "document", mediaPath: "corto.pdf"},
+				"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "lungo.pdf"},
 			},
 			want: "Vedi [Regolamento base, pagina 2](/api/uploads/lungo.pdf#page=2), " +
 				"oppure [Regolamento, pagina 5](/api/uploads/corto.pdf#page=5).",
@@ -77,8 +102,8 @@ func TestLinkifyCitations(t *testing.T) {
 			// nessun link, la risposta resta testo semplice.
 			name:   "una reference inventata non produce nessun link",
 			answer: "Solo il Manuale Segreto lo dice, pagina 9.",
-			citations: map[string]citationTarget{
-				"Regolamento base": {referenceType: "document", mediaPath: "manuale.pdf"},
+			citations: map[string]*citationTarget{
+				"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
 			},
 			want: "Solo il Manuale Segreto lo dice, pagina 9.",
 		},
@@ -88,9 +113,9 @@ func TestLinkifyCitations(t *testing.T) {
 			// non compare comunque nella risposta.
 			name:   "citarne una sola linka solo quella",
 			answer: "Regolamento base, pagina 7, risponde alla domanda.",
-			citations: map[string]citationTarget{
-				"Regolamento base": {referenceType: "document", mediaPath: "manuale.pdf"},
-				"English rulebook": {referenceType: "document", mediaPath: "rules-en.pdf"},
+			citations: map[string]*citationTarget{
+				"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
+				"English rulebook": &citationTarget{referenceType: "document", mediaPath: "rules-en.pdf"},
 			},
 			want: "[Regolamento base, pagina 7](/api/uploads/manuale.pdf#page=7), risponde alla domanda.",
 		},
@@ -100,8 +125,8 @@ func TestLinkifyCitations(t *testing.T) {
 			// illeggibile.
 			name:   "una reference troppo corta non si sostituisce",
 			answer: "Vedi A, pagina 3.",
-			citations: map[string]citationTarget{
-				"A": {referenceType: "document", mediaPath: "manuale.pdf"},
+			citations: map[string]*citationTarget{
+				"A": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
 			},
 			want: "Vedi A, pagina 3.",
 		},
@@ -111,15 +136,15 @@ func TestLinkifyCitations(t *testing.T) {
 			// markdown corrotto.
 			name:   "una reference con ] non si sostituisce",
 			answer: "Vedi Regol]amento, pagina 2.",
-			citations: map[string]citationTarget{
-				"Regol]amento": {referenceType: "document", mediaPath: "manuale.pdf"},
+			citations: map[string]*citationTarget{
+				"Regol]amento": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
 			},
 			want: "Vedi Regol]amento, pagina 2.",
 		},
 		{
 			name:      "nessuna citazione nota: la risposta non cambia",
 			answer:    "Non c'è nessuna fonte per questo gioco.",
-			citations: map[string]citationTarget{},
+			citations: map[string]*citationTarget{},
 			want:      "Non c'è nessuna fonte per questo gioco.",
 		},
 		{
@@ -128,8 +153,8 @@ func TestLinkifyCitations(t *testing.T) {
 			// note.
 			name:   "un link già presente non si riscrive",
 			answer: "Vedi [Regolamento base, pagina 7](/api/uploads/manuale.pdf#page=7).",
-			citations: map[string]citationTarget{
-				"Regolamento base": {referenceType: "document", mediaPath: "manuale.pdf"},
+			citations: map[string]*citationTarget{
+				"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "manuale.pdf"},
 			},
 			want: "Vedi [Regolamento base, pagina 7](/api/uploads/manuale.pdf#page=7).",
 		},
@@ -195,12 +220,48 @@ func TestFormatCorpusIndex(t *testing.T) {
 // letterale — testata al livello più semplice possibile.
 func TestLinkifyCitations_PrefixOrderMattersEvenWithASingleWord(t *testing.T) {
 	answer := "Vedi Regolamento base, pagina 2."
-	citations := map[string]citationTarget{
-		"Regolamento":      {referenceType: "document", mediaPath: "corto.pdf"},
-		"Regolamento base": {referenceType: "document", mediaPath: "lungo.pdf"},
+	citations := map[string]*citationTarget{
+		"Regolamento":      &citationTarget{referenceType: "document", mediaPath: "corto.pdf"},
+		"Regolamento base": &citationTarget{referenceType: "document", mediaPath: "lungo.pdf"},
 	}
 	got := linkifyCitations(answer, citations)
 	if !strings.Contains(got, "[Regolamento base, pagina 2](/api/uploads/lungo.pdf#page=2)") {
 		t.Fatalf("la reference lunga è stata corrotta dalla sostituzione della corta: %q", got)
 	}
+}
+
+func TestAppendForumSources(t *testing.T) {
+	citations := map[string]*citationTarget{
+		"BGG: River U-turn": {referenceType: "faq", url: "https://boardgamegeek.com/thread/1",
+			commentURLs: map[string]string{"commento del 25/03/2020": "https://boardgamegeek.com/thread/1/article/9#9"}},
+		"BGG: River [question]": {referenceType: "faq", url: "https://boardgamegeek.com/thread/2", commentURLs: map[string]string{}},
+		"Regolamento":           {referenceType: "document", mediaPath: "m.pdf"},
+	}
+	refs := []string{"BGG: River U-turn", "BGG: River [question]"}
+
+	t.Run("il modello parla del forum senza citarlo: si aggiungono i thread", func(t *testing.T) {
+		got := appendForumSources("Sul forum di BGG dicono di sì.", refs, citations)
+		want := "Sul forum di BGG dicono di sì.\n\nDal forum di BGG: [River U-turn](https://boardgamegeek.com/thread/1) · [River question](https://boardgamegeek.com/thread/2)"
+		if got != want {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+	t.Run("un thread già linkato: niente paragrafo", func(t *testing.T) {
+		in := "Vedi [BGG: River U-turn, commento del 25/03/2020](https://boardgamegeek.com/thread/1/article/9#9) sul forum."
+		if got := appendForumSources(in, refs, citations); got != in {
+			t.Fatalf("unexpected paragraph: %q", got)
+		}
+	})
+	t.Run("la risposta non nomina il forum: niente paragrafo", func(t *testing.T) {
+		in := "Il manuale dice di no."
+		if got := appendForumSources(in, refs, citations); got != in {
+			t.Fatalf("unexpected paragraph: %q", got)
+		}
+	})
+	t.Run("nessuna FAQ restituita: niente paragrafo", func(t *testing.T) {
+		in := "Sul forum non ho trovato niente."
+		if got := appendForumSources(in, nil, citations); got != in {
+			t.Fatalf("unexpected paragraph: %q", got)
+		}
+	})
 }
