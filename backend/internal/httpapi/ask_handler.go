@@ -85,6 +85,11 @@ const (
 	askMaxTurns      = 30
 	askMaxTurnChars  = 4000
 	askTotalMaxChars = 24000
+	// askMaxFAQSearches tiene basso il costo Tavily di una singola domanda
+	// (MaxToolIterations da solo lascerebbe fino a 5 chiamate al tool, 5
+	// crediti): oltre il tetto la closure non chiama più Tavily, e dice al
+	// modello di rispondere con quel che ha già.
+	askMaxFAQSearches = 2
 )
 
 // trimTurns riduce la conversazione ai tetti, tagliando dalla TESTA: la
@@ -221,17 +226,38 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	var searchFAQ ai.FAQSearchFunc
 	if searcher := s.webSearcher(r.Context()); searcher != nil && game.BGGID != nil && *game.BGGID != "" {
 		bggID := *game.BGGID
+		faqSearches := 0
 		searchFAQ = func(ctx context.Context, query string) (string, error) {
+			faqSearches++
+			if faqSearches > askMaxFAQSearches {
+				// Nessuna chiamata a Tavily oltre il tetto: un risultato
+				// normale (non un errore), così il modello risponde con
+				// quel che ha invece di vedere un guasto che non c'è.
+				return "Hai già cercato nel forum abbastanza per questa domanda: rispondi con quello che hai.", nil
+			}
 			hits, err := faq.Search(ctx, searcher, s.BGG, game.Name, bggID, query)
 			if err != nil {
 				return "", err
 			}
 			out := make([]manuals.SourceHit, 0, len(hits))
 			for _, h := range hits {
-				target, ok := citations[h.Reference]
+				// La reference è unica per RICHIESTA, non per chiamata al
+				// tool: due cerca_nelle_faq nella stessa domanda possono
+				// trovare due thread diversi con lo stesso Subject (usedRefs
+				// dentro faq.Search vede solo la propria chiamata). Se la
+				// reference è già presa da un'ALTRA FAQ (thread diverso), si
+				// disambigua qui con l'id del thread prima di registrarla e
+				// prima di metterla nel payload per il modello; lo stesso
+				// thread, ritrovato in una chiamata successiva, riusa la sua
+				// reference invariata.
+				ref := h.Reference
+				if existing, ok := citations[ref]; ok && existing.referenceType == "faq" && existing.url != h.ThreadURL {
+					ref = h.Reference + " #" + h.ThreadID
+				}
+				target, ok := citations[ref]
 				if !ok {
 					target = citationTarget{referenceType: "faq", url: h.ThreadURL, commentURLs: map[string]string{}}
-					citations[h.Reference] = target
+					citations[ref] = target
 				}
 				// Una reference già presa da un documento non si tocca (non
 				// succede in pratica: le FAQ cominciano con "BGG: "). La
@@ -243,7 +269,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				out = append(out, manuals.SourceHit{
-					ReferenceType: "faq", Reference: h.Reference,
+					ReferenceType: "faq", Reference: ref,
 					ReferenceDetail: h.ReferenceDetail, Text: h.Text,
 				})
 			}

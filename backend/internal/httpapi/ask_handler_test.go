@@ -775,12 +775,23 @@ func canAsk(t *testing.T, router http.Handler, gameID int64) bool {
 
 type fakeWebSearch struct {
 	results []websearch.Result
-	err     error
-	calls   int
+	// resultsSeq, quando presente, dà un risultato diverso per ciascuna
+	// chiamata (nell'ordine): serve ai test con più chiamate al tool FAQ
+	// nella stessa richiesta, dove la seconda ricerca deve trovare un
+	// thread diverso dalla prima.
+	resultsSeq [][]websearch.Result
+	err        error
+	calls      int
 }
 
 func (f *fakeWebSearch) Search(ctx context.Context, q string, d []string, max int) ([]websearch.Result, error) {
 	f.calls++
+	if f.resultsSeq != nil {
+		if f.calls > len(f.resultsSeq) {
+			return nil, f.err
+		}
+		return f.resultsSeq[f.calls-1], f.err
+	}
 	return f.results, f.err
 }
 
@@ -865,6 +876,110 @@ func TestAskHandler_LinksAFAQCitationToTheComment(t *testing.T) {
 	// reference_type faq, e non espone gli URL.
 	if !strings.Contains(asker.faqResult, `"reference_type":"faq"`) || strings.Contains(asker.faqResult, "article/2") {
 		t.Fatalf("unexpected FAQ payload: %s", asker.faqResult)
+	}
+}
+
+// fakeMultiFAQAsker chiama SearchFAQ una volta per ogni query in
+// faqQueries, nell'ordine, e registra ciascun risultato: serve ai test che
+// esercitano PIÙ chiamate al tool nella stessa richiesta (disambiguazione
+// delle reference fra chiamate, tetto sul numero di ricerche).
+type fakeMultiFAQAsker struct {
+	fakeAsker
+	faqQueries []string
+	faqResults []string
+}
+
+func (f *fakeMultiFAQAsker) Ask(ctx context.Context, req ai.AskRequest) (string, error) {
+	f.got = req
+	for _, q := range f.faqQueries {
+		out, _ := req.SearchFAQ(ctx, q)
+		f.faqResults = append(f.faqResults, out)
+	}
+	return f.answer, nil
+}
+
+func TestAskHandler_DisambiguatesFAQReferencesAcrossToolCalls(t *testing.T) {
+	// usedRefs in faq.Search vive DENTRO una chiamata a Search: due
+	// cerca_nelle_faq nella stessa domanda, che trovano due thread diversi
+	// con lo stesso Subject, produrrebbero altrimenti la stessa reference
+	// "BGG: Question" per entrambi, e i due link collasserebbero sullo
+	// stesso thread nella risposta finale.
+	posted, _ := time.Parse("2006-01-02", "2019-01-07")
+	threadA := bgg.Thread{
+		ID: "100", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "a", Body: "Answer A.",
+			Link: "https://boardgamegeek.com/thread/100/article/1#1", PostDate: posted}},
+	}
+	threadB := bgg.Thread{
+		ID: "200", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "b", Body: "Answer B.",
+			Link: "https://boardgamegeek.com/thread/200/article/1#1", PostDate: posted}},
+	}
+
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{resultsSeq: [][]websearch.Result{
+		{{URL: "https://boardgamegeek.com/thread/100/question"}},
+		{{URL: "https://boardgamegeek.com/thread/200/question"}},
+	}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": threadA, "200": threadB}}
+	asker := &fakeMultiFAQAsker{faqQueries: []string{"question one", "question two"}}
+	asker.answer = "Vedi BGG: Question, commento del 07/01/2019, e anche BGG: Question #200, commento del 07/01/2019."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if len(asker.faqResults) != 2 {
+		t.Fatalf("expected 2 FAQ tool results, got %d", len(asker.faqResults))
+	}
+	// Il secondo payload al modello deve già portare la reference
+	// disambiguata, non quella "nuda" che collide con la prima.
+	if !strings.Contains(asker.faqResults[1], `"reference":"BGG: Question #200"`) {
+		t.Fatalf("second FAQ payload does not use the disambiguated reference:\n%s", asker.faqResults[1])
+	}
+	if strings.Contains(asker.faqResults[0], "#") {
+		t.Fatalf("first FAQ payload should not be disambiguated: %s", asker.faqResults[0])
+	}
+
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	wantFirst := "[BGG: Question, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/1#1)"
+	wantSecond := "[BGG: Question #200, commento del 07/01/2019](https://boardgamegeek.com/thread/200/article/1#1)"
+	if !strings.Contains(body["text"], wantFirst) {
+		t.Fatalf("first citation does not link to its own thread: %q", body["text"])
+	}
+	if !strings.Contains(body["text"], wantSecond) {
+		t.Fatalf("second citation does not link to its own thread: %q", body["text"])
+	}
+}
+
+func TestAskHandler_CapsFAQSearchesPerRequest(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	ws := &fakeWebSearch{results: []websearch.Result{{URL: "https://boardgamegeek.com/thread/100/refreshing"}}}
+	server.WebSearch = ws
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": birdfeederThread()}}
+	asker := &fakeMultiFAQAsker{faqQueries: []string{"q1", "q2", "q3"}}
+	asker.answer = "ok"
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+
+	if ws.calls != 2 {
+		t.Fatalf("expected at most 2 web searches, the third must not hit Tavily: got %d calls", ws.calls)
+	}
+	if len(asker.faqResults) != 3 {
+		t.Fatalf("expected 3 FAQ tool invocations, got %d", len(asker.faqResults))
+	}
+	want := "Hai già cercato nel forum abbastanza per questa domanda: rispondi con quello che hai."
+	if asker.faqResults[2] != want {
+		t.Fatalf("unexpected third FAQ result: %q", asker.faqResults[2])
 	}
 }
 
