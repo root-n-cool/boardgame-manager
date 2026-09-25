@@ -8,3 +8,6 @@
 /bin/
 /.worktrees/
 /.superpowers/
+
+# Testi legali con dati personali: si incollano nelle Impostazioni, non vanno in git.
+docs/legal/
