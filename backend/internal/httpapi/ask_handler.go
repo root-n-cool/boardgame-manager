@@ -13,8 +13,10 @@ import (
 	"unicode/utf8"
 
 	"boardgames-manager/internal/ai"
+	"boardgames-manager/internal/faq"
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/manuals"
+	"boardgames-manager/internal/websearch"
 )
 
 // asker restituisce l'agente per questa richiesta: quello iniettato se c'è,
@@ -44,6 +46,19 @@ func (s *Server) aiConfigured(ctx context.Context) bool {
 		return false
 	}
 	return cfg.AIBaseURL != "" && cfg.AIAPIKey != "" && cfg.AIModel != ""
+}
+
+// webSearcher restituisce la ricerca web per le FAQ, o nil se non c'è una
+// chiave: nil vuol dire che il tool FAQ non si dichiara.
+func (s *Server) webSearcher(ctx context.Context) websearch.Searcher {
+	if s.WebSearch != nil {
+		return s.WebSearch
+	}
+	cfg, err := s.Settings.Get(ctx)
+	if err != nil || cfg.TavilyAPIKey == "" {
+		return nil
+	}
+	return websearch.NewTavily(cfg.TavilyAPIKey)
 }
 
 // askHTTPRequest è la forma che manda deep-chat: la conversazione intera,
@@ -200,11 +215,52 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		return manuals.MarshalHits(hits, missing)
 	}
 
+	// La closure FAQ è legata al gioco come search: né il nome né il bggId
+	// sono parametri del tool. Si dichiara solo con una chiave di ricerca
+	// e un bggId; la chat resta comunque legata al manuale indicizzato.
+	var searchFAQ ai.FAQSearchFunc
+	if searcher := s.webSearcher(r.Context()); searcher != nil && game.BGGID != nil && *game.BGGID != "" {
+		bggID := *game.BGGID
+		searchFAQ = func(ctx context.Context, query string) (string, error) {
+			hits, err := faq.Search(ctx, searcher, s.BGG, game.Name, bggID, query)
+			if err != nil {
+				return "", err
+			}
+			out := make([]manuals.SourceHit, 0, len(hits))
+			for _, h := range hits {
+				target, ok := citations[h.Reference]
+				if !ok {
+					target = citationTarget{referenceType: "faq", url: h.ThreadURL, commentURLs: map[string]string{}}
+					citations[h.Reference] = target
+				}
+				// Una reference già presa da un documento non si tocca (non
+				// succede in pratica: le FAQ cominciano con "BGG: "). La
+				// mappa commentURLs è un riferimento: aggiornarla aggiorna
+				// anche la voce in citations.
+				if target.referenceType == "faq" && h.CommentURL != "" {
+					if _, seen := target.commentURLs[h.ReferenceDetail]; !seen {
+						target.commentURLs[h.ReferenceDetail] = h.CommentURL
+					}
+				}
+				out = append(out, manuals.SourceHit{
+					ReferenceType: "faq", Reference: h.Reference,
+					ReferenceDetail: h.ReferenceDetail, Text: h.Text,
+				})
+			}
+			var missing []string
+			if len(out) == 0 {
+				missing = []string{query}
+			}
+			return manuals.MarshalHits(out, missing)
+		}
+	}
+
 	answer, err := s.asker(r.Context()).Ask(r.Context(), ai.AskRequest{
 		GameName:    game.Name,
 		Turns:       turns,
 		CorpusIndex: formatCorpusIndex(summary.Sources),
 		Search:      search,
+		SearchFAQ:   searchFAQ,
 	})
 	if errors.Is(err, ai.ErrNotConfigured) {
 		writeError(w, http.StatusNotFound, "not found")
@@ -249,11 +305,16 @@ func formatCorpusIndex(sources []manuals.SourceHeadings) string {
 
 // citationTarget è dove porta il link di una reference conosciuta:
 // referenceType decide la forma dell'URL (documento vs FAQ), mediaPath è
-// game_media.url_or_path per un documento ("" per una FAQ, la cui
-// reference è già l'URL).
+// game_media.url_or_path per un documento ("" per una FAQ, il cui link
+// vive in url/commentURLs invece che nella reference).
 type citationTarget struct {
 	referenceType string
 	mediaPath     string
+	// url è il thread di una FAQ; commentURLs porta ogni reference_detail
+	// ("commento del 07/01/2019") al link del suo commento. Se due commenti
+	// dello stesso thread hanno la stessa data vince il primo.
+	url         string
+	commentURLs map[string]string
 }
 
 // minReferenceLength è la soglia (in rune) sotto la quale una reference
@@ -291,9 +352,13 @@ const minReferenceLength = 4
 // la prima che combacia, e senza quest'ordine una reference che è prefisso
 // letterale di un'altra (raro, ma non impossibile) troncherebbe il link a
 // metà nome.
+//
+// Riconosce anche ", pagina N" e ", commento del DD/MM/YYYY": il primo per
+// un documento, il secondo per una FAQ, il cui dettaglio è la data del
+// commento citato (vedi faq.Hit.ReferenceDetail).
 func linkifyCitations(answer string, citations map[string]citationTarget) string {
 	// Se il modello ha già prodotto un link, non si raddoppia.
-	if strings.Contains(answer, "](/api/uploads/") {
+	if strings.Contains(answer, "](/api/uploads/") || strings.Contains(answer, "](https://boardgamegeek.com/") {
 		return answer
 	}
 	if len(citations) == 0 {
@@ -331,10 +396,12 @@ func linkifyCitations(answer string, citations map[string]citationTarget) string
 	// cambia per gioco e per domanda. Una variabile statica sarebbe o
 	// sbagliata (reference di un altro gioco) o ricostruita comunque a ogni
 	// chiamata, vanificando la cache.
-	pattern := regexp.MustCompile(`(?:` + strings.Join(quoted, "|") + `)(?:, pagina (\d+))?`)
+	pattern := regexp.MustCompile(`(?:` + strings.Join(quoted, "|") + `)(?:, pagina (\d+)|, (commento del \d{2}/\d{2}/\d{4}))?`)
 
 	return pattern.ReplaceAllStringFunc(answer, func(match string) string {
-		page := pattern.FindStringSubmatch(match)[1]
+		sub := pattern.FindStringSubmatch(match)
+		page := sub[1]
+		comment := sub[2]
 
 		var reference string
 		for _, r := range references {
@@ -359,8 +426,14 @@ func linkifyCitations(answer string, citations map[string]citationTarget) string
 			}
 			return fmt.Sprintf("[%s](%s)", match, href)
 		case "faq":
-			// La reference di una FAQ è già l'URL della discussione.
-			return fmt.Sprintf("[%s](%s)", match, reference)
+			href := target.url
+			if u, ok := target.commentURLs[comment]; ok && comment != "" {
+				href = u
+			}
+			if href == "" {
+				return match
+			}
+			return fmt.Sprintf("[%s](%s)", match, href)
 		default:
 			return match
 		}

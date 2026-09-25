@@ -4,16 +4,20 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"boardgames-manager/internal/ai"
+	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/httpapi"
 	"boardgames-manager/internal/manuals"
+	"boardgames-manager/internal/websearch"
 )
 
 // fakeAsker cattura la AskRequest che l'handler costruisce: è lì che si
@@ -767,4 +771,120 @@ func canAsk(t *testing.T, router http.Handler, gameID int64) bool {
 		t.Fatalf("risposta non JSON: %v", err)
 	}
 	return body.CanAsk
+}
+
+type fakeWebSearch struct {
+	results []websearch.Result
+	err     error
+	calls   int
+}
+
+func (f *fakeWebSearch) Search(ctx context.Context, q string, d []string, max int) ([]websearch.Result, error) {
+	f.calls++
+	return f.results, f.err
+}
+
+// fakeFAQAsker è fakeAsker più una chiamata al tool FAQ: le citazioni FAQ
+// si popolano solo dalle hit che la closure restituisce davvero.
+type fakeFAQAsker struct {
+	fakeAsker
+	faqQuery  string
+	faqResult string
+	faqErr    error
+}
+
+func (f *fakeFAQAsker) Ask(ctx context.Context, req ai.AskRequest) (string, error) {
+	f.got = req
+	if req.SearchFAQ != nil && f.faqQuery != "" {
+		f.faqResult, f.faqErr = req.SearchFAQ(ctx, f.faqQuery)
+	}
+	return f.answer, nil
+}
+
+func setBGGID(t *testing.T, conn *sql.DB, gameID int64, bggID string) {
+	t.Helper()
+	if _, err := conn.Exec(`UPDATE games SET bgg_id = ? WHERE id = ?`, bggID, gameID); err != nil {
+		t.Fatalf("set bgg id: %v", err)
+	}
+}
+
+func birdfeederThread() bgg.Thread {
+	posted, _ := time.Parse("2006-01-02", "2019-01-07")
+	return bgg.Thread{
+		ID: "100", Subject: "Refreshing the birdfeeder", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "2", Body: "You reroll only if all dice match.",
+			Link: "https://boardgamegeek.com/thread/100/article/2#2", PostDate: posted}},
+	}
+}
+
+func TestAskHandler_FAQToolIsOffWithoutAKeyOrABGGID(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	// Nessuna chiave Tavily e nessun WebSearch iniettato.
+	setBGGID(t, conn, gameID, "266192")
+	postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if asker.got.SearchFAQ != nil {
+		t.Fatal("FAQ search must be off without a Tavily key")
+	}
+
+	// Ricerca disponibile, ma il gioco non ha un bggId.
+	server.WebSearch = &fakeWebSearch{}
+	other := seedGameWithManualPage4Text(t, conn, "altro")
+	postAsk(t, router, other, `{"messages":[{"role":"user","text":"?"}]}`)
+	if asker.got.SearchFAQ != nil {
+		t.Fatal("FAQ search must be off for a game without a bggId")
+	}
+}
+
+func TestAskHandler_LinksAFAQCitationToTheComment(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{results: []websearch.Result{{URL: "https://boardgamegeek.com/thread/100/refreshing"}}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": birdfeederThread()}}
+	asker := &fakeFAQAsker{faqQuery: "refresh birdfeeder"}
+	asker.answer = "Sul forum: BGG: Refreshing the birdfeeder, commento del 07/01/2019."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	want := "[BGG: Refreshing the birdfeeder, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/2#2)"
+	if !strings.Contains(body["text"], want) {
+		t.Fatalf("expected a link to the comment, got %q", body["text"])
+	}
+	// Il payload al modello ha la forma di cerca_nelle_fonti, con
+	// reference_type faq, e non espone gli URL.
+	if !strings.Contains(asker.faqResult, `"reference_type":"faq"`) || strings.Contains(asker.faqResult, "article/2") {
+		t.Fatalf("unexpected FAQ payload: %s", asker.faqResult)
+	}
+}
+
+func TestAskHandler_FAQSearchErrorBecomesAnError(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{err: errors.New("tavily down")}
+	asker := &fakeFAQAsker{faqQuery: "x"}
+	asker.answer = "ok"
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("a failing FAQ search must not fail the request: %d", rec.Code)
+	}
+	// L'errore torna all'agente, che lo trasforma nel messaggio per il
+	// modello (Task 5): l'handler non lo inghiotte.
+	if asker.faqErr == nil {
+		t.Fatal("expected the web search error to reach the agent")
+	}
 }

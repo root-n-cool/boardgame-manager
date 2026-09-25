@@ -49,14 +49,39 @@ func TestLinkifyCitations(t *testing.T) {
 			want: "Lo dice [Regolamento base](/api/uploads/manuale.pdf).",
 		},
 		{
-			// La reference di una FAQ è già l'URL della discussione: NON
-			// va prefissata con /api/uploads/.
-			name:   "faq: la reference è già l'URL, senza prefisso /api/uploads/",
-			answer: "Ne avevano già parlato qui: https://boardgamegeek.com/thread/123456.",
+			name:   "faq: il commento citato porta al suo link",
+			answer: "Sul forum: BGG: Refreshing the birdfeeder, commento del 07/01/2019.",
 			citations: map[string]citationTarget{
-				"https://boardgamegeek.com/thread/123456": {referenceType: "faq"},
+				"BGG: Refreshing the birdfeeder": {
+					referenceType: "faq",
+					url:           "https://boardgamegeek.com/thread/100",
+					commentURLs: map[string]string{
+						"commento del 06/01/2019": "https://boardgamegeek.com/thread/100/article/1#1",
+						"commento del 07/01/2019": "https://boardgamegeek.com/thread/100/article/2#2",
+					},
+				},
 			},
-			want: "Ne avevano già parlato qui: [https://boardgamegeek.com/thread/123456](https://boardgamegeek.com/thread/123456).",
+			want: "Sul forum: [BGG: Refreshing the birdfeeder, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/2#2).",
+		},
+		{
+			name:   "faq: data che non corrisponde a nessun commento, il link va al thread",
+			answer: "Vedi BGG: Refreshing the birdfeeder, commento del 01/01/2020.",
+			citations: map[string]citationTarget{
+				"BGG: Refreshing the birdfeeder": {
+					referenceType: "faq",
+					url:           "https://boardgamegeek.com/thread/100",
+					commentURLs:   map[string]string{"commento del 06/01/2019": "https://boardgamegeek.com/thread/100/article/1#1"},
+				},
+			},
+			want: "Vedi [BGG: Refreshing the birdfeeder, commento del 01/01/2020](https://boardgamegeek.com/thread/100).",
+		},
+		{
+			name:   "faq citata senza dettaglio: link al thread",
+			answer: "Ne parlano in BGG: Refreshing the birdfeeder.",
+			citations: map[string]citationTarget{
+				"BGG: Refreshing the birdfeeder": {referenceType: "faq", url: "https://boardgamegeek.com/thread/100"},
+			},
+			want: "Ne parlano in [BGG: Refreshing the birdfeeder](https://boardgamegeek.com/thread/100).",
 		},
 		{
 			// Una reference che è prefisso letterale di un'altra: l'ordine
