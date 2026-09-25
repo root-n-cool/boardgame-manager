@@ -104,7 +104,14 @@ func (t *Tavily) Search(ctx context.Context, query string, domains []string, max
 		return nil, fmt.Errorf("read tavily response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("tavily returned status %d", resp.StatusCode)
+		// Un pezzo del body distingue nei log una chiave revocata da
+		// crediti esauriti: entrambi sarebbero altrimenti lo stesso "status
+		// 401"/"status 402" indistinguibile.
+		excerpt := string(body)
+		if len(excerpt) > 200 {
+			excerpt = excerpt[:200]
+		}
+		return nil, fmt.Errorf("tavily returned status %d: %s", resp.StatusCode, excerpt)
 	}
 	var parsed tavilyResponse
 	if err := json.Unmarshal(body, &parsed); err != nil {

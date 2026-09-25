@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/websearch"
@@ -58,8 +59,16 @@ func TestTavily_HTTPErrorIsAnError(t *testing.T) {
 
 	c := websearch.NewTavily("tvly-bad")
 	c.BaseURL = ts.URL
-	if _, err := c.Search(context.Background(), "q", nil, 5); err == nil {
+	_, err := c.Search(context.Background(), "q", nil, 5)
+	if err == nil {
 		t.Fatal("expected an error on 401")
+	}
+	// Il messaggio deve portare un pezzo del body: nei log è la differenza
+	// fra una chiave revocata ("invalid key") e crediti esauriti, che
+	// altrimenti sarebbero entrambi indistinguibili "status 401"/"status
+	// 402".
+	if !strings.Contains(err.Error(), "invalid key") {
+		t.Fatalf("expected the error to carry a body excerpt, got %v", err)
 	}
 }
 
