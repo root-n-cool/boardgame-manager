@@ -1976,6 +1976,51 @@ form.panel-form > .form-actions {
   margin-top: 0.2rem;
 }
 
+/* ul, li e table globali sono pensati come card/righe dell'interfaccia
+   (bordo, ombra, flex space-between, font dati): dentro un testo scritto
+   dall'admin devono tornare liste e tabelle da documento, altrimenti un
+   "**grassetto**" in un punto elenco si spalma su tre colonne. */
+.markdown-body ul {
+  list-style: disc;
+}
+
+.markdown-body ol {
+  list-style: decimal;
+}
+
+.markdown-body :is(ul, ol) {
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.markdown-body li {
+  display: list-item;
+  padding: 0;
+  border: none;
+}
+
+/* display:block + overflow: una tabella troppo larga per il telefono
+   scorre dentro sé stessa invece di spingere fuori la pagina. */
+.markdown-body table {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  width: max-content;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.markdown-body td,
+.markdown-body td:first-child {
+  font-family: 'Body', sans-serif;
+  font-weight: 400;
+  font-size: 0.92rem;
+  vertical-align: top;
+}
+
 .markdown-body blockquote {
   margin: 0.6rem 0;
   padding-inline-start: 0.85rem;
@@ -5284,3 +5329,22 @@ form.game-materials {
   }
 }
 
+
+/* Pagine legali (/terms, /privacy): testo lungo da leggere, non una card.
+   Riga contenuta per la leggibilità e sezioni che si distinguono. */
+.legal-page {
+  max-width: 44rem;
+}
+
+.legal-page .markdown-body {
+  line-height: 1.65;
+}
+
+.legal-page .markdown-body h2 {
+  font-size: 1.2rem;
+  margin-top: 1.8em;
+}
+
+.legal-page .markdown-body h3 {
+  margin-top: 1.4em;
+}

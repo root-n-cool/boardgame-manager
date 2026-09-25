@@ -27,7 +27,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div>
+  <div class="legal-page">
     <h1>{{ title }}</h1>
     <MarkdownText v-if="markdown" :text="markdown" />
     <p v-else-if="loaded" class="field-hint">Contenuto non ancora disponibile.</p>
