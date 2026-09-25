@@ -6,6 +6,7 @@ import EventImagePicker from '../components/EventImagePicker.vue'
 import EventGamesPicker, { type PickerGame, type SelectedGame } from '../components/EventGamesPicker.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import VenueSearchSelect, { type Venue } from '../components/VenueSearchSelect.vue'
+import QrPrintLink from '../components/QrPrintLink.vue'
 import { formatEventDateTime } from '../utils/dates'
 
 interface EventGameInfo {
@@ -300,6 +301,10 @@ onMounted(async () => {
             />
           </svg>
         </a>
+        <QrPrintLink
+          :to="{ name: 'admin-event-qr', params: { id: eventId } }"
+          label="Stampa il QR della pagina pubblica dell'evento"
+        />
         <button type="button" class="btn-danger is-compact" @click="deleteEvent">
           Elimina
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">

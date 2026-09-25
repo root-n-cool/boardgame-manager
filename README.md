@@ -42,6 +42,10 @@ esterno obbligatorio.
   le mattonelle della mappa arrivano da openstreetmap.org, quindi serve
   una connessione verso l'esterno. Un indirizzo che la ricerca non trova
   si scrive a mano: resta sull'evento come riga di testo, senza mappa.
+- **QR stampabili**: dalla scheda admin di un gioco o di un evento,
+  "Stampa QR" apre un cartellino 70×95 mm con il QR della pagina pubblica,
+  da mettere nella scatola del gioco o sul tavolo. Il QR usa l'indirizzo
+  pubblico delle impostazioni: senza, la pagina avvisa prima di stampare.
 - **Aggiungi al calendario**: la pagina pubblica di un evento non ancora
   iniziato offre un file `.ics` (`/api/events/{id}/calendar.ics`) con
   titolo, luogo e link alla serata. L'orario è quello locale della

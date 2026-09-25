@@ -45,7 +45,7 @@ func (s *Server) eventCalendarHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	base := s.publicBaseURL(r)
-	eventURL := base + "/events/" + strconv.FormatInt(event.ID, 10)
+	eventURL := eventPageURL(base, event.ID)
 	host := r.Host
 	if u, err := url.Parse(base); err == nil && u.Host != "" {
 		host = u.Host

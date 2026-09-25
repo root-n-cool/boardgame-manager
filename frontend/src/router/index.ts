@@ -18,6 +18,7 @@ import EventsAdminView from '../views/EventsAdminView.vue'
 import EventNewView from '../views/EventNewView.vue'
 import EventAdminDetailView from '../views/EventAdminDetailView.vue'
 import LoanDeskView from '../views/LoanDeskView.vue'
+import QrPrintView from '../views/QrPrintView.vue'
 import LegalPageView from '../views/LegalPageView.vue'
 
 declare module 'vue-router' {
@@ -84,10 +85,24 @@ const router = createRouter({
     { path: '/admin/events/new', name: 'admin-event-new', component: EventNewView },
     { path: '/admin/events/:id', name: 'admin-event-detail', component: EventAdminDetailView },
     { path: '/admin/events/:id/prestiti', name: 'admin-event-loans', component: LoanDeskView },
+    {
+      path: '/admin/events/:id/qr',
+      name: 'admin-event-qr',
+      component: QrPrintView,
+      props: { kind: 'event' },
+      meta: { bare: true },
+    },
     { path: '/admin/games', name: 'admin-games', component: GamesView },
     { path: '/admin/games/new', name: 'admin-game-new', component: GameNewView },
     { path: '/admin/games/:id', name: 'admin-game-detail', component: GameAdminDetailView },
     { path: '/admin/games/:id/prestiti', name: 'admin-game-loans', component: GameLoansView },
+    {
+      path: '/admin/games/:id/qr',
+      name: 'admin-game-qr',
+      component: QrPrintView,
+      props: { kind: 'game' },
+      meta: { bare: true },
+    },
     { path: '/admin/users', name: 'admin-users', component: UsersView },
     { path: '/admin/settings', name: 'admin-settings', component: SettingsView },
     // Le pagine di gestione stavano sulla root prima di finire sotto /admin:

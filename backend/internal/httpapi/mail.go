@@ -83,9 +83,17 @@ func (s *Server) sendMailAsync(sender mailer.Sender, m mailer.Message) {
 // richiesta, e un'installazione esposta dovrebbe configurare l'indirizzo
 // pubblico e non dipendere da questo ramo.
 func (s *Server) publicBaseURL(r *http.Request) string {
+	base, _ := s.publicAddress(r)
+	return base
+}
+
+// publicAddress è publicBaseURL più il perché: configured è falso quando
+// l'indirizzo è il ripiego sull'host della richiesta. Serve a chi stampa un
+// link invece di mandarlo, e deve sapere se da fuori si aprirà.
+func (s *Server) publicAddress(r *http.Request) (base string, configured bool) {
 	if s.Settings != nil {
 		if cfg, err := s.Settings.Get(r.Context()); err == nil && cfg.PublicBaseURL != "" {
-			return strings.TrimRight(cfg.PublicBaseURL, "/")
+			return strings.TrimRight(cfg.PublicBaseURL, "/"), true
 		}
 	}
 
@@ -96,7 +104,7 @@ func (s *Server) publicBaseURL(r *http.Request) string {
 	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
 		scheme = strings.ToLower(strings.TrimSpace(strings.Split(proto, ",")[0]))
 	}
-	return scheme + "://" + r.Host
+	return scheme + "://" + r.Host, false
 }
 
 // siteName è il nome che le email usano per presentare l'app: il titolo
@@ -129,6 +137,16 @@ func bookingManageURL(base, code string) string {
 
 func bookingScoreURL(base, code string) string {
 	return base + "/prenotazione/" + code + "/punteggio"
+}
+
+// gamePageURL ed eventPageURL sono le pagine pubbliche che i QR stampati e
+// il calendario mandano a chi non è admin.
+func gamePageURL(base string, id int64) string {
+	return fmt.Sprintf("%s/games/%d", base, id)
+}
+
+func eventPageURL(base string, id int64) string {
+	return fmt.Sprintf("%s/events/%d", base, id)
 }
 
 // bookingMailDataFor raccoglie quello che le due mail di prenotazione

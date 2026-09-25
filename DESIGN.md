@@ -323,6 +323,24 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   orizzontale, **mai nell'altezza**: `min-height: 44px`, il minimo per un
   bersaglio da dito.
 
+### Cartellino col QR (`/admin/games/:id/qr`, `/admin/events/:id/qr`)
+- Pagina senza shell (`meta.bare`), una vista sola (`QrPrintView`) per gioco
+  ed evento. Il cartellino è **70×95 mm**, bianco e inchiostro pieno perché
+  va in stampante, con il tratteggio come linea di taglio: nome del sito,
+  titolo (+ data per l'evento), QR da 50 mm, invito ("Inquadra per…") e
+  l'indirizzo in chiaro senza schema, come ripiego.
+- Una sola richiesta (`GET /api/{games|events}/:id/qr`) porta titolo,
+  l'indirizzo codificato, se è l'**indirizzo pubblico** delle impostazioni
+  e l'SVG: la pagina stampa in chiaro esattamente l'indirizzo del codice,
+  senza ricalcolarlo. Se l'indirizzo pubblico manca, l'avviso oro
+  (`.loan-warning`) lo dice prima di stampare: un QR verso `localhost`
+  stampato non serve a nessuno. In stampa restano solo il cartellino e il
+  tratteggio.
+- Si arriva da **"Stampa QR"** (`QrPrintLink`), azione secondaria nella
+  testa della scheda: `.action-link.is-secondary` condivide la regola di
+  `button.btn-secondary` (bordo carta, nessun riempimento) — accanto a
+  un'azione primaria rossa non ne serve una seconda.
+
 ### Aggiungi al calendario (`.event-calendar-link`)
 - Link testuale accanto alla data nella pagina pubblica dell'evento, solo
   finché la serata non è iniziata. Un `<a>` semplice verso il `.ics`,

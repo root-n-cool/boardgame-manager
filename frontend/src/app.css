@@ -767,14 +767,17 @@ form button[type='submit'] {
   align-self: flex-start;
 }
 
-/* Azioni secondarie: bordo carta, nessun riempimento. */
-button.btn-secondary {
+/* Azioni secondarie: bordo carta, nessun riempimento. Vale anche per un link
+   d'azione (`.action-link.is-secondary`), che nasce senza bordo. */
+button.btn-secondary,
+.action-link.is-secondary {
   background: transparent;
   color: var(--ink);
-  border-color: var(--card-line);
+  border: 1px solid var(--card-line);
 }
 
-button.btn-secondary:hover {
+button.btn-secondary:hover,
+.action-link.is-secondary:hover {
   background: var(--card-alt);
   border-color: var(--card-line);
 }
@@ -4552,7 +4555,8 @@ tbody tr:nth-child(3) .rank-medal {
    inchiostro pieno, non `--ink-muted`: al banco, distratti, l'unica riga che
    può fermare uno sbaglio non può leggersi come una postilla. L'oro resta
    bordo e superficie, mai colore del testo (regola dell'oro non-testo). */
-.loan-warning {
+.loan-warning,
+.qr-warning {
   padding: 0.6rem 0.75rem;
   border-radius: var(--radius);
   background: var(--gold-bg);
@@ -5381,4 +5385,126 @@ form.game-materials {
 
 .legal-page .markdown-body h3 {
   margin-top: 1.4em;
+}
+
+/* ---------- Cartellino col QR (/admin/games/:id/qr, /admin/events/:id/qr) ---------- */
+
+/* Pagina senza shell: a schermo è l'anteprima del cartellino con la barra
+   per tornare e stampare, in stampa resta solo il cartellino. */
+.qr-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.5rem 16px 3rem;
+  background: var(--bg);
+}
+
+.qr-toolbar {
+  width: 100%;
+  max-width: 24rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.qr-toolbar .back-link {
+  margin-bottom: 0;
+}
+
+.qr-warning,
+.qr-error {
+  max-width: 24rem;
+  margin: 0;
+}
+
+/* Il cartellino: 70×95 mm, la misura che entra in piedi in quasi ogni
+   scatola. Bianco e inchiostro pieno, perché è fatto per la stampante; il
+   tratteggio è la linea di taglio. */
+.qr-card {
+  box-sizing: border-box;
+  width: 70mm;
+  min-height: 95mm;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6mm 5mm 5mm;
+  background: #fff;
+  color: #000;
+  border: 1px dashed var(--card-line);
+  border-radius: var(--radius-md);
+  text-align: center;
+  box-shadow: 0 6px 20px rgb(36 31 24 / 12%);
+}
+
+.qr-card-site {
+  margin: 0;
+  font-family: 'Data', monospace;
+  font-size: 7.5pt;
+  letter-spacing: 0.04em;
+  color: #555;
+}
+
+.qr-card-title {
+  margin: 1.5mm 0 0;
+  font-size: 15pt;
+  line-height: 1.15;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+
+.qr-card-subtitle {
+  margin: 1mm 0 0;
+  font-family: 'Data', monospace;
+  font-size: 8pt;
+  color: #333;
+}
+
+/* 50 mm: ben sopra il minimo che un telefono legge da un palmo, e il margine
+   bianco è già dentro l'SVG. Il margine automatico sopra e sotto lo tiene al
+   centro dello spazio che il titolo lascia, corto o lungo che sia. */
+.qr-card-code {
+  width: 50mm;
+  height: 50mm;
+  margin: auto 0;
+  padding-block: 2mm;
+}
+
+.qr-card-invite {
+  margin: 1mm 0 0;
+  font-size: 9pt;
+  font-weight: 600;
+}
+
+.qr-card-url {
+  margin: 1mm 0 0;
+  font-family: 'Data', monospace;
+  font-size: 7pt;
+  color: #444;
+  overflow-wrap: anywhere;
+}
+
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  .qr-page {
+    min-height: 0;
+    padding: 0;
+    background: #fff;
+    align-items: flex-start;
+  }
+
+  .qr-toolbar,
+  .qr-warning {
+    display: none;
+  }
+
+  .qr-card {
+    box-shadow: none;
+    border-color: #999;
+  }
 }

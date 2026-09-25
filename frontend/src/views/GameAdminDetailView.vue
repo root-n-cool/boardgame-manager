@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import ModalDialog from '../components/ModalDialog.vue'
+import QrPrintLink from '../components/QrPrintLink.vue'
 import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import BggFilesPicker, { type BggFile } from '../components/BggFilesPicker.vue'
@@ -444,6 +445,10 @@ onMounted(async () => {
               />
             </svg>
           </a>
+          <QrPrintLink
+            :to="{ name: 'admin-game-qr', params: { id: game.id } }"
+            label="Stampa il QR della scheda pubblica, da mettere nella scatola"
+          />
           <button type="button" class="btn-danger is-compact" @click="deleteGame">
             Elimina
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
