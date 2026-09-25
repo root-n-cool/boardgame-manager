@@ -19,14 +19,17 @@ type ThreadFetcher interface {
 	Thread(ctx context.Context, threadID string) (bgg.Thread, error)
 }
 
-// Hit è un commento del forum pronto per il modello. CommentURL e
-// ThreadURL non escono al modello: servono all'handler per i link.
+// Hit è un commento del forum pronto per il modello. CommentURL, ThreadURL
+// e ThreadID non escono al modello: servono all'handler per i link e per
+// disambiguare la reference fra più chiamate dello stesso tool nella
+// stessa richiesta.
 type Hit struct {
 	Reference       string
 	ReferenceDetail string
 	Text            string
 	CommentURL      string
 	ThreadURL       string
+	ThreadID        string
 }
 
 const (
@@ -40,16 +43,38 @@ const (
 	// callTimeout vale per ogni chiamata esterna: la domanda intera ha un
 	// tetto di 60 secondi e non può passarli ad aspettare BGG.
 	callTimeout = 10 * time.Second
+	// overallTimeout è il tetto dell'INTERA Search (una Tavily più fino a
+	// MaxThreads*qualcheTentativo Thread, tutte sequenziali): senza, un
+	// geekdo lento consuma da solo tutto il budget della domanda
+	// (askTimeout, 60s) e la risposta finale del modello fallisce. Derivato
+	// dal contesto del chiamante: se quello scade prima, vince comunque
+	// prima (context.WithTimeout prende il minimo).
+	overallTimeout = 20 * time.Second
 )
 
 var threadIDPattern = regexp.MustCompile(`boardgamegeek\.com/thread/(\d+)`)
 
+// validCommentURL accetta come link di un commento solo un URL BGG senza
+// spazi né ")" (che romperebbe la sintassi markdown del link): un
+// Article.Link malformato o ostile (es. "javascript:alert(1)") non deve
+// arrivare nella risposta al modello, dove poi finisce dentro un link
+// markdown cliccabile.
+func validCommentURL(link string) bool {
+	if !strings.HasPrefix(link, "https://boardgamegeek.com/") {
+		return false
+	}
+	return !strings.ContainsAny(link, " \t\n)")
+}
+
 // Search è legata al gioco dal chiamante: bggID non è un parametro del
 // tool, così il modello non può leggere il forum di un altro gioco.
 func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName, bggID, query string) ([]Hit, error) {
-	sctx, cancel := context.WithTimeout(ctx, callTimeout)
+	ctx, cancel := context.WithTimeout(ctx, overallTimeout)
+	defer cancel()
+
+	sctx, cancel2 := context.WithTimeout(ctx, callTimeout)
 	results, err := s.Search(sctx, fmt.Sprintf("%q %s rules", gameName, query), []string{"boardgamegeek.com/thread"}, SearchResults)
-	cancel()
+	cancel2()
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +93,19 @@ func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName
 	var hits []Hit
 	usedRefs := map[string]bool{}
 	accepted := 0
+	// fetchedAny e fetchErrored distinguono, alla fine, "nessuna lettura è
+	// mai riuscita" (un errore da segnalare) da "qualche lettura è
+	// riuscita ma è stata scartata dai filtri" (un array vuoto legittimo).
+	fetchedAny := false
+	fetchErrored := false
+	var lastErr error
 	for _, id := range ids {
 		if accepted >= MaxThreads {
+			break
+		}
+		if ctx.Err() != nil {
+			// Il tetto complessivo è scaduto: si smette di leggere e si
+			// restituisce quel che si è raccolto finora.
 			break
 		}
 		tctx, cancel := context.WithTimeout(ctx, callTimeout)
@@ -77,8 +113,11 @@ func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName
 		cancel()
 		if err != nil {
 			log.Printf("faq: thread %s: %v", id, err)
+			fetchErrored = true
+			lastErr = err
 			continue
 		}
+		fetchedAny = true
 		// Un thread di un'espansione o di un gioco omonimo, o fuori dal
 		// forum Rules (Variants sono regole della casa), non è una FAQ di
 		// questo gioco.
@@ -106,14 +145,36 @@ func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName
 				text = strings.ToValidUTF8(text[:budget], "")
 			}
 			budget -= len(text)
+			commentURL := a.Link
+			if !validCommentURL(commentURL) {
+				commentURL = ""
+			}
 			hits = append(hits, Hit{
 				Reference:       ref,
 				ReferenceDetail: "commento del " + a.PostDate.Format("02/01/2006"),
 				Text:            text,
-				CommentURL:      a.Link,
+				CommentURL:      commentURL,
 				ThreadURL:       threadURL,
+				ThreadID:        th.ID,
 			})
 		}
+	}
+
+	if len(hits) > 0 {
+		return hits, nil
+	}
+	if ctx.Err() != nil {
+		// Scaduto il tetto complessivo prima di raccogliere nulla: è
+		// l'errore da riportare, non "nessun thread leggibile" (che
+		// implicherebbe un errore per thread, non un timeout globale).
+		return nil, ctx.Err()
+	}
+	if fetchErrored && !fetchedAny {
+		// Almeno un thread era stato trovato, ma NESSUNA lettura è
+		// riuscita: è un guasto esterno (Tavily ok, geekdo giù), non
+		// "nessuna FAQ pertinente". Il chiamante lo trasforma nel
+		// messaggio di indisponibilità per il modello.
+		return nil, fmt.Errorf("faq: nessun thread leggibile: %w", lastErr)
 	}
 	return hits, nil
 }

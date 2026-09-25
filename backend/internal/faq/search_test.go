@@ -189,3 +189,64 @@ func TestSearch_WebSearchErrorIsReturned(t *testing.T) {
 		t.Fatal("expected the web search error")
 	}
 }
+
+// TestSearch_AllThreadsFailingIsAnError: quando almeno un thread è stato
+// trovato ma NESSUNA lettura riesce, il modello non deve vedere
+// "nessun_risultato_per" (che suggerisce "nessuna FAQ pertinente", falso):
+// deve vedere il messaggio di indisponibilità (task ai/ask.go traduce
+// questo errore in quel messaggio).
+func TestSearch_AllThreadsFailingIsAnError(t *testing.T) {
+	s := &fakeSearcher{results: []websearch.Result{threadURL("1"), threadURL("2")}}
+	f := &fakeFetcher{threads: map[string]bgg.Thread{}} // ogni Thread() fallisce con "not found"
+
+	_, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	if err == nil {
+		t.Fatal("quando tutte le letture falliscono Search deve restituire un errore")
+	}
+}
+
+// blockingFetcher simula geekdo che non risponde mai entro il contesto:
+// serve a verificare che Search abbia un tetto complessivo, non solo per
+// singola chiamata.
+type blockingFetcher struct{}
+
+func (blockingFetcher) Thread(ctx context.Context, id string) (bgg.Thread, error) {
+	<-ctx.Done()
+	return bgg.Thread{}, ctx.Err()
+}
+
+func TestSearch_RespectsTheOverallDeadline(t *testing.T) {
+	s := &fakeSearcher{results: []websearch.Result{threadURL("1")}}
+	// Il contesto del chiamante scade a 50ms, molto sotto il tetto interno
+	// di 20s: Search deve tornare intorno a quei 50ms, non aspettare 20s.
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := faq.Search(ctx, s, blockingFetcher{}, "Wingspan", "266192", "q")
+	elapsed := time.Since(start)
+
+	if elapsed > time.Second {
+		t.Fatalf("Search non rispetta il tetto complessivo: tornata dopo %s", elapsed)
+	}
+	if err == nil {
+		t.Fatal("nessuna lettura riuscita entro la scadenza: atteso un errore")
+	}
+}
+
+func TestSearch_RejectsUnsafeCommentLinks(t *testing.T) {
+	for _, link := range []string{"javascript:alert(1)", "https://evil.example/x"} {
+		th := rulesThread("1", "A", "testo")
+		th.Articles[0].Link = link
+		s := &fakeSearcher{results: []websearch.Result{threadURL("1")}}
+		f := &fakeFetcher{threads: map[string]bgg.Thread{"1": th}}
+
+		hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+		if err != nil {
+			t.Fatalf("search: %v", err)
+		}
+		if len(hits) != 1 || hits[0].CommentURL != "" {
+			t.Fatalf("link %q: atteso CommentURL vuoto, ottenuto %+v", link, hits)
+		}
+	}
+}
