@@ -466,6 +466,11 @@ type Turn struct {
 // di due righe.
 type SearchFunc func(ctx context.Context, keywords []string) (string, error)
 
+// FAQSearchFunc cerca nel forum Rules di BoardGameGeek. Separata da
+// SearchFunc perché la query è diversa: il forum è in inglese e un motore
+// di ricerca vuole una frase, non le varianti lessicali italiane di FTS5.
+type FAQSearchFunc func(ctx context.Context, query string) (string, error)
+
 // Asker è l'astrazione che serve all'handler pubblico. HTTPClient la
 // implementa; i test iniettano un finto.
 type Asker interface {
@@ -483,6 +488,10 @@ type AskRequest struct {
 	CorpusChars int
 	CorpusIndex string
 	Search      SearchFunc
+	// SearchFAQ, quando c'è, dichiara il secondo tool. Nil = niente chiave
+	// di ricerca o gioco senza bggId: il modello non sa nemmeno che il
+	// forum esiste.
+	SearchFAQ FAQSearchFunc
 }
 
 // SearchToolName è esportato perché l'handler pubblico (Task 7) deve
@@ -506,6 +515,19 @@ const searchToolSchema = `{
     }
   },
   "required": ["parole_chiave"]
+}`
+
+const FAQToolName = "cerca_nelle_faq"
+
+const faqToolSchema = `{
+  "type": "object",
+  "properties": {
+    "domanda_in_inglese": {
+      "type": "string",
+      "description": "La domanda sulla regola, tradotta in inglese, breve, con i termini del gioco. Esempio: \"refresh birdfeeder during forest action\"."
+    }
+  },
+  "required": ["domanda_in_inglese"]
 }`
 
 type toolFunctionDef struct {
@@ -582,8 +604,9 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 	// una volta, usata da entrambi, così le due cose non possono
 	// disallinearsi.
 	toolsDeclared := req.Search != nil
+	faqDeclared := toolsDeclared && req.SearchFAQ != nil
 
-	system, err := json.Marshal(chatMessage{Role: "system", Content: askSystemPrompt(req, toolsDeclared)})
+	system, err := json.Marshal(chatMessage{Role: "system", Content: askSystemPrompt(req, toolsDeclared, faqDeclared)})
 	if err != nil {
 		return "", err
 	}
@@ -606,10 +629,22 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 			Type: "function",
 			Function: toolFunctionDef{
 				Name: SearchToolName,
-				Description: "Cerca nelle fonti del gioco (manuali, FAQ). Passa in un'unica " +
+				Description: "Cerca nei manuali e nei documenti del gioco. Passa in un'unica " +
 					"chiamata tutte le varianti lessicali plausibili: la ricerca è " +
 					"lessicale, quindi più varianti trovano più cose.",
 				Parameters: json.RawMessage(searchToolSchema),
+			},
+		})
+	}
+
+	if faqDeclared {
+		tools = append(tools, toolDef{
+			Type: "function",
+			Function: toolFunctionDef{
+				Name: FAQToolName,
+				Description: "Cerca nel forum Rules di BoardGameGeek, dove i giocatori " +
+					"chiariscono i casi che il regolamento non copre. In inglese.",
+				Parameters: json.RawMessage(faqToolSchema),
 			},
 		})
 	}
@@ -685,6 +720,15 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 					result = out
 				}
 			}
+			if call.Function.Name == FAQToolName && req.SearchFAQ != nil {
+				out, err := req.SearchFAQ(ctx, parseFAQQuery(call.Function.Arguments))
+				if err != nil {
+					log.Printf("ask: faq search failed: %v", err)
+					result = "Le FAQ non sono disponibili in questo momento."
+				} else {
+					result = out
+				}
+			}
 			resultRaw, err := json.Marshal(toolResultMessage{
 				Role: "tool", ToolCallID: call.ID, Content: result,
 			})
@@ -730,6 +774,25 @@ func trimAll(in []string) []string {
 	return out
 }
 
+// parseFAQQuery legge l'argomento di cerca_nelle_faq. Come parseKeywords
+// tollera la forma sbagliata più probabile da un modello economico: un
+// array al posto della stringa.
+func parseFAQQuery(arguments string) string {
+	var asString struct {
+		Query string `json:"domanda_in_inglese"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &asString); err == nil && strings.TrimSpace(asString.Query) != "" {
+		return strings.TrimSpace(asString.Query)
+	}
+	var asArray struct {
+		Query []string `json:"domanda_in_inglese"`
+	}
+	if err := json.Unmarshal([]byte(arguments), &asArray); err == nil {
+		return strings.Join(trimAll(asArray.Query), " ")
+	}
+	return ""
+}
+
 // askSystemPrompt costruisce le istruzioni. Due regole contano più delle
 // altre: non inventare quando le fonti non dicono niente, e citare
 // reference/reference_detail esattamente come arrivano dal risultato del
@@ -740,7 +803,7 @@ func trimAll(in []string) []string {
 // essere la stessa condizione che decide se il tool compare nella
 // richiesta (vedi Ask), altrimenti il prompt può promettere uno strumento
 // che il modello non ha davvero a disposizione.
-func askSystemPrompt(req AskRequest, toolsDeclared bool) string {
+func askSystemPrompt(req AskRequest, toolsDeclared, faqDeclared bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Sei l'assistente regole di %q per un'associazione di giochi da tavolo. ", req.GameName)
 	b.WriteString("Chi ti scrive è in piedi a un tavolo, con le carte in mano: rispondi in italiano, breve, come si parla. ")
@@ -756,6 +819,14 @@ func askSystemPrompt(req AskRequest, toolsDeclared bool) string {
 	if toolsDeclared {
 		b.WriteString("Per leggere le fonti usa lo strumento di ricerca. ")
 		b.WriteString("Se una ricerca non trova nulla, riprova con altre parole prima di dire che le fonti non lo dicono.")
+
+		if faqDeclared {
+			b.WriteString("\n\nHai anche uno strumento per il forum Rules di BoardGameGeek. ")
+			b.WriteString("Il manuale resta la fonte principale: cerca prima lì. ")
+			b.WriteString("Usa il forum quando il manuale non risponde, è ambiguo, o la domanda riguarda un caso specifico che il manuale non copre. ")
+			b.WriteString("Quello che viene dal forum presentalo come chiarimento della community («sul forum di BGG…»); se il testo dice che a rispondere è l'autore o l'editore del gioco, dillo. ")
+			b.WriteString("Se manuale e forum si contraddicono, vale il manuale e segnala la differenza.")
+		}
 	} else {
 		// Non dovrebbe succedere nell'uso reale (il chiamante passa
 		// sempre Search), ma se capitasse non si deve promettere uno

@@ -482,3 +482,86 @@ func TestTranscribe_KeepsAPageThatMerelyMentionsTheWord(t *testing.T) {
 		t.Fatalf("atteso il testo della pagina, ottenuto %q", out)
 	}
 }
+
+func faqToolCallResponse(args string) string {
+	return `{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,` +
+		`"tool_calls":[{"id":"call_f","type":"function","function":{"name":"cerca_nelle_faq","arguments":` +
+		strconv.Quote(args) + `}}]}}]}`
+}
+
+func TestAsk_DeclaresTheFAQToolOnlyWhenGiven(t *testing.T) {
+	srv := &askServer{t: t, responses: []string{answerOnly, answerOnly}}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	search := func(ctx context.Context, kw []string) (string, error) { return "[]", nil }
+
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}}, Search: search,
+	}); err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if strings.Contains(srv.requests[0], "cerca_nelle_faq") {
+		t.Fatalf("FAQ tool declared without SearchFAQ:\n%s", srv.requests[0])
+	}
+
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}}, Search: search,
+		SearchFAQ: func(ctx context.Context, q string) (string, error) { return "[]", nil },
+	}); err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if !strings.Contains(srv.requests[1], `"name":"cerca_nelle_faq"`) || !strings.Contains(srv.requests[1], "forum") {
+		t.Fatalf("FAQ tool or its prompt missing:\n%s", srv.requests[1])
+	}
+}
+
+func TestAsk_CallsTheFAQToolWithTheEnglishQuery(t *testing.T) {
+	srv := &askServer{t: t, responses: []string{
+		faqToolCallResponse(`{"domanda_in_inglese":"refresh birdfeeder during forest action"}`),
+		answerOnly,
+	}}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	var gotQuery string
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}},
+		Search: func(ctx context.Context, kw []string) (string, error) { return "[]", nil },
+		SearchFAQ: func(ctx context.Context, q string) (string, error) {
+			gotQuery = q
+			return `{"risultati":[{"reference":"BGG: Refreshing","text":"You reroll."}]}`, nil
+		},
+	}); err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if gotQuery != "refresh birdfeeder during forest action" {
+		t.Fatalf("unexpected FAQ query %q", gotQuery)
+	}
+	if !strings.Contains(srv.requests[1], "You reroll.") || !strings.Contains(srv.requests[1], `"tool_call_id":"call_f"`) {
+		t.Fatalf("FAQ result not sent back to the model:\n%s", srv.requests[1])
+	}
+}
+
+func TestAsk_FAQToolFailureIsNotFatal(t *testing.T) {
+	srv := &askServer{t: t, responses: []string{
+		faqToolCallResponse(`{"domanda_in_inglese":"x"}`),
+		answerOnly,
+	}}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	out, err := client.Ask(context.Background(), ai.AskRequest{
+		GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}},
+		Search:    func(ctx context.Context, kw []string) (string, error) { return "[]", nil },
+		SearchFAQ: func(ctx context.Context, q string) (string, error) { return "", errors.New("tavily down") },
+	})
+	if err != nil || out == "" {
+		t.Fatalf("a failing FAQ search must not fail the answer: %v", err)
+	}
+	if !strings.Contains(srv.requests[1], "Le FAQ non sono disponibili in questo momento.") {
+		t.Fatalf("the model was not told the FAQ are unavailable:\n%s", srv.requests[1])
+	}
+}
