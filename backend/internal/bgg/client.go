@@ -22,6 +22,13 @@ const DefaultBaseURL = "https://boardgamegeek.com/xmlapi2"
 // e la bot protection di boardgamegeek.com.
 const DefaultFilesBaseURL = "https://api.geekdo.com/api/files"
 
+// DefaultForumsBaseURL è lo stesso JSON non ufficiale di DefaultFilesBaseURL.
+// Risponde senza token e, a differenza di xmlapi2/thread, dice a quale
+// gioco e a quale forum appartiene un thread: è quel che serve per
+// scartare i risultati di ricerca che parlano di un'espansione o stanno
+// nel forum Variants.
+const DefaultForumsBaseURL = "https://api.geekdo.com/api"
+
 // filesPageSize è il massimo che BGG serve per pagina: showcount più
 // alti vengono comunque troncati a 50.
 const filesPageSize = "50"
@@ -66,19 +73,22 @@ type Client interface {
 	GetThing(ctx context.Context, token, id string) (ThingDetail, error)
 	Details(ctx context.Context, token string, ids []string) (map[string]ThingDetail, error)
 	Files(ctx context.Context, bggID, languageID string) ([]FileEntry, error)
+	Thread(ctx context.Context, threadID string) (Thread, error)
 }
 
 type HTTPClient struct {
-	BaseURL      string
-	FilesBaseURL string
-	HTTPClient   *http.Client
+	BaseURL       string
+	FilesBaseURL  string
+	ForumsBaseURL string
+	HTTPClient    *http.Client
 }
 
 func NewHTTPClient() *HTTPClient {
 	return &HTTPClient{
-		BaseURL:      DefaultBaseURL,
-		FilesBaseURL: DefaultFilesBaseURL,
-		HTTPClient:   &http.Client{Timeout: 15 * time.Second},
+		BaseURL:       DefaultBaseURL,
+		FilesBaseURL:  DefaultFilesBaseURL,
+		ForumsBaseURL: DefaultForumsBaseURL,
+		HTTPClient:    &http.Client{Timeout: 15 * time.Second},
 	}
 }
 

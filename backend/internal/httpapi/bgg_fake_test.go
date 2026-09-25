@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"context"
+	"errors"
 
 	"boardgames-manager/internal/bgg"
 )
@@ -20,6 +21,10 @@ type fakeBGGClient struct {
 	filesErr        error
 	filesBGGID      string
 	filesLanguageID string
+
+	threads    map[string]bgg.Thread
+	threadErrs map[string]error
+	threadIDs  []string
 }
 
 func (f *fakeBGGClient) Search(ctx context.Context, token, query string) ([]bgg.SearchResult, error) {
@@ -40,4 +45,16 @@ func (f *fakeBGGClient) Files(ctx context.Context, bggID, languageID string) ([]
 	f.filesBGGID = bggID
 	f.filesLanguageID = languageID
 	return f.files, f.filesErr
+}
+
+func (f *fakeBGGClient) Thread(ctx context.Context, threadID string) (bgg.Thread, error) {
+	f.threadIDs = append(f.threadIDs, threadID)
+	if err := f.threadErrs[threadID]; err != nil {
+		return bgg.Thread{}, err
+	}
+	th, ok := f.threads[threadID]
+	if !ok {
+		return bgg.Thread{}, errors.New("thread not found")
+	}
+	return th, nil
 }
