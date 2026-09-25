@@ -390,7 +390,9 @@ nelle impostazioni (piano gratuito: 1.000 ricerche al mese, senza carta),
 l'assistente regole, quando il manuale non basta, cerca nel forum *Rules*
 del gioco su BoardGameGeek e cita il commento con un link. Serve un gioco
 collegato a BGG e un manuale già preparato: le FAQ completano il manuale,
-non lo sostituiscono. Senza chiave l'assistente usa solo i documenti.
+non lo sostituiscono. La domanda, tradotta in inglese, viene mandata a
+Tavily per trovare i thread; il thread scelto si legge poi direttamente
+da BoardGameGeek. Senza chiave l'assistente usa solo i documenti.
 
 ### Email (SMTP) (opzionale)
 

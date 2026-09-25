@@ -193,11 +193,21 @@ Il system prompt, quando `SearchFAQ` è dichiarato, aggiunge:
 - Tavily o geekdo non rispondono / errore → il tool restituisce «Le FAQ non
   sono disponibili in questo momento.» e l'agente risponde col manuale.
   Nessun errore verso l'utente, log lato server.
-- Timeout per singola chiamata esterna: 10 s. Il tetto complessivo della
-  domanda (`askTimeout`, 60 s) resta.
+- Timeout per singola chiamata esterna: 10 s. `faq.Search` ha anche un
+  tetto complessivo di 20 s (la Tavily più le `Thread` che seguono, tutte
+  sequenziali): senza, un geekdo lento da solo consumerebbe l'intero
+  budget della domanda (`askTimeout`, 60 s) e la risposta finale del
+  modello fallirebbe. Se è stato trovato almeno un thread ma NESSUNA
+  lettura riesce, il tool segnala un errore, che diventa il messaggio di
+  indisponibilità sopra; se qualche lettura riesce ma tutte vengono
+  scartate dai filtri del passo 3, il risultato resta un array vuoto senza
+  errore.
 - Costo: 1 credito Tavily per chiamata al tool; `MaxToolIterations` (5)
-  limita il caso peggiore. Nessuna cache: scelta di semplicità, da
-  rivedere solo se i crediti finiscono davvero.
+  limita il caso peggiore, e l'handler applica anche un tetto proprio di 2
+  chiamate a `faq.Search` per domanda (`askMaxFAQSearches`): oltre, il tool
+  risponde con un messaggio che invita il modello a rispondere con quello
+  che ha, senza consumare altro credito. Nessuna cache: scelta di
+  semplicità, da rivedere solo se i crediti finiscono davvero.
 
 ## 8. Test
 
