@@ -42,6 +42,12 @@ esterno obbligatorio.
   le mattonelle della mappa arrivano da openstreetmap.org, quindi serve
   una connessione verso l'esterno. Un indirizzo che la ricerca non trova
   si scrive a mano: resta sull'evento come riga di testo, senza mappa.
+- **Aggiungi al calendario**: la pagina pubblica di un evento non ancora
+  iniziato offre un file `.ics` (`/api/events/{id}/calendar.ics`) con
+  titolo, luogo e link alla serata. L'orario è quello locale della
+  serata, senza fuso. L'evento ha un orario di fine **facoltativo**
+  (una fine prima dell'inizio, es. 21:00–01:00, vale il giorno dopo);
+  se manca, a calendario la serata finisce a mezzanotte.
 - **Prenotazioni anonime**: nome ed email facoltativa — nessun account
   richiesto, nessun telefono. Va accettato un consenso a termini e
   privacy per completare la prenotazione. Alla prenotazione viene generato

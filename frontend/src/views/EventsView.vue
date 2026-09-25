@@ -9,6 +9,7 @@ interface EventSummary {
   description: string | null
   eventDate: string
   startTime: string
+  endTime: string | null
   imagePath: string | null
   venue: { name: string; address: string; lat: number | null; lon: number | null } | null
   gamesCount: number
@@ -77,7 +78,7 @@ onMounted(loadEvents)
               <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
               <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
             </svg>
-            {{ formatEventDateTime(e.eventDate, e.startTime) }}
+            {{ formatEventDateTime(e) }}
           </p>
           <p v-if="e.venue" class="event-card-venue">
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">

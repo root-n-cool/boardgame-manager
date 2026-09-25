@@ -323,6 +323,17 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   orizzontale, **mai nell'altezza**: `min-height: 44px`, il minimo per un
   bersaglio da dito.
 
+### Aggiungi al calendario (`.event-calendar-link`)
+- Link testuale accanto alla data nella pagina pubblica dell'evento, solo
+  finché la serata non è iniziata. Un `<a>` semplice verso il `.ics`,
+  senza `download`: sul telefono apre direttamente il calendario.
+- Bersaglio da dito a **44px** con `margin-block` negativo, così la riga
+  della data non si alza. Sotto i 30rem va a capo, allineato al testo della
+  data (icona + gap), non al bordo del calendarietto.
+- L'orario, quando c'è la fine, è un intervallo col trattino lungo:
+  "21:00–01:00". Una fine prima dell'inizio è del giorno dopo e si legge già
+  così: niente data ripetuta.
+
 ### Rimando indietro (`.back-link`)
 - Freccia + una parola che nomina **dove** si torna ("← Catalogo",
   "← Eventi"), sopra il titolo, in `--ink-muted`. Mai "← Torna alla pagina

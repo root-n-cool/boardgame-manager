@@ -8,6 +8,7 @@ interface EventListItem {
   title: string
   eventDate: string
   startTime: string
+  endTime: string | null
   imagePath: string | null
   gamesCount: number
 }
@@ -148,7 +149,7 @@ onMounted(loadEvents)
                 <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
                 <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
               </svg>
-              {{ formatEventDateTime(e.eventDate, e.startTime) }}
+              {{ formatEventDateTime(e) }}
             </p>
             <p class="event-card-games">
               {{ e.gamesCount === 1 ? '1 gioco' : `${e.gamesCount} giochi` }}

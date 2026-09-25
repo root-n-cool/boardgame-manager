@@ -13,6 +13,7 @@ const title = ref('')
 const description = ref('')
 const eventDate = ref('')
 const startTime = ref('')
+const endTime = ref('')
 const venue = ref<Venue | null>(null)
 const error = ref('')
 const saving = ref(false)
@@ -56,6 +57,7 @@ async function createEvent() {
       description: description.value || null,
       eventDate: eventDate.value,
       startTime: startTime.value,
+      endTime: endTime.value || null,
       venue: venue.value,
       games: selectedGames.value,
     })
@@ -126,10 +128,16 @@ onBeforeUnmount(releasePreview)
           Data
           <input v-model="eventDate" type="date" required />
         </label>
-        <label>
-          Ora
-          <input v-model="startTime" type="time" required />
-        </label>
+        <div class="field-row">
+          <label>
+            Inizio
+            <input v-model="startTime" type="time" required />
+          </label>
+          <label>
+            <span>Fine <span class="field-optional">(opzionale)</span></span>
+            <input v-model="endTime" type="time" />
+          </label>
+        </div>
 
         <div class="field-block">
           <span class="field-label">Luogo <span class="field-optional">(opzionale)</span></span>

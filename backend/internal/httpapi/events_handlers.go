@@ -103,12 +103,14 @@ type eventGameRequest struct {
 }
 
 type eventRequest struct {
-	Title       string             `json:"title"`
-	Description *string            `json:"description"`
-	EventDate   string             `json:"eventDate"`
-	StartTime   string             `json:"startTime"`
-	Venue       *venueRequest      `json:"venue"`
-	Games       []eventGameRequest `json:"games"`
+	Title       string  `json:"title"`
+	Description *string `json:"description"`
+	EventDate   string  `json:"eventDate"`
+	StartTime   string  `json:"startTime"`
+	// EndTime è facoltativo: assente, null o "" significano "non indicato".
+	EndTime *string            `json:"endTime"`
+	Venue   *venueRequest      `json:"venue"`
+	Games   []eventGameRequest `json:"games"`
 }
 
 // venueRequest è il luogo come lo manda l'admin. Le coordinate sono
@@ -153,33 +155,50 @@ func toEventGameInputs(in []eventGameRequest) []events.EventGameInput {
 	return out
 }
 
+// invalidEventMessage è la risposta a una serata che non si legge: il
+// messaggio di sempre, per i campi che il form non lascia sbagliare.
+const invalidEventMessage = "title, eventDate and startTime are required"
+
 // decodeEventInput legge e valida la serata che l'admin manda, e la
-// consegna già nella forma che lo store si aspetta.
-func decodeEventInput(r *http.Request) (events.EventInput, bool) {
+// consegna già nella forma che lo store si aspetta. Il secondo valore è il
+// motivo del rifiuto, vuoto quando la serata va bene: il form lo mostra
+// così com'è, quindi i casi che l'admin può davvero sbagliare parlano
+// italiano.
+func decodeEventInput(r *http.Request) (events.EventInput, string) {
 	var req eventRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		return events.EventInput{}, false
+		return events.EventInput{}, invalidEventMessage
 	}
 	if req.Title == "" || req.EventDate == "" || req.StartTime == "" {
-		return events.EventInput{}, false
+		return events.EventInput{}, invalidEventMessage
 	}
 	if _, err := time.Parse("2006-01-02", req.EventDate); err != nil {
-		return events.EventInput{}, false
+		return events.EventInput{}, invalidEventMessage
 	}
 	if _, err := time.Parse("15:04", req.StartTime); err != nil {
-		return events.EventInput{}, false
+		return events.EventInput{}, invalidEventMessage
+	}
+	if req.EndTime != nil && *req.EndTime == "" {
+		req.EndTime = nil
+	}
+	if req.EndTime != nil {
+		// Una fine uguale all'inizio non è una serata di ventiquattro ore,
+		// è un errore di battitura: meglio rifiutarla che indovinare.
+		if _, err := time.Parse("15:04", *req.EndTime); err != nil || *req.EndTime == req.StartTime {
+			return events.EventInput{}, "L'orario di fine non è valido o coincide con l'inizio: lascialo vuoto o scegli un altro orario."
+		}
 	}
 	venue, ok := toVenue(req.Venue)
 	if !ok {
-		return events.EventInput{}, false
+		return events.EventInput{}, invalidEventMessage
 	}
 	seenGames := map[int64]bool{}
 	for _, g := range req.Games {
 		if g.Copies < 1 {
-			return events.EventInput{}, false
+			return events.EventInput{}, invalidEventMessage
 		}
 		if seenGames[g.GameID] {
-			return events.EventInput{}, false
+			return events.EventInput{}, invalidEventMessage
 		}
 		seenGames[g.GameID] = true
 	}
@@ -188,15 +207,16 @@ func decodeEventInput(r *http.Request) (events.EventInput, bool) {
 		Description: req.Description,
 		EventDate:   req.EventDate,
 		StartTime:   req.StartTime,
+		EndTime:     req.EndTime,
 		Venue:       venue,
 		Games:       toEventGameInputs(req.Games),
-	}, true
+	}, ""
 }
 
 func (s *Server) createEventHandler(w http.ResponseWriter, r *http.Request) {
-	in, ok := decodeEventInput(r)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "title, eventDate and startTime are required")
+	in, msg := decodeEventInput(r)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	event, err := s.Events.CreateEvent(r.Context(), in)
@@ -217,9 +237,9 @@ func (s *Server) updateEventHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid event id")
 		return
 	}
-	in, ok := decodeEventInput(r)
-	if !ok {
-		writeError(w, http.StatusBadRequest, "title, eventDate and startTime are required")
+	in, msg := decodeEventInput(r)
+	if msg != "" {
+		writeError(w, http.StatusBadRequest, msg)
 		return
 	}
 	event, err := s.Events.UpdateEvent(r.Context(), id, in)

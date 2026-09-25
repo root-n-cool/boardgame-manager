@@ -24,6 +24,7 @@ interface EventDetail {
   description: string | null
   eventDate: string
   startTime: string
+  endTime: string | null
   imagePath: string | null
   venue: Venue | null
   games: EventGameInfo[]
@@ -61,6 +62,7 @@ const title = ref('')
 const description = ref('')
 const eventDate = ref('')
 const startTime = ref('')
+const endTime = ref('')
 const venue = ref<Venue | null>(null)
 const error = ref('')
 const saveMessage = ref('')
@@ -130,10 +132,11 @@ async function load() {
   description.value = event.description || ''
   eventDate.value = event.eventDate
   startTime.value = event.startTime
+  endTime.value = event.endTime ?? ''
   imagePath.value = event.imagePath
   venue.value = event.venue
   eventTitle.value = event.title
-  eventWhen.value = formatEventDateTime(event.eventDate, event.startTime)
+  eventWhen.value = formatEventDateTime(event)
   availableGames.value = games
   const copies: Record<number, number> = {}
   const occupied: Record<number, number> = {}
@@ -186,6 +189,7 @@ async function saveEvent() {
       description: description.value || null,
       eventDate: eventDate.value,
       startTime: startTime.value,
+      endTime: endTime.value || null,
       venue: venue.value,
       games: selectedGames.value,
     })
@@ -341,10 +345,16 @@ onMounted(async () => {
           Data
           <input v-model="eventDate" type="date" required />
         </label>
-        <label>
-          Ora
-          <input v-model="startTime" type="time" required />
-        </label>
+        <div class="field-row">
+          <label>
+            Inizio
+            <input v-model="startTime" type="time" required />
+          </label>
+          <label>
+            <span>Fine <span class="field-optional">(opzionale)</span></span>
+            <input v-model="endTime" type="time" />
+          </label>
+        </div>
 
         <div class="field-block">
           <span class="field-label">Luogo <span class="field-optional">(opzionale)</span></span>

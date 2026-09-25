@@ -34,6 +34,7 @@ interface EventDetail {
   description: string | null
   eventDate: string
   startTime: string
+  endTime: string | null
   imagePath: string | null
   venue: EventVenue | null
   games: EventGameInfo[]
@@ -285,7 +286,16 @@ onMounted(async () => {
         <path d="M3 9.5h18" stroke="currentColor" stroke-width="1.6" />
         <path d="M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
       </svg>
-      {{ formatEventDateTime(event.eventDate, event.startTime) }}
+      <span>{{ formatEventDateTime(event) }}</span>
+      <!-- Un link semplice, niente download: sul telefono il file .ics apre
+           direttamente il calendario, che chiede se aggiungere la serata. -->
+      <a
+        v-if="!hasStarted"
+        :href="`/api/events/${event.id}/calendar.ics`"
+        class="event-calendar-link"
+      >
+        Aggiungi al calendario
+      </a>
     </p>
 
     <div v-if="event.venue && venueLines" class="event-venue">

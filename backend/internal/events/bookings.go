@@ -55,7 +55,7 @@ func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, n
 	if err != nil {
 		return Booking{}, err
 	}
-	startsAt, err := time.Parse("2006-01-02 15:04", event.EventDate+" "+event.StartTime)
+	startsAt, err := event.StartsAt()
 	if err != nil {
 		return Booking{}, fmt.Errorf("parse event start: %w", err)
 	}

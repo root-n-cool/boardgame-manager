@@ -10,7 +10,7 @@ import (
 func toEventSummary(e events.Event) map[string]any {
 	return map[string]any{
 		"id": e.ID, "title": e.Title, "description": e.Description,
-		"eventDate": e.EventDate, "startTime": e.StartTime, "imagePath": e.ImagePath,
+		"eventDate": e.EventDate, "startTime": e.StartTime, "endTime": e.EndTime, "imagePath": e.ImagePath,
 		"venue": toVenueResponse(e.Venue),
 	}
 }

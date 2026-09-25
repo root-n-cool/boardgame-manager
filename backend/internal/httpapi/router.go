@@ -123,6 +123,7 @@ func NewRouter(s *Server) http.Handler {
 	r.Get("/api/uploads/{filename}", s.getUploadHandler)
 	r.Get("/api/events", s.listEventsHandler)
 	r.Get("/api/events/{id}", s.getEventHandler)
+	r.Get("/api/events/{id}/calendar.ics", s.eventCalendarHandler)
 	r.Get("/api/games/{id}/leaderboard", s.getLeaderboardHandler)
 	r.With(bookingLimiter.middleware).Post("/api/events/{id}/bookings", s.createBookingHandler)
 	r.With(bookingCredentialsLimiter.middleware).Post("/api/bookings/lookup", s.lookupBookingHandler)

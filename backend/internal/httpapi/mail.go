@@ -160,13 +160,20 @@ func (s *Server) bookingMailDataFor(ctx context.Context, b events.Booking) (book
 		label = fmt.Sprintf("%s #%d", game.Name, eventGame.CopyIndex)
 	}
 
+	// La riga "Ora" porta l'intervallo quando la fine c'è, come la pagina
+	// dell'evento: "21:00–01:00".
+	hours := event.StartTime
+	if event.EndTime != nil {
+		hours += "–" + *event.EndTime
+	}
+
 	return bookingMailData{
 		ParticipantName: b.ParticipantName,
 		BookingCode:     b.BookingCode,
 		GameLabel:       label,
 		EventTitle:      event.Title,
 		EventDate:       event.EventDate,
-		StartTime:       event.StartTime,
+		Hours:           hours,
 		EventID:         b.EventID,
 		SharedTable:     eventGame.Seats > 1,
 	}, nil

@@ -66,6 +66,7 @@ interface EventHeader {
   title: string
   eventDate: string
   startTime: string
+  endTime: string | null
 }
 
 const route = useRoute()
@@ -214,7 +215,7 @@ async function load() {
     api.get<LoanDesk>(`/events/${eventId}/loans`),
   ])
   eventTitle.value = event.title
-  eventWhen.value = formatEventDateTime(event.eventDate, event.startTime)
+  eventWhen.value = formatEventDateTime(event)
   desk.value = loans
 }
 

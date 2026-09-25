@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/events"
@@ -870,5 +871,47 @@ func TestUpdateEvent_DroppingACopyOnLoanIs409(t *testing.T) {
 	rec := doLoanRequest(router, http.MethodPut, fmt.Sprintf("/api/events/%d", event.ID), cookie, body)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// eventEndTimeBody è quel che serve leggere della risposta per l'orario di fine.
+type eventEndTimeBody struct {
+	EndTime *string `json:"endTime"`
+}
+
+func TestCreateEvent_KeepsTheOptionalEndTime(t *testing.T) {
+	router := httpapi.NewRouter(newTestServer(t))
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "password123")
+
+	// Una stringa vuota è "non indicato", non un orario da rifiutare.
+	for end, want := range map[string]*string{`"01:00"`: ptrTo("01:00"), `""`: nil, `null`: nil} {
+		rec := doLoanRequest(router, http.MethodPost, "/api/events", cookie,
+			`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","endTime":`+end+`}`)
+		if rec.Code != http.StatusCreated {
+			t.Fatalf("endTime %s: expected 201, got %d: %s", end, rec.Code, rec.Body.String())
+		}
+		var got eventEndTimeBody
+		if err := json.NewDecoder(rec.Body).Decode(&got); err != nil {
+			t.Fatalf("decode: %v", err)
+		}
+		if (want == nil) != (got.EndTime == nil) || (want != nil && *got.EndTime != *want) {
+			t.Fatalf("endTime %s: expected %v, got %v", end, want, got.EndTime)
+		}
+	}
+}
+
+func TestCreateEvent_RejectsABadEndTimeWithItsOwnMessage(t *testing.T) {
+	router := httpapi.NewRouter(newTestServer(t))
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "password123")
+
+	for _, end := range []string{"25:00", "sera", "21:00"} {
+		rec := doLoanRequest(router, http.MethodPost, "/api/events", cookie,
+			`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00","endTime":"`+end+`"}`)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("endTime %q: expected 400, got %d", end, rec.Code)
+		}
+		if !strings.Contains(rec.Body.String(), "orario di fine") {
+			t.Errorf("endTime %q: expected the end-time message, got %s", end, rec.Body.String())
+		}
 	}
 }

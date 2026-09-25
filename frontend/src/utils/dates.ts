@@ -18,13 +18,23 @@ function parseEventDate(eventDate: string, startTime: string): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed
 }
 
-/** "2026-10-01", "21:00" → "gio 1 ott 2026 · 21:00" */
-export function formatEventDateTime(eventDate: string, startTime: string): string {
+/** Il "quando" di una serata come lo manda l'API. */
+export interface EventWhen {
+  eventDate: string
+  startTime: string
+  endTime: string | null
+}
+
+/** "2026-10-01", "21:00", "01:00" → "gio 1 ott 2026 · 21:00–01:00".
+ *  Senza fine resta il solo orario d'inizio. Una fine che precede l'inizio
+ *  è del giorno dopo, ma "21:00–01:00" si legge già così: niente data in più. */
+export function formatEventDateTime({ eventDate, startTime, endTime }: EventWhen): string {
+  const hours = endTime ? `${startTime}–${endTime}` : startTime
   const parsed = parseEventDate(eventDate, startTime)
   if (!parsed) {
-    return `${eventDate} · ${startTime}`
+    return `${eventDate} · ${hours}`
   }
-  return `${dateFormatter.format(parsed)} · ${startTime}`
+  return `${dateFormatter.format(parsed)} · ${hours}`
 }
 
 /** "2026-10-01" → "gio 1 ott 2026", senza orario: il registro dei prestiti

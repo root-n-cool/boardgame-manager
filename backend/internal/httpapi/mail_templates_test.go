@@ -15,7 +15,7 @@ func testBookingData() bookingMailData {
 		GameLabel:        "Catan #2",
 		EventTitle:       "Serata giochi di settembre",
 		EventDate:        "2026-09-18",
-		StartTime:        "21:00",
+		Hours:            "21:00",
 		EventID:          7,
 	}
 }

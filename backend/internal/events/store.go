@@ -22,7 +22,10 @@ type Event struct {
 	Description *string
 	EventDate   string
 	StartTime   string
-	ImagePath   *string
+	// EndTime è l'orario di fine, nil quando l'admin non l'ha indicato. Se
+	// precede StartTime la serata finisce il giorno dopo.
+	EndTime   *string
+	ImagePath *string
 	// Venue è il luogo della serata, nil quando l'admin non l'ha indicato.
 	Venue     *Venue
 	CreatedAt time.Time
@@ -31,6 +34,33 @@ type Event struct {
 	// It counts distinct games, not copies: two copies of Carcassonne are
 	// one game in "N giochi" rendered for a human reading the line-up.
 	GamesCount int
+}
+
+// StartsAt è l'inizio della serata, sull'orologio locale dell'evento: le
+// colonne non portano un fuso, quindi il valore è in UTC solo di nome.
+func (e Event) StartsAt() (time.Time, error) {
+	return time.Parse("2006-01-02 15:04", e.EventDate+" "+e.StartTime)
+}
+
+// EndsAt è la fine della serata. Senza un orario di fine indicato si arriva
+// a mezzanotte, la lettura più onesta di "fino a fine serata"; una fine che
+// non segue l'inizio (21:00–01:00) cade il giorno dopo.
+func (e Event) EndsAt() (time.Time, error) {
+	start, err := e.StartsAt()
+	if err != nil {
+		return time.Time{}, err
+	}
+	if e.EndTime == nil {
+		return start.Truncate(24*time.Hour).AddDate(0, 0, 1), nil
+	}
+	end, err := time.Parse("2006-01-02 15:04", e.EventDate+" "+*e.EndTime)
+	if err != nil {
+		return time.Time{}, err
+	}
+	if !end.After(start) {
+		end = end.AddDate(0, 0, 1)
+	}
+	return end, nil
 }
 
 // Venue è dove si gioca. Address è l'unico campo che c'è sempre: Name è
@@ -71,6 +101,7 @@ type EventInput struct {
 	Description *string
 	EventDate   string
 	StartTime   string
+	EndTime     *string
 	Venue       *Venue
 	Games       []EventGameInput
 }
@@ -122,9 +153,9 @@ func (s *Store) CreateEvent(ctx context.Context, in EventInput) (Event, error) {
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`INSERT INTO events (title, description, event_date, start_time, venue_name, venue_address, venue_lat, venue_lon)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		append([]any{in.Title, in.Description, in.EventDate, in.StartTime}, venueColumns(in.Venue)...)...,
+		`INSERT INTO events (title, description, event_date, start_time, end_time, venue_name, venue_address, venue_lat, venue_lon)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		append([]any{in.Title, in.Description, in.EventDate, in.StartTime, in.EndTime}, venueColumns(in.Venue)...)...,
 	)
 	if err != nil {
 		return Event{}, err
@@ -196,10 +227,10 @@ func getEvent(ctx context.Context, q queryer, id int64) (Event, error) {
 	var createdAt string
 	var venue venueScan
 	err := q.QueryRowContext(ctx,
-		`SELECT id, title, description, event_date, start_time, image_path,
+		`SELECT id, title, description, event_date, start_time, end_time, image_path,
 		        venue_name, venue_address, venue_lat, venue_lon, created_at
 		 FROM events WHERE id = ?`, id,
-	).Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.ImagePath,
+	).Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.EndTime, &e.ImagePath,
 		&venue.name, &venue.address, &venue.lat, &venue.lon, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Event{}, ErrNotFound
@@ -275,7 +306,7 @@ func (s *Store) ListEvents(ctx context.Context, p ListEventsParams) ([]Event, in
 		return nil, 0, err
 	}
 
-	query := fmt.Sprintf(`SELECT e.id, e.title, e.description, e.event_date, e.start_time, e.image_path,
+	query := fmt.Sprintf(`SELECT e.id, e.title, e.description, e.event_date, e.start_time, e.end_time, e.image_path,
 				e.venue_name, e.venue_address, e.venue_lat, e.venue_lon, e.created_at,
 			(SELECT COUNT(DISTINCT eg.game_id) FROM event_games eg WHERE eg.event_id = e.id)
 		 FROM events e
@@ -298,7 +329,7 @@ func (s *Store) ListEvents(ctx context.Context, p ListEventsParams) ([]Event, in
 		var e Event
 		var createdAt string
 		var venue venueScan
-		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.ImagePath,
+		if err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.EventDate, &e.StartTime, &e.EndTime, &e.ImagePath,
 			&venue.name, &venue.address, &venue.lat, &venue.lon, &createdAt, &e.GamesCount); err != nil {
 			return nil, 0, err
 		}
@@ -381,9 +412,9 @@ func (s *Store) UpdateEvent(ctx context.Context, id int64, in EventInput) (Event
 	defer tx.Rollback()
 
 	res, err := tx.ExecContext(ctx,
-		`UPDATE events SET title = ?, description = ?, event_date = ?, start_time = ?,
+		`UPDATE events SET title = ?, description = ?, event_date = ?, start_time = ?, end_time = ?,
 		        venue_name = ?, venue_address = ?, venue_lat = ?, venue_lon = ? WHERE id = ?`,
-		append(append([]any{in.Title, in.Description, in.EventDate, in.StartTime}, venueColumns(in.Venue)...), id)...,
+		append(append([]any{in.Title, in.Description, in.EventDate, in.StartTime, in.EndTime}, venueColumns(in.Venue)...), id)...,
 	)
 	if err != nil {
 		return Event{}, err

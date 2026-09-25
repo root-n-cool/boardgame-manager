@@ -41,9 +41,10 @@ type bookingMailData struct {
 	GameLabel        string
 	EventTitle       string
 	EventDate        string
-	StartTime        string
-	EventID          int64
-	SharedTable      bool
+	// Hours è l'orario come si legge: "21:00" o "21:00–01:00".
+	Hours       string
+	EventID     int64
+	SharedTable bool
 }
 
 // mailShell avvolge il corpo nella cornice comune: intestazione in feltro
@@ -137,7 +138,7 @@ func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mail
 		"",
 		"Evento:   " + d.EventTitle,
 		"Data:     " + d.EventDate,
-		"Ora:      " + d.StartTime,
+		"Ora:      " + d.Hours,
 		"Gioco:    " + d.GameLabel,
 		"Codice:   " + d.BookingCode,
 		"",
@@ -156,7 +157,7 @@ func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mail
 	facts := `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px;border-collapse:collapse;">` +
 		mailFactRow("Evento", d.EventTitle) +
 		mailFactRow("Data", d.EventDate) +
-		mailFactRow("Ora", d.StartTime) +
+		mailFactRow("Ora", d.Hours) +
 		mailFactRow("Gioco", d.GameLabel) +
 		`</table>`
 
