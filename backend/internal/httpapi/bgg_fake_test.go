@@ -47,7 +47,7 @@ func (f *fakeBGGClient) Files(ctx context.Context, bggID, languageID string) ([]
 	return f.files, f.filesErr
 }
 
-func (f *fakeBGGClient) Thread(ctx context.Context, threadID string) (bgg.Thread, error) {
+func (f *fakeBGGClient) ThreadInfo(ctx context.Context, threadID string) (bgg.Thread, error) {
 	f.threadIDs = append(f.threadIDs, threadID)
 	if err := f.threadErrs[threadID]; err != nil {
 		return bgg.Thread{}, err
@@ -56,5 +56,14 @@ func (f *fakeBGGClient) Thread(ctx context.Context, threadID string) (bgg.Thread
 	if !ok {
 		return bgg.Thread{}, errors.New("thread not found")
 	}
+	th.Articles = nil
 	return th, nil
+}
+
+func (f *fakeBGGClient) ThreadArticles(ctx context.Context, threadID string) ([]bgg.Article, error) {
+	th, ok := f.threads[threadID]
+	if !ok {
+		return nil, errors.New("thread not found")
+	}
+	return th.Articles, nil
 }

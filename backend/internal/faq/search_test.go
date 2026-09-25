@@ -25,18 +25,35 @@ func (f *fakeSearcher) Search(ctx context.Context, q string, d []string, max int
 	return f.results, f.err
 }
 
+// fakeFetcher tiene threads con gli Articles già dentro (come rulesThread li
+// costruisce): ThreadInfo restituisce il thread SENZA Articles (come farebbe
+// bgg.HTTPClient.ThreadInfo, che non chiama /articles), ThreadArticles
+// restituisce solo gli Articles. infoFetched e articlesFetched sono liste
+// separate: un test (S2) verifica che un thread scartato dal filtro
+// gioco/forum non generi mai una chiamata a ThreadArticles.
 type fakeFetcher struct {
-	threads map[string]bgg.Thread
-	fetched []string
+	threads         map[string]bgg.Thread
+	infoFetched     []string
+	articlesFetched []string
 }
 
-func (f *fakeFetcher) Thread(ctx context.Context, id string) (bgg.Thread, error) {
-	f.fetched = append(f.fetched, id)
+func (f *fakeFetcher) ThreadInfo(ctx context.Context, id string) (bgg.Thread, error) {
+	f.infoFetched = append(f.infoFetched, id)
 	th, ok := f.threads[id]
 	if !ok {
 		return bgg.Thread{}, errors.New("not found")
 	}
+	th.Articles = nil
 	return th, nil
+}
+
+func (f *fakeFetcher) ThreadArticles(ctx context.Context, id string) ([]bgg.Article, error) {
+	f.articlesFetched = append(f.articlesFetched, id)
+	th, ok := f.threads[id]
+	if !ok {
+		return nil, errors.New("not found")
+	}
+	return th.Articles, nil
 }
 
 func day(d string) time.Time {
@@ -122,11 +139,33 @@ func TestSearch_StopsAtMaxThreadsAndDeduplicates(t *testing.T) {
 	}}
 
 	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
-	if strings.Join(f.fetched, ",") != "1,2" {
-		t.Fatalf("expected threads 1 and 2 fetched once each, got %v", f.fetched)
+	if strings.Join(f.infoFetched, ",") != "1,2" {
+		t.Fatalf("expected threads 1 and 2 fetched once each, got %v", f.infoFetched)
 	}
 	if len(hits) != 2 {
 		t.Fatalf("expected 2 hits, got %+v", hits)
+	}
+}
+
+// TestSearch_SkipsArticlesCallForAThreadFilteredOutByForum: bgg.Thread fa
+// una seconda chiamata (ThreadArticles) che costa quanto la prima. Un
+// thread scartato dal filtro gioco/forum di faq.Search non deve mai
+// arrivare a quella seconda chiamata.
+func TestSearch_SkipsArticlesCallForAThreadFilteredOutByForum(t *testing.T) {
+	variants := rulesThread("300", "House rule for birdfeeder", "x")
+	variants.Forum = "Variants"
+	s := &fakeSearcher{results: []websearch.Result{threadURL("300")}}
+	f := &fakeFetcher{threads: map[string]bgg.Thread{"300": variants}}
+
+	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("expected no hits from a Variants thread, got %+v", hits)
+	}
+	if len(f.articlesFetched) != 0 {
+		t.Fatalf("a thread filtered out by forum must not fetch its articles: %v", f.articlesFetched)
 	}
 }
 
@@ -168,21 +207,6 @@ func TestSearch_SkipsAThreadThatFailsToLoad(t *testing.T) {
 	}
 }
 
-func TestSearch_DisambiguatesThreadsWithTheSameSubject(t *testing.T) {
-	s := &fakeSearcher{results: []websearch.Result{threadURL("1"), threadURL("2")}}
-	f := &fakeFetcher{threads: map[string]bgg.Thread{
-		"1": rulesThread("1", "Question", "a"), "2": rulesThread("2", "Question", "b"),
-	}}
-
-	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
-	if len(hits) != 2 || hits[0].Reference == hits[1].Reference {
-		t.Fatalf("expected distinct references, got %+v", hits)
-	}
-	if hits[1].Reference != "BGG: Question #2" {
-		t.Fatalf("unexpected disambiguated reference %q", hits[1].Reference)
-	}
-}
-
 func TestSearch_WebSearchErrorIsReturned(t *testing.T) {
 	s := &fakeSearcher{err: errors.New("boom")}
 	if _, err := faq.Search(context.Background(), s, &fakeFetcher{}, "Wingspan", "266192", "q"); err == nil {
@@ -210,9 +234,14 @@ func TestSearch_AllThreadsFailingIsAnError(t *testing.T) {
 // singola chiamata.
 type blockingFetcher struct{}
 
-func (blockingFetcher) Thread(ctx context.Context, id string) (bgg.Thread, error) {
+func (blockingFetcher) ThreadInfo(ctx context.Context, id string) (bgg.Thread, error) {
 	<-ctx.Done()
 	return bgg.Thread{}, ctx.Err()
+}
+
+func (blockingFetcher) ThreadArticles(ctx context.Context, id string) ([]bgg.Article, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func TestSearch_RespectsTheOverallDeadline(t *testing.T) {

@@ -22,7 +22,7 @@ const articlesJSON = `{"articles":[
   "body":"[q=\"someone\"]What happens?[/q]\nYou [url=https://example.org]reroll[/url] only if all dice match."}
 ]}`
 
-func TestThread_ReadsSourceForumAndArticles(t *testing.T) {
+func TestThreadInfo_ReadsSourceAndForumWithoutFetchingArticles(t *testing.T) {
 	var paths []string
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		paths = append(paths, r.URL.RequestURI())
@@ -30,6 +30,51 @@ func TestThread_ReadsSourceForumAndArticles(t *testing.T) {
 		switch {
 		case r.URL.Path == "/threads/2125946":
 			io.WriteString(w, threadJSON)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer ts.Close()
+
+	c := bgg.NewHTTPClient()
+	c.ForumsBaseURL = ts.URL
+	th, err := c.ThreadInfo(context.Background(), "2125946")
+	if err != nil {
+		t.Fatalf("thread info: %v (requests: %v)", err, paths)
+	}
+	if th.ID != "2125946" || th.ObjectType != "things" || th.ObjectID != "266192" || th.Forum != "Rules" {
+		t.Fatalf("unexpected thread meta %+v", th)
+	}
+	if th.Subject != "Refreshing the birdfeeder during an action" {
+		t.Fatalf("unexpected subject %q", th.Subject)
+	}
+	if th.Articles != nil {
+		t.Fatalf("expected no articles from ThreadInfo, got %+v", th.Articles)
+	}
+	// Nessuna chiamata a /articles: è quel che rende ThreadInfo economico da
+	// usare per filtrare i thread prima di leggerne i commenti.
+	for _, p := range paths {
+		if strings.HasPrefix(p, "/articles") {
+			t.Fatalf("ThreadInfo must not fetch articles, requests: %v", paths)
+		}
+	}
+}
+
+func TestThreadInfo_NotFoundIsAnError(t *testing.T) {
+	ts := httptest.NewServer(http.NotFoundHandler())
+	defer ts.Close()
+
+	c := bgg.NewHTTPClient()
+	c.ForumsBaseURL = ts.URL
+	if _, err := c.ThreadInfo(context.Background(), "1"); err == nil {
+		t.Fatal("expected an error for a missing thread")
+	}
+}
+
+func TestThreadArticles_ReadsAndCleansTheFirstPage(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch {
 		case r.URL.Path == "/articles" && r.URL.Query().Get("threadid") == "2125946":
 			io.WriteString(w, articlesJSON)
 		default:
@@ -40,20 +85,14 @@ func TestThread_ReadsSourceForumAndArticles(t *testing.T) {
 
 	c := bgg.NewHTTPClient()
 	c.ForumsBaseURL = ts.URL
-	th, err := c.Thread(context.Background(), "2125946")
+	arts, err := c.ThreadArticles(context.Background(), "2125946")
 	if err != nil {
-		t.Fatalf("thread: %v (requests: %v)", err, paths)
+		t.Fatalf("thread articles: %v", err)
 	}
-	if th.ID != "2125946" || th.ObjectType != "things" || th.ObjectID != "266192" || th.Forum != "Rules" {
-		t.Fatalf("unexpected thread meta %+v", th)
+	if len(arts) != 2 {
+		t.Fatalf("expected 2 articles, got %d", len(arts))
 	}
-	if th.Subject != "Refreshing the birdfeeder during an action" {
-		t.Fatalf("unexpected subject %q", th.Subject)
-	}
-	if len(th.Articles) != 2 {
-		t.Fatalf("expected 2 articles, got %d", len(th.Articles))
-	}
-	a := th.Articles[0]
+	a := arts[0]
 	if a.Link != "https://boardgamegeek.com/thread/2125946/article/30895619#30895619" {
 		t.Fatalf("unexpected link %q", a.Link)
 	}
@@ -65,18 +104,18 @@ func TestThread_ReadsSourceForumAndArticles(t *testing.T) {
 	if a.Body != "I have a question about the dice in birdfeeder.\n\nWhat happens?" {
 		t.Fatalf("unexpected cleaned body %q", a.Body)
 	}
-	if b := th.Articles[1].Body; !strings.Contains(b, "You reroll only if all dice match.") || strings.Contains(b, "[") {
+	if b := arts[1].Body; !strings.Contains(b, "You reroll only if all dice match.") || strings.Contains(b, "[") {
 		t.Fatalf("unexpected cleaned body %q", b)
 	}
 }
 
-func TestThread_NotFoundIsAnError(t *testing.T) {
+func TestThreadArticles_NotFoundIsAnError(t *testing.T) {
 	ts := httptest.NewServer(http.NotFoundHandler())
 	defer ts.Close()
 
 	c := bgg.NewHTTPClient()
 	c.ForumsBaseURL = ts.URL
-	if _, err := c.Thread(context.Background(), "1"); err == nil {
+	if _, err := c.ThreadArticles(context.Background(), "1"); err == nil {
 		t.Fatal("expected an error for a missing thread")
 	}
 }

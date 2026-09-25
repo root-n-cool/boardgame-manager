@@ -2,10 +2,6 @@ package bgg
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"regexp"
 	"strings"
@@ -48,19 +44,14 @@ type articlesJSON struct {
 	} `json:"articles"`
 }
 
-// Thread legge un thread e la sua prima pagina di commenti (25): il primo
-// post più le prime risposte è dove sta quasi sempre la risposta a una
-// domanda sulle regole.
-func (c *HTTPClient) Thread(ctx context.Context, threadID string) (Thread, error) {
+// ThreadInfo legge i metadati di un thread (senza commenti): a quale gioco
+// appartiene (Source) e in che forum sta (l'ultimo crumb). faq.Search la usa
+// per scartare i thread di un'espansione, di un gioco omonimo o fuori dal
+// forum Rules PRIMA di spendere la seconda chiamata che legge i commenti
+// (ThreadArticles).
+func (c *HTTPClient) ThreadInfo(ctx context.Context, threadID string) (Thread, error) {
 	var meta threadJSON
-	if err := c.getForumsJSON(ctx, "/threads/"+url.PathEscape(threadID), nil, &meta); err != nil {
-		return Thread{}, err
-	}
-	q := url.Values{}
-	q.Set("threadid", threadID)
-	q.Set("pageid", "1")
-	var arts articlesJSON
-	if err := c.getForumsJSON(ctx, "/articles", q, &arts); err != nil {
+	if err := c.getJSON(ctx, c.forumsBase(), "/threads/"+url.PathEscape(threadID), nil, &meta); err != nil {
 		return Thread{}, err
 	}
 
@@ -73,50 +64,41 @@ func (c *HTTPClient) Thread(ctx context.Context, threadID string) (Thread, error
 	if n := len(meta.Crumbs); n > 0 {
 		out.Forum = meta.Crumbs[n-1].Name
 	}
+	return out, nil
+}
+
+// ThreadArticles legge la prima pagina di commenti (25) di un thread: il
+// primo post più le prime risposte è dove sta quasi sempre la risposta a
+// una domanda sulle regole.
+func (c *HTTPClient) ThreadArticles(ctx context.Context, threadID string) ([]Article, error) {
+	q := url.Values{}
+	q.Set("threadid", threadID)
+	q.Set("pageid", "1")
+	var arts articlesJSON
+	if err := c.getJSON(ctx, c.forumsBase(), "/articles", q, &arts); err != nil {
+		return nil, err
+	}
+
+	var out []Article
 	for _, a := range arts.Articles {
 		body := cleanForumMarkup(a.Body)
 		if body == "" {
 			continue
 		}
 		posted, _ := time.Parse(time.RFC3339, a.PostDate)
-		out.Articles = append(out.Articles, Article{ID: a.ID, Body: body, Link: a.CanonicalLink, PostDate: posted})
+		out = append(out, Article{ID: a.ID, Body: body, Link: a.CanonicalLink, PostDate: posted})
 	}
 	return out, nil
 }
 
-func (c *HTTPClient) getForumsJSON(ctx context.Context, path string, q url.Values, into any) error {
+// forumsBase risolve ForumsBaseURL al suo default, come faceva prima
+// getForumsJSON: ThreadInfo e ThreadArticles condividono la stessa base.
+func (c *HTTPClient) forumsBase() string {
 	base := strings.TrimRight(c.ForumsBaseURL, "/")
 	if base == "" {
 		base = DefaultForumsBaseURL
 	}
-	full := base + path
-	if len(q) > 0 {
-		full += "?" + q.Encode()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
-	if err != nil {
-		return err
-	}
-	httpClient := c.HTTPClient
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("bgg forums request failed: %w", err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
-	if err != nil {
-		return fmt.Errorf("read bgg forums response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bgg forums returned status %d for %s", resp.StatusCode, path)
-	}
-	if err := json.Unmarshal(body, into); err != nil {
-		return fmt.Errorf("parse bgg forums response: %w", err)
-	}
-	return nil
+	return base
 }
 
 // forumTag riconosce i tag BBCode di BGG: [b], [/b], [q="utente"], [url=…],

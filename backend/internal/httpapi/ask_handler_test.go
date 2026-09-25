@@ -898,6 +898,65 @@ func (f *fakeMultiFAQAsker) Ask(ctx context.Context, req ai.AskRequest) (string,
 	return f.answer, nil
 }
 
+// TestAskHandler_DisambiguatesFAQReferencesWithinOneToolCall: da Task S3
+// faq.Search non disambigua più da sola due thread con lo stesso Subject
+// (quello lo fa solo il controllo per-richiesta della closure searchFAQ,
+// vedi ask_handler.go). Questo test copre il caso che prima copriva
+// faq.TestSearch_DisambiguatesThreadsWithTheSameSubject, ma a livello di
+// handler: DUE thread con lo stesso Subject trovati da UNA sola chiamata al
+// tool devono comunque arrivare al modello, e finire nella risposta finale,
+// con reference e link distinti.
+func TestAskHandler_DisambiguatesFAQReferencesWithinOneToolCall(t *testing.T) {
+	posted, _ := time.Parse("2006-01-02", "2019-01-07")
+	threadA := bgg.Thread{
+		ID: "100", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "a", Body: "Answer A.",
+			Link: "https://boardgamegeek.com/thread/100/article/1#1", PostDate: posted}},
+	}
+	threadB := bgg.Thread{
+		ID: "200", Subject: "Question", ObjectType: "things", ObjectID: "266192", Forum: "Rules",
+		Articles: []bgg.Article{{ID: "b", Body: "Answer B.",
+			Link: "https://boardgamegeek.com/thread/200/article/1#1", PostDate: posted}},
+	}
+
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{results: []websearch.Result{
+		{URL: "https://boardgamegeek.com/thread/100/question"},
+		{URL: "https://boardgamegeek.com/thread/200/question"},
+	}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": threadA, "200": threadB}}
+	asker := &fakeFAQAsker{faqQuery: "question"}
+	asker.answer = "Vedi BGG: Question, commento del 07/01/2019, e anche BGG: Question #200, commento del 07/01/2019."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+
+	// Il payload al modello (UNA sola chiamata al tool, entrambi i thread
+	// dentro) deve già portare le due reference disambiguate: senza,
+	// niente distinguerebbe le due FAQ nella risposta del modello.
+	if !strings.Contains(asker.faqResult, `"reference":"BGG: Question"`) ||
+		!strings.Contains(asker.faqResult, `"reference":"BGG: Question #200"`) {
+		t.Fatalf("FAQ payload does not disambiguate two threads with the same subject found in one call: %s", asker.faqResult)
+	}
+
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	wantFirst := "[BGG: Question, commento del 07/01/2019](https://boardgamegeek.com/thread/100/article/1#1)"
+	wantSecond := "[BGG: Question #200, commento del 07/01/2019](https://boardgamegeek.com/thread/200/article/1#1)"
+	if !strings.Contains(body["text"], wantFirst) {
+		t.Fatalf("first citation does not link to its own thread: %q", body["text"])
+	}
+	if !strings.Contains(body["text"], wantSecond) {
+		t.Fatalf("second citation does not link to its own thread: %q", body["text"])
+	}
+}
+
 func TestAskHandler_DisambiguatesFAQReferencesAcrossToolCalls(t *testing.T) {
 	// usedRefs in faq.Search vive DENTRO una chiamata a Search: due
 	// cerca_nelle_faq nella stessa domanda, che trovano due thread diversi

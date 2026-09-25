@@ -73,7 +73,8 @@ type Client interface {
 	GetThing(ctx context.Context, token, id string) (ThingDetail, error)
 	Details(ctx context.Context, token string, ids []string) (map[string]ThingDetail, error)
 	Files(ctx context.Context, bggID, languageID string) ([]FileEntry, error)
-	Thread(ctx context.Context, threadID string) (Thread, error)
+	ThreadInfo(ctx context.Context, threadID string) (Thread, error)
+	ThreadArticles(ctx context.Context, threadID string) ([]Article, error)
 }
 
 type HTTPClient struct {
@@ -268,6 +269,47 @@ func (c *HTTPClient) doRequest(ctx context.Context, token, path string, query ur
 	return body, nil
 }
 
+// getJSON esegue una GET su un endpoint JSON non ufficiale di geekdo (Files
+// o Forums, non l'XML API2 autenticata di doRequest) e decodifica il body
+// in into. base è già risolto dal chiamante (fallback al default incluso):
+// Files() e il codice dei thread hanno basi ed endpoint diversi, qui c'è
+// solo la plumbing comune a entrambi. Il body è limitato a 4 MiB: sono
+// risposte JSON di metadata, non dovrebbero mai avvicinarsi a quella
+// taglia.
+func (c *HTTPClient) getJSON(ctx context.Context, base, path string, q url.Values, into any) error {
+	full := base + path
+	if len(q) > 0 {
+		full += "?" + q.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, full, nil)
+	if err != nil {
+		return err
+	}
+
+	httpClient := c.HTTPClient
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("bgg json request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 4<<20))
+	if err != nil {
+		return fmt.Errorf("read bgg json response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("bgg json returned status %d for %s", resp.StatusCode, path)
+	}
+
+	if err := json.Unmarshal(body, into); err != nil {
+		return fmt.Errorf("parse bgg json response: %w", err)
+	}
+	return nil
+}
+
 // filesResponseJSON matcha la risposta di DefaultFilesBaseURL. I campi
 // numerici arrivano come stringhe, e language/numpositive possono essere
 // null (file "(neutral)", o mai votati): da qui i puntatori.
@@ -304,32 +346,9 @@ func (c *HTTPClient) Files(ctx context.Context, bggID, languageID string) ([]Fil
 	if base == "" {
 		base = DefaultFilesBaseURL
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"?"+query.Encode(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	httpClient := c.HTTPClient
-	if httpClient == nil {
-		httpClient = http.DefaultClient
-	}
-	resp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("bgg files request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read bgg files response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("bgg files returned status %d", resp.StatusCode)
-	}
-
 	var parsed filesResponseJSON
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("parse bgg files response: %w", err)
+	if err := c.getJSON(ctx, base, "", query, &parsed); err != nil {
+		return nil, err
 	}
 
 	out := make([]FileEntry, 0, len(parsed.Files))

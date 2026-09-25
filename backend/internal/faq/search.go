@@ -16,7 +16,8 @@ import (
 )
 
 type ThreadFetcher interface {
-	Thread(ctx context.Context, threadID string) (bgg.Thread, error)
+	ThreadInfo(ctx context.Context, threadID string) (bgg.Thread, error)
+	ThreadArticles(ctx context.Context, threadID string) ([]bgg.Article, error)
 }
 
 // Hit è un commento del forum pronto per il modello. CommentURL, ThreadURL
@@ -91,13 +92,11 @@ func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName
 	}
 
 	var hits []Hit
-	usedRefs := map[string]bool{}
 	accepted := 0
-	// fetchedAny e fetchErrored distinguono, alla fine, "nessuna lettura è
-	// mai riuscita" (un errore da segnalare) da "qualche lettura è
-	// riuscita ma è stata scartata dai filtri" (un array vuoto legittimo).
+	// fetchedAny distingue, alla fine, "nessuna lettura è mai riuscita" (un
+	// errore da segnalare) da "qualche lettura è riuscita ma è stata
+	// scartata dai filtri" (un array vuoto legittimo).
 	fetchedAny := false
-	fetchErrored := false
 	var lastErr error
 	for _, id := range ids {
 		if accepted >= MaxThreads {
@@ -109,32 +108,41 @@ func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName
 			break
 		}
 		tctx, cancel := context.WithTimeout(ctx, callTimeout)
-		th, err := f.Thread(tctx, id)
+		th, err := f.ThreadInfo(tctx, id)
 		cancel()
 		if err != nil {
 			log.Printf("faq: thread %s: %v", id, err)
-			fetchErrored = true
+			lastErr = err
+			continue
+		}
+		// Un thread di un'espansione o di un gioco omonimo, o fuori dal
+		// forum Rules (Variants sono regole della casa), non è una FAQ di
+		// questo gioco: si scarta senza spendere la seconda chiamata che
+		// legge i commenti.
+		if th.ObjectType != "things" || th.ObjectID != bggID || th.Forum != "Rules" {
+			fetchedAny = true
+			continue
+		}
+
+		actx, cancel := context.WithTimeout(ctx, callTimeout)
+		articles, err := f.ThreadArticles(actx, id)
+		cancel()
+		if err != nil {
+			log.Printf("faq: thread %s articles: %v", id, err)
 			lastErr = err
 			continue
 		}
 		fetchedAny = true
-		// Un thread di un'espansione o di un gioco omonimo, o fuori dal
-		// forum Rules (Variants sono regole della casa), non è una FAQ di
-		// questo gioco.
-		if th.ObjectType != "things" || th.ObjectID != bggID || th.Forum != "Rules" || len(th.Articles) == 0 {
+		if len(articles) == 0 {
 			continue
 		}
 		accepted++
 
 		ref := "BGG: " + th.Subject
-		if usedRefs[ref] {
-			ref += " #" + th.ID
-		}
-		usedRefs[ref] = true
 		threadURL := "https://boardgamegeek.com/thread/" + th.ID
 
 		budget := ThreadCharBudget
-		for i, a := range th.Articles {
+		for i, a := range articles {
 			text := a.Body
 			if len(text) > budget {
 				if i > 0 {
@@ -169,7 +177,7 @@ func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName
 		// implicherebbe un errore per thread, non un timeout globale).
 		return nil, ctx.Err()
 	}
-	if fetchErrored && !fetchedAny {
+	if lastErr != nil && !fetchedAny {
 		// Almeno un thread era stato trovato, ma NESSUNA lettura è
 		// riuscita: è un guasto esterno (Tavily ok, geekdo giù), non
 		// "nessuna FAQ pertinente". Il chiamante lo trasforma nel

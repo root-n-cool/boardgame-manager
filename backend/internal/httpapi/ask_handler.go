@@ -196,7 +196,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	// parte): è quel che rende il link corretto anche con due manuali
 	// dello stesso gioco, dove la reference è già disambiguata dal Task 5
 	// e non corrisponde più a game_media.title.
-	citations := map[string]citationTarget{}
+	citations := map[string]*citationTarget{}
 
 	// La closure di ricerca è legata al gioco: il game_id NON è un
 	// parametro del tool, così il modello non può leggere il manuale di un
@@ -211,7 +211,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			if _, ok := citations[h.Reference]; !ok {
-				citations[h.Reference] = citationTarget{
+				citations[h.Reference] = &citationTarget{
 					referenceType: h.ReferenceType,
 					mediaPath:     h.MediaPath,
 				}
@@ -242,27 +242,25 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 			out := make([]manuals.SourceHit, 0, len(hits))
 			for _, h := range hits {
 				// La reference è unica per RICHIESTA, non per chiamata al
-				// tool: due cerca_nelle_faq nella stessa domanda possono
-				// trovare due thread diversi con lo stesso Subject (usedRefs
-				// dentro faq.Search vede solo la propria chiamata). Se la
-				// reference è già presa da un'ALTRA FAQ (thread diverso), si
-				// disambigua qui con l'id del thread prima di registrarla e
-				// prima di metterla nel payload per il modello; lo stesso
-				// thread, ritrovato in una chiamata successiva, riusa la sua
-				// reference invariata.
+				// tool: faq.Search non disambigua più da sola (vede solo le
+				// hit della propria chiamata), quindi due cerca_nelle_faq
+				// nella stessa domanda possono trovare due thread diversi
+				// con lo stesso Subject. Se la reference è già presa da
+				// un'ALTRA FAQ (thread diverso), si disambigua qui con l'id
+				// del thread prima di registrarla e prima di metterla nel
+				// payload per il modello; lo stesso thread, ritrovato in una
+				// chiamata successiva, riusa la sua reference invariata.
 				ref := h.Reference
 				if existing, ok := citations[ref]; ok && existing.referenceType == "faq" && existing.url != h.ThreadURL {
 					ref = h.Reference + " #" + h.ThreadID
 				}
 				target, ok := citations[ref]
 				if !ok {
-					target = citationTarget{referenceType: "faq", url: h.ThreadURL, commentURLs: map[string]string{}}
+					target = &citationTarget{referenceType: "faq", url: h.ThreadURL, commentURLs: map[string]string{}}
 					citations[ref] = target
 				}
 				// Una reference già presa da un documento non si tocca (non
-				// succede in pratica: le FAQ cominciano con "BGG: "). La
-				// mappa commentURLs è un riferimento: aggiornarla aggiorna
-				// anche la voce in citations.
+				// succede in pratica: le FAQ cominciano con "BGG: ").
 				if target.referenceType == "faq" && h.CommentURL != "" {
 					if _, seen := target.commentURLs[h.ReferenceDetail]; !seen {
 						target.commentURLs[h.ReferenceDetail] = h.CommentURL
@@ -382,7 +380,7 @@ const minReferenceLength = 4
 // Riconosce anche ", pagina N" e ", commento del DD/MM/YYYY": il primo per
 // un documento, il secondo per una FAQ, il cui dettaglio è la data del
 // commento citato (vedi faq.Hit.ReferenceDetail).
-func linkifyCitations(answer string, citations map[string]citationTarget) string {
+func linkifyCitations(answer string, citations map[string]*citationTarget) string {
 	// Se il modello ha già prodotto un link, non si raddoppia.
 	if strings.Contains(answer, "](/api/uploads/") || strings.Contains(answer, "](https://boardgamegeek.com/") {
 		return answer
