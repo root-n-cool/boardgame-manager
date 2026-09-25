@@ -385,6 +385,13 @@ errore, solo l'assenza del comando.
   ed è vero: la dettatura è un optional del browser, non dell'app, ma vale
   la pena saperlo prima di attivarla, non scoprirlo dopo.
 
+**FAQ da BoardGameGeek (facoltativo).** Con una chiave [Tavily](https://tavily.com)
+nelle impostazioni (piano gratuito: 1.000 ricerche al mese, senza carta),
+l'assistente regole, quando il manuale non basta, cerca nel forum *Rules*
+del gioco su BoardGameGeek e cita il commento con un link. Serve un gioco
+collegato a BGG e un manuale già preparato: le FAQ completano il manuale,
+non lo sostituiscono. Senza chiave l'assistente usa solo i documenti.
+
 ### Email (SMTP) (opzionale)
 
 Senza un server SMTP configurato l'app funziona esattamente come prima:
