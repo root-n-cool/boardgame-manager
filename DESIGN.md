@@ -486,14 +486,14 @@ questa scheda.
   `--felt-text`, `--card`, `--card-alt`, `--card-line`, `--ink`,
   `--ink-muted`, `--accent`, `--danger`, `--danger-bg`) non attraversano quel
   confine. Colori e misure si passano invece per proprietà JS
-  (`messageStyles`, `textInput`, `submitButtonStyles`, `speechToText.button`,
-  `auxiliaryStyle`), il che significa che **i valori di quei token sono
+  (`messageStyles`, `auxiliaryStyle`), il che significa che **i valori di quei token sono
   duplicati a mano, come letterali esadecimali, in
   `frontend/src/components/ManualChatPanel.vue`**: bolla utente =
   `--felt`/`--felt-text`, bolla IA = `--card-alt`/`--ink`, bolla d'errore =
   `--danger-bg`/`--danger` (gli stessi due di `.error`, perché il rosa di
-  serie di deep-chat non esiste in questa palette), campo di testo =
-  `--card`/`--card-line`/`--ink` col fuoco in `--accent`. Chi cambia uno di
+  serie di deep-chat non esiste in questa palette), barra di scorrimento
+  e link = `--card-line`/`--accent`. Il campo di testo non è più di
+  deep-chat (vedi «Il campo è nostro» sotto) e usa i token veri. Chi cambia uno di
   quei token in `app.css` non vede la chat seguire: deve aprire anche
   `ManualChatPanel.vue` e aggiornare i valori a mano, altrimenti la chat
   resta l'unica isola col colore vecchio, e niente nel codice lo segnala da
@@ -508,7 +508,7 @@ questa scheda.
   essere una chat (segnalato dall'utente). Il ＋ compare **solo a
   conversazione avviata**: nello stato di riposo non c'è niente da
   azzerare, e un ＋ che non fa nulla è peggio di un ＋ che manca. Quando
-  spariscono il ＋ e la conversazione, il fuoco va sul finto campo
+  spariscono il ＋ e la conversazione, il fuoco va sul campo
   (`nextTick`), non sul body.
 - **Lo storico vive in `localStorage`, non nel database.** Una chiave per
   gioco (`bgm-chat-<gameId>`), gestita da `browserStorage` di deep-chat —
@@ -538,27 +538,51 @@ questa scheda.
   taglio, perché il corpo è `overflow: hidden` (lo scroll è di deep-chat,
   dentro di sé: senza, attorno alla sua barra ne comparirebbe una
   seconda).
-- **Microfono e invio stanno dentro il campo, a destra, uno accanto
-  all'altro** (`position: 'inside-end'` per entrambi). I nomi ammessi sono
-  solo `inside-start`, `inside-end`, `outside-start`, `outside-end`: un
-  valore fuori da questi (provato `inside-right`) spinge l'invio fuori dal
-  campo, oltre il bordo destro dello schermo, e lo taglia a metà — che è
-  anche quel che fa `outside-end` di suo, con il campo largo quanto il
-  pannello. Due bottoni nella **stessa** posizione però deep-chat li
-  disegna allo stesso scarto (`left: -27px`, misurato), uno sopra
-  l'altro: il microfono prende quindi `left: 'auto'; right: '2.2em'` nel
-  suo `container.default` (`micIconButton`) e si sposta di un bottone a
-  sinistra, nell'ordine di ogni app di messaggi — dettatura, poi invio.
-  **Il rientro del testo è solo a destra** (`paddingRight: '4.3em'`): il
-  microfono a sinistra costringeva a un rientro di 2.7em anche sui browser
-  senza Web Speech, dove quel bottone non esiste, e il placeholder partiva
-  da metà campo (segnalato dall'utente).
-- **Un anello di focus solo.** `border: 1px` più `outline: 2px` sullo
-  stesso bordo da 6px di raggio si scollavano agli angoli e il campo
-  sembrava avere gli spigoli smangiati (segnalato dall'utente). Resta il
-  bordo in `--accent` e l'anello passa a
-  `box-shadow: 0 0 0 3px rgb(156 43 43 / 32%)`, che segue il raggio
-  esattamente.
+- **Il campo è nostro, non di deep-chat** (`ChatComposer.vue`, classi
+  `.chat-composer*`). Un riquadro unico: la textarea sopra, la riga dei
+  controlli sotto, a destra — **dettatura, poi invio**, come nei campi
+  delle app di chat, dove i bottoni non rubano larghezza al testo. Il campo
+  di deep-chat è nascosto (`#input { display: none }` in `auxiliaryStyle`)
+  e il testo gli arriva con `submitUserMessage`; a deep-chat resta solo il
+  filo dei messaggi. Il motivo: i bottoni di deep-chat sono
+  `position: absolute` dentro contenitori a larghezza zero nel suo shadow
+  DOM, e microfono accanto all'invio, centratura verticale e bersagli più
+  grandi di 22px si ottenevano solo con scarti misurati a mano — mentre
+  uno stato "sto ascoltando" (bottone e segnaposto che cambiano) non si
+  poteva fare affatto (segnalato dall'utente, con un riferimento di
+  composer da seguire).
+  - **Il riquadro è il campo**: fondo `--bg`, bordo `--card-line`, raggio
+    `--radius`; il bordo va a `--ink-muted` all'hover e ad `--accent` con
+    `:focus-within`. La textarea dentro è nuda (niente bordo né anello):
+    due cornici una dentro l'altra leggevano come due campi. Un clic sul
+    vuoto del riquadro mette a fuoco il testo.
+  - **La textarea cresce** da una riga fino a 128px (~5 righe), poi scorre;
+    in JS e non con `field-sizing: content`, che Safari non ha ancora.
+    `font-size: 1rem`: sotto i 16px iOS zooma la pagina al tocco. Invio
+    manda, Maiusc+Invio va a capo, `enterkeyhint="send"`.
+  - **Invio**: quadrato 36px, raggio 8px, freccia ↑. Pieno `--ink` su
+    `--card` quando c'è da mandare; spento `--card-line`/`--ink-muted`
+    (non trasparente: si vede che si accenderà) a campo vuoto o **mentre
+    arriva una risposta** (`busy`, che si spegne all'evento `message` di
+    deep-chat con ruolo non `user`, o a `error`). Si può scrivere la
+    domanda successiva, non mandarla: due richieste non si accavallano.
+  - **Dettatura**: stesso quadrato, senza fondo, `--ink-muted`. In ascolto
+    passa a `--accent` su `--accent-bg`, l'icona diventa tre barrette che
+    ballano (ferme con `prefers-reduced-motion`) e il segnaposto diventa
+    "Sto ascoltando…". Web Speech API diretta, `it-IT`, il testo dettato si
+    accoda a quello già scritto. Senza API nel browser il bottone **non
+    compare**. Un permesso negato mostra una riga in `--danger` sotto il
+    campo; silenzio e stop volontario no.
+  - **Quadrati da 36px a vista, bersagli da 44** (`::after` che sborda di
+    4px per lato), come ogni altro bersaglio nostro della chat: si tocca col
+    pollice, in piedi al tavolo, ma un quadrato pieno da 44 dentro il campo
+    pesava più del testo. All'hover l'invio vira da `--ink` a `--felt`, il
+    colore delle bolle di chi chiede.
+  - **Segnaposto a opacità piena** (`--ink-muted`): l'`opacity: .75` dei
+    segnaposto globali su `--bg` scende a 3,3:1.
+  - **Lo stesso campo serve lo stato di riposo**: si scrive subito, e al
+    primo invio deep-chat si carica e riceve la domanda al suo `render`.
+    Non esiste più un finto campo.
 - **Le bolle non hanno la stessa larghezza.** A 92% per tutte arrivavano
   quasi da bordo a bordo e la conversazione si leggeva come una pila di
   blocchi centrati, senza un lato di chi parla: la domanda sta a 82%, la
@@ -567,51 +591,24 @@ questa scheda.
   Dentro la bolla il link alla pagina del manuale prende `--accent`
   (`auxiliaryStyle`): di serie era il blu del browser (#0000EE, misurato),
   l'unica cosa blu dell'app, nell'unica bolla che cita una fonte.
-- **I due bottoni si centrano da soli, non a un valore fisso.** deep-chat
-  li ancora al fondo del campo con un margine costante
-  (`inset-block-end: .85em`, indipendente dall'altezza della riga), e la
-  nostra riga (dal `padding` di `textInput.styles.text`) è più alta del
-  suo default: misurato in browser, campo alto 36,5px con centro a
-  520,4px, bottoni alti 22px circa centrati a 513,4px — 7px più in alto
-  del centro vero. La correzione sta in `inputIconButton.container.default`
-  (`ManualChatPanel.vue`): `top: '50%'` + `transform: 'translateY(-50%)'`
-  sull'elemento del bottone stesso (le classi `input-button`/`inside-start`/
-  `inside-end` sono tutte sullo stesso nodo). Un valore percentuale e non un
-  pixel fisso, perché resta corretto qualunque altezza prenda la riga in
-  futuro — un `top` fisso andrebbe ricalcolato a ogni cambio del padding del
-  campo. Dopo la correzione i due centri coincidono (misurato: campo e
-  bottoni entrambi a 442,7px in un altro punto della pagina), in sidebar,
-  nel dialog e sull'hover (che tocca solo `backgroundColor`, non
-  `top`/`transform`, perché `default` viene sempre riapplicato prima di
-  `hover`). Lo stesso centraggio va passato anche a `loading` e `stop`
-  (`inputIconPosition`, il solo `container` e non il filtro sull'SVG, che
-  sono i tre puntini dell'attesa e il quadrato di stop, già del grigio
-  giusto): senza, durante l'attesa la riga sobbalza di quei 7px.
-- **I due bottoni dentro il campo restano bersagli da 22px** ed è un limite
-  accettato, non una svista: sono `position: absolute` dentro contenitori a
-  larghezza zero nello shadow DOM di deep-chat, e imporre 44px dalle
-  proprietà documentate li sposta fuori dal campo (provato e osservato). Chi
-  scrive da telefono manda comunque con il tasto invio della tastiera. Tutti
-  i bersagli che sono **nostri** — domande suggerite, finto campo, bottone
-  tondo, ＋ della testata e × del dialog — stanno a 44px.
 - **Lo stato di riposo si ancora in fondo** (`.manual-chat-rest` è
   `flex: 1`, `.manual-chat-intro` porta `margin-top: auto`): introduzione,
-  domande e finto campo scendono insieme come un blocco solo. Nel dialog a
+  domande scendono insieme, appena sopra il campo, come un blocco solo. Nel dialog a
   tutto schermo questo li porta dove arriva il pollice di chi sta in piedi
   al tavolo, e lascia sopra lo spazio dove compariranno le risposte — un
   filo di conversazione ancora vuoto, non un buco. Ancorarli in alto
   significava, al primo gesto, veder saltare l'invito dalla cima del
   telefono al fondo, dove deep-chat mette il campo vero. Nella sidebar
   desktop non c'è spazio libero da distribuire e non cambia niente.
-- **Scorrono invito e domande, non il finto campo**
-  (`.manual-chat-rest-scroll` con `overflow-y: auto`, il finto campo suo
-  fratello a `flex: none`). Da quando le tre domande le scrive un modello
+- **Scorrono invito e domande, non il campo**
+  (`.manual-chat-rest-scroll` con `overflow-y: auto`; il campo sta fuori
+  da `.manual-chat-body`, a `flex: none`). Da quando le tre domande le scrive un modello
   sono frasi di lunghezza variabile fino a 120 caratteri, non più tre righe
   della stessa forma: misurato, in barra desktop (22rem) una domanda lunga
   prende quattro righe e il blocco arriva a 418px. Dove non ci sta —
   telefono in orizzontale, finestra bassa — l'`overflow: hidden` di
   `.manual-chat-body` lo tagliava senza scorrimento, e la prima cosa a
-  sparire era proprio il finto campo, cioè l'invito a scrivere. Dove ci sta
+  sparire era proprio il campo, cioè l'invito a scrivere. Dove ci sta
   (barra desktop e telefono in verticale, misurati) non compare nessuna
   barra di scorrimento e non cambia niente.
 - **Le domande suggerite sono una `<ul>` spogliata** come `.admin-list`:
@@ -627,9 +624,8 @@ questa scheda.
   modello dai titoli di sezione del manuale a ogni indicizzazione e
   l'admin le riscrive a mano nel pannello dedicato, vedi «Domande
   suggerite» più sotto; a lista vuota restano tre domande fisse: come
-  finisce la partita, in quanti si gioca, come si contano i punti) e un
-  finto campo di input con le stesse misure di
-  quello vero. deep-chat si monta solo al primo clic. Il motivo è il peso:
+  finisce la partita, in quanti si gioca, come si contano i punti) e il
+  campo, già funzionante. deep-chat si monta solo al primo invio. Il motivo è il peso:
   misurato in build, il chunk `deepChat` pesa **457 KB** non compresso, da
   solo più dell'intero resto del JavaScript dell'app (`index.js`, **228
   KB**). Chi apre una scheda gioco per leggerla — la maggioranza — non deve

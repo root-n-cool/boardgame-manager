@@ -4754,7 +4754,7 @@ tbody tr:nth-child(3) .rank-medal {
   flex: 1;
   flex-direction: column;
   min-height: 0;
-  padding: 0 0.85rem 0.85rem;
+  padding: 0 0.85rem;
   overflow: hidden;
 }
 
@@ -4861,8 +4861,8 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 /* Lo stato di riposo occupa tutta l'altezza che ha: nel dialog a tutto
-   schermo questo porta il finto campo in fondo, dove atterrerà quello vero
-   di deep-chat e dove arriva il pollice di chi sta in piedi al tavolo.
+   schermo questo porta le domande in fondo, appena sopra il campo, dove
+   arriva il pollice di chi sta in piedi al tavolo.
    Prima le tre domande e il campo stavano in cima e i due terzi bassi dello
    schermo erano avorio vuoto, con l'invito a scrivere fuori portata.
    Nella sidebar desktop non c'è spazio libero da occupare e nulla cambia. */
@@ -4878,9 +4878,8 @@ tbody tr:nth-child(3) .rank-medal {
    barra desktop, larga 22rem, una sola arriva a quattro righe e il blocco a
    418px (misurato). Se non ci sta — telefono in orizzontale, finestra bassa
    — `overflow: hidden` di `.manual-chat-body` lo tagliava senza
-   scorrimento, e la prima cosa a sparire era proprio il finto campo, cioè
-   l'invito a scrivere. Scorrono invito e domande; il finto campo resta
-   fermo in fondo, dove atterrerà quello vero e dove arriva il pollice.
+   scorrimento. Scorrono invito e domande; il campo (ChatComposer, fuori
+   dal corpo) resta fermo in fondo, dove arriva il pollice.
    Dove il blocco ci sta — la barra desktop e il telefono in verticale — non
    cambia niente: nessuna barra di scorrimento compare. */
 .manual-chat-rest-scroll {
@@ -4953,28 +4952,191 @@ tbody tr:nth-child(3) .rank-medal {
   border-color: var(--accent);
 }
 
-/* Ha le misure del campo vero, così montare deep-chat non fa saltare il
-   layout. `flex: none` perché è fratello del blocco scorrevole: è l'unica
-   cosa dello stato di riposo che non deve mai uscire dallo schermo. */
-.manual-chat-fakeinput {
+/* ---------- Campo della chat (ChatComposer.vue) ----------
+   Un riquadro unico: testo sopra, dettatura e invio in una riga sotto, a
+   destra — come i campi delle app di chat, dove la riga dei controlli non
+   ruba larghezza al testo. Il riquadro è il campo: il bordo si accende
+   sull'accento con `:focus-within`, e la textarea dentro è nuda (niente
+   bordo, niente anello proprio) perché due cornici una dentro l'altra
+   leggevano come due campi. Il rientro dai bordi del pannello è quello del
+   corpo, così il campo si allinea al filo dei messaggi sopra. */
+.manual-chat-composer {
   flex: none;
-  width: 100%;
-  min-height: 44px;
-  padding: 0.6rem 0.75rem;
-  font: inherit;
-  color: var(--ink-muted);
-  text-align: left;
-  background: var(--bg);
-  border: 1px solid var(--card-line);
-  border-radius: var(--radius-sm);
-  cursor: text;
+  padding: 0.5rem 0.85rem 0.85rem;
 }
 
-/* Anche qui il rosso di `button:hover` andava respinto: solo il bordo si
-   accende, il fondo resta quello di un campo a riposo. */
-.manual-chat-fakeinput:hover {
+.chat-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.55rem 0.55rem 0.5rem 0.7rem;
   background: var(--bg);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  box-shadow: 0 1px 2px rgb(36 31 24 / 5%);
+  cursor: text;
+  transition: border-color 0.15s ease;
+}
+
+.chat-composer:hover {
+  border-color: var(--ink-muted);
+}
+
+.chat-composer:focus-within {
   border-color: var(--accent);
+}
+
+/* Riga singola a riposo, cresce fino a ~5 righe (JS, vedi il componente).
+   16px e non 0.95rem: sotto i 16px iOS Safari zooma la pagina al tocco. */
+.chat-composer-field {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  padding: 0.15rem 0;
+  font-size: 1rem;
+  line-height: 1.45;
+  color: var(--ink);
+  resize: none;
+  overflow-wrap: anywhere;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
+.chat-composer-field:focus-visible {
+  outline: none;
+}
+
+/* Pieno e non all'`opacity: .75` dei segnaposto globali: su `--bg` quel
+   velo scende a 3,3:1, sotto la soglia del testo. */
+.chat-composer-field::placeholder {
+  color: var(--ink-muted);
+  opacity: 1;
+}
+
+.chat-composer-actions {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Quadrati da 36px a vista, bersagli da 44 (`::after` che sborda di 4px
+   per lato, come ogni altro bersaglio nostro della chat): un quadrato da 44
+   dentro il campo pesava più del testo. Il resto del bottone globale (fondo
+   rosso, padding, `translateY` all'active) va respinto. */
+.chat-composer-mic,
+.chat-composer-send {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.12s ease;
+}
+
+.chat-composer-mic::after,
+.chat-composer-send::after {
+  position: absolute;
+  inset: -4px;
+  content: '';
+}
+
+.chat-composer-mic svg,
+.chat-composer-send svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.chat-composer-mic {
+  color: var(--ink-muted);
+  background: transparent;
+}
+
+.chat-composer-mic:hover {
+  color: var(--ink);
+  background: var(--card-alt);
+}
+
+.chat-composer.is-listening .chat-composer-mic {
+  color: var(--accent);
+  background: var(--accent-bg);
+}
+
+/* Pieno d'inchiostro quando c'è da mandare; spento, ma non trasparente,
+   quando no — il bottone resta al suo posto e si vede che si accenderà. */
+.chat-composer-send {
+  color: var(--card);
+  background: var(--ink);
+}
+
+/* All'hover l'inchiostro vira sul feltro delle bolle di chi chiede: il
+   bottone dice dove finirà la domanda. */
+.chat-composer-send:hover {
+  background: var(--felt);
+}
+
+.chat-composer-send:active:not(:disabled),
+.chat-composer-mic:active {
+  transform: scale(0.94);
+}
+
+.chat-composer-send:disabled {
+  color: var(--ink-muted);
+  background: var(--card-line);
+  opacity: 1;
+}
+
+.chat-composer-eq {
+  display: flex;
+  gap: 2.5px;
+  align-items: center;
+  height: 0.9rem;
+}
+
+.chat-composer-eq span {
+  width: 2.5px;
+  height: 100%;
+  background: currentColor;
+  border-radius: 999px;
+  animation: chat-eq 0.9s ease-in-out infinite;
+}
+
+.chat-composer-eq span:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.chat-composer-eq span:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes chat-eq {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-composer-eq span {
+    animation: none;
+    transform: scaleY(0.7);
+  }
+}
+
+.chat-composer-error {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: var(--danger);
 }
 
 /* Bottone tondo, in basso al centro. env(safe-area-inset-bottom) lo tiene
