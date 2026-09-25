@@ -224,6 +224,9 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	// sono parametri del tool. Si dichiara solo con una chiave di ricerca
 	// e un bggId; la chat resta comunque legata al manuale indicizzato.
 	var searchFAQ ai.FAQSearchFunc
+	// faqRefs tiene, in ordine d'arrivo, le reference dei thread restituiti:
+	// servono ad appendForumSources quando il modello non li cita alla lettera.
+	var faqRefs []string
 	if searcher := s.webSearcher(r.Context()); searcher != nil && game.BGGID != nil && *game.BGGID != "" {
 		bggID := *game.BGGID
 		faqSearches := 0
@@ -258,6 +261,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 				if !ok {
 					target = &citationTarget{referenceType: "faq", url: h.ThreadURL, commentURLs: map[string]string{}}
 					citations[ref] = target
+					faqRefs = append(faqRefs, ref)
 				}
 				// Una reference già presa da un documento non si tocca (non
 				// succede in pratica: le FAQ cominciano con "BGG: ").
@@ -298,7 +302,8 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// deep-chat legge {"text": ...}.
-	writeJSON(w, http.StatusOK, map[string]any{"text": linkifyCitations(answer, citations)})
+	text := appendForumSources(linkifyCitations(answer, citations), faqRefs, citations)
+	writeJSON(w, http.StatusOK, map[string]any{"text": text})
 }
 
 // formatCorpusIndex costruisce l'indice per fonte che finisce in
@@ -339,6 +344,50 @@ type citationTarget struct {
 	// dello stesso thread hanno la stessa data vince il primo.
 	url         string
 	commentURLs map[string]string
+}
+
+// appendForumSources chiude il buco che linkifyCitations non può chiudere:
+// il modello riporta quel che dice il forum ma parafrasa la citazione («un
+// commento del 25/03/2020…») invece di copiare "BGG: <titolo>, …", e senza
+// il testo esatto non c'è niente a cui attaccare il link. I thread li
+// conosciamo comunque (sono quelli restituiti in questa richiesta, in
+// faqRefs nell'ordine in cui sono arrivati): se la risposta parla del forum
+// e non linka nessuno di loro, li si elenca in fondo.
+//
+// «Parla del forum» è volutamente grezzo (forum/BGG nel testo): il prompt
+// chiede di presentare il materiale come «sul forum di BGG…», e senza questo
+// filtro una risposta presa tutta dal manuale si porterebbe dietro thread
+// che il modello ha letto e scartato.
+func appendForumSources(answer string, faqRefs []string, citations map[string]*citationTarget) string {
+	if len(faqRefs) == 0 {
+		return answer
+	}
+	lower := strings.ToLower(answer)
+	if !strings.Contains(lower, "forum") && !strings.Contains(lower, "bgg") {
+		return answer
+	}
+	links := make([]string, 0, len(faqRefs))
+	for _, ref := range faqRefs {
+		target := citations[ref]
+		if target == nil || target.url == "" {
+			continue
+		}
+		if strings.Contains(answer, "]("+target.url) {
+			return answer
+		}
+		for _, u := range target.commentURLs {
+			if strings.Contains(answer, "]("+u) {
+				return answer
+			}
+		}
+		// Le parentesi quadre in un titolo chiuderebbero il testo del link.
+		title := strings.NewReplacer("[", "", "]", "").Replace(strings.TrimPrefix(ref, "BGG: "))
+		links = append(links, fmt.Sprintf("[%s](%s)", title, target.url))
+	}
+	if len(links) == 0 {
+		return answer
+	}
+	return answer + "\n\nDal forum di BGG: " + strings.Join(links, " · ")
 }
 
 // minReferenceLength è la soglia (in rune) sotto la quale una reference

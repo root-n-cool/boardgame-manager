@@ -229,3 +229,39 @@ func TestLinkifyCitations_PrefixOrderMattersEvenWithASingleWord(t *testing.T) {
 		t.Fatalf("la reference lunga è stata corrotta dalla sostituzione della corta: %q", got)
 	}
 }
+
+func TestAppendForumSources(t *testing.T) {
+	citations := map[string]*citationTarget{
+		"BGG: River U-turn": {referenceType: "faq", url: "https://boardgamegeek.com/thread/1",
+			commentURLs: map[string]string{"commento del 25/03/2020": "https://boardgamegeek.com/thread/1/article/9#9"}},
+		"BGG: River [question]": {referenceType: "faq", url: "https://boardgamegeek.com/thread/2", commentURLs: map[string]string{}},
+		"Regolamento":           {referenceType: "document", mediaPath: "m.pdf"},
+	}
+	refs := []string{"BGG: River U-turn", "BGG: River [question]"}
+
+	t.Run("il modello parla del forum senza citarlo: si aggiungono i thread", func(t *testing.T) {
+		got := appendForumSources("Sul forum di BGG dicono di sì.", refs, citations)
+		want := "Sul forum di BGG dicono di sì.\n\nDal forum di BGG: [River U-turn](https://boardgamegeek.com/thread/1) · [River question](https://boardgamegeek.com/thread/2)"
+		if got != want {
+			t.Fatalf("got %q\nwant %q", got, want)
+		}
+	})
+	t.Run("un thread già linkato: niente paragrafo", func(t *testing.T) {
+		in := "Vedi [BGG: River U-turn, commento del 25/03/2020](https://boardgamegeek.com/thread/1/article/9#9) sul forum."
+		if got := appendForumSources(in, refs, citations); got != in {
+			t.Fatalf("unexpected paragraph: %q", got)
+		}
+	})
+	t.Run("la risposta non nomina il forum: niente paragrafo", func(t *testing.T) {
+		in := "Il manuale dice di no."
+		if got := appendForumSources(in, refs, citations); got != in {
+			t.Fatalf("unexpected paragraph: %q", got)
+		}
+	})
+	t.Run("nessuna FAQ restituita: niente paragrafo", func(t *testing.T) {
+		in := "Sul forum non ho trovato niente."
+		if got := appendForumSources(in, nil, citations); got != in {
+			t.Fatalf("unexpected paragraph: %q", got)
+		}
+	})
+}

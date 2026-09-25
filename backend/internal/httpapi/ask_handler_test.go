@@ -879,6 +879,28 @@ func TestAskHandler_LinksAFAQCitationToTheComment(t *testing.T) {
 	}
 }
 
+func TestAskHandler_ListsForumThreadsWhenTheAnswerParaphrasesThem(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{results: []websearch.Result{{URL: "https://boardgamegeek.com/thread/100/refreshing"}}}
+	server.BGG = &fakeBGGClient{threads: map[string]bgg.Thread{"100": birdfeederThread()}}
+	asker := &fakeFAQAsker{faqQuery: "refresh birdfeeder"}
+	// Il modello riporta il forum senza copiare la reference: niente da
+	// linkare nel testo, quindi il thread va elencato in fondo.
+	asker.answer = "Sul forum di BGG un commento del 07/01/2019 dice che si ritira solo se i dadi sono uguali."
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	var body map[string]string
+	_ = json.Unmarshal(rec.Body.Bytes(), &body)
+	want := "\n\nDal forum di BGG: [Refreshing the birdfeeder](https://boardgamegeek.com/thread/100)"
+	if !strings.HasSuffix(body["text"], want) {
+		t.Fatalf("expected the forum thread listed at the end, got %q", body["text"])
+	}
+}
+
 // fakeMultiFAQAsker chiama SearchFAQ una volta per ogni query in
 // faqQueries, nell'ordine, e registra ciascun risultato: serve ai test che
 // esercitano PIÙ chiamate al tool nella stessa richiesta (disambiguazione
