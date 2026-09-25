@@ -253,3 +253,27 @@ func TestUpdate_RoundTripsHideFromSearchEngines(t *testing.T) {
 		}
 	}
 }
+
+func TestUpdate_PersistsTheTavilyKey(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	cfg, err := store.Get(ctx)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if cfg.TavilyAPIKey != "" {
+		t.Fatalf("expected no Tavily key after migration, got %q", cfg.TavilyAPIKey)
+	}
+
+	if err := store.Update(ctx, settings.Settings{DefaultLanguage: "it", TavilyAPIKey: "tvly-test"}); err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	cfg, err = store.Get(ctx)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if cfg.TavilyAPIKey != "tvly-test" {
+		t.Fatalf("expected the Tavily key to round-trip, got %q", cfg.TavilyAPIKey)
+	}
+}

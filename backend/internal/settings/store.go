@@ -23,6 +23,10 @@ type Settings struct {
 	// essere solo-testo. Vuoto = nessuna trascrizione automatica, e non è
 	// un errore.
 	AIVisionModel string
+	// TavilyAPIKey è la chiave dell'API di ricerca con cui l'agente trova
+	// i thread del forum Rules su BGG. Segreto come AIAPIKey; vuota = niente
+	// ricerca nelle FAQ, e non è un errore.
+	TavilyAPIKey string
 	// I campi SMTP valgono solo con host, porta e indirizzo mittente
 	// insieme; senza, l'app resta senza posta e non è un errore. Come
 	// AIAPIKey, SMTPPassword è un segreto e non esce mai in chiaro
@@ -59,7 +63,7 @@ func NewStore(conn *sql.DB) *Store {
 
 func (s *Store) Get(ctx context.Context) (Settings, error) {
 	var out Settings
-	var baseURL, bggToken, aiBaseURL, aiAPIKey, aiModel, aiVisionModel sql.NullString
+	var baseURL, bggToken, aiBaseURL, aiAPIKey, aiModel, aiVisionModel, tavilyKey sql.NullString
 	var smtpHost, smtpUser, smtpPass, smtpFrom, smtpFromName, smtpTLS sql.NullString
 	var smtpPort sql.NullInt64
 	var siteTitle, logoFilename, faviconFilename, termsMarkdown, privacyMarkdown sql.NullString
@@ -67,12 +71,12 @@ func (s *Store) Get(ctx context.Context) (Settings, error) {
 		`SELECT default_language, public_base_url, bgg_api_token, ai_base_url, ai_api_key, ai_model, ai_vision_model,
 		        smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_address, smtp_from_name, smtp_tls_mode,
 		        site_title, logo_filename, favicon_filename, terms_markdown, privacy_markdown,
-		        hide_from_search_engines
+		        hide_from_search_engines, tavily_api_key
 		 FROM app_settings WHERE id = 1`,
 	).Scan(&out.DefaultLanguage, &baseURL, &bggToken, &aiBaseURL, &aiAPIKey, &aiModel, &aiVisionModel,
 		&smtpHost, &smtpPort, &smtpUser, &smtpPass, &smtpFrom, &smtpFromName, &smtpTLS,
 		&siteTitle, &logoFilename, &faviconFilename, &termsMarkdown, &privacyMarkdown,
-		&out.HideFromSearchEngines)
+		&out.HideFromSearchEngines, &tavilyKey)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -94,6 +98,7 @@ func (s *Store) Get(ctx context.Context) (Settings, error) {
 	out.FaviconFilename = faviconFilename.String
 	out.TermsMarkdown = termsMarkdown.String
 	out.PrivacyMarkdown = privacyMarkdown.String
+	out.TavilyAPIKey = tavilyKey.String
 	return out, nil
 }
 
@@ -104,7 +109,7 @@ func (s *Store) Update(ctx context.Context, in Settings) error {
 		 smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_password = ?,
 		 smtp_from_address = ?, smtp_from_name = ?, smtp_tls_mode = ?,
 		 site_title = ?, logo_filename = ?, favicon_filename = ?, terms_markdown = ?, privacy_markdown = ?,
-		 hide_from_search_engines = ?
+		 hide_from_search_engines = ?, tavily_api_key = ?
 		 WHERE id = 1`,
 		in.DefaultLanguage, nullIfEmpty(in.PublicBaseURL), nullIfEmpty(in.BGGAPIToken),
 		nullIfEmpty(in.AIBaseURL), nullIfEmpty(in.AIAPIKey), nullIfEmpty(in.AIModel), nullIfEmpty(in.AIVisionModel),
@@ -113,7 +118,7 @@ func (s *Store) Update(ctx context.Context, in Settings) error {
 		nullIfEmpty(in.SMTPFromName), nullIfEmpty(in.SMTPTLSMode),
 		nullIfEmpty(in.SiteTitle), nullIfEmpty(in.LogoFilename), nullIfEmpty(in.FaviconFilename),
 		nullIfEmpty(in.TermsMarkdown), nullIfEmpty(in.PrivacyMarkdown),
-		in.HideFromSearchEngines,
+		in.HideFromSearchEngines, nullIfEmpty(in.TavilyAPIKey),
 	)
 	return err
 }

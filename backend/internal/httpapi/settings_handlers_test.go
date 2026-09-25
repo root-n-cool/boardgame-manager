@@ -344,6 +344,39 @@ func TestPutSettings_EmptyAIKeyKeepsTheStoredOne(t *testing.T) {
 	}
 }
 
+func TestPutSettings_SavesTheTavilyKeyMaskedAndKeepsItWhenEmpty(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	if rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"tavilyApiKey":    "tvly-secret-9876",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("first put: %d %s", rec.Code, rec.Body.String())
+	}
+	got := getSettings(t, router, cookie)
+	if got["tavilyApiKeySet"] != true || got["tavilyApiKeyMasked"] != "****9876" {
+		t.Fatalf("expected a masked Tavily key, got %v", got)
+	}
+	if _, leaked := got["tavilyApiKey"]; leaked {
+		t.Fatal("the Tavily key must never be served in clear")
+	}
+
+	// Il form rimanda il campo vuoto dopo ogni salvataggio: non deve
+	// cancellare la chiave.
+	if rec := putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it",
+		"tavilyApiKey":    "",
+	}); rec.Code != http.StatusOK {
+		t.Fatalf("second put: %d %s", rec.Code, rec.Body.String())
+	}
+	got = getSettings(t, router, cookie)
+	if got["tavilyApiKeySet"] != true {
+		t.Fatalf("an empty Tavily key must keep the stored one, got %v", got)
+	}
+}
+
 func TestPutSettings_RejectsARelativeAIBaseURL(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
