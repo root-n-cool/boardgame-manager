@@ -843,6 +843,7 @@ form .markdown-editor {
 }
 
 .app-page form label,
+.app-page form .markdown-field,
 .app-page form .field-block,
 .app-page form .error,
 .app-page form .success {
