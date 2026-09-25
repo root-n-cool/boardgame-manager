@@ -408,7 +408,7 @@ onMounted(async () => {
           <input
             v-model="tavilyApiKey"
             type="password"
-            autocomplete="off"
+            autocomplete="new-password"
             :placeholder="tavilyApiKeyMasked || 'non configurata'"
           />
         </label>
