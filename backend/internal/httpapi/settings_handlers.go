@@ -50,11 +50,12 @@ type settingsResponse struct {
 	// l'admin edita, e mostrargli già "BoardGames Manager" lo farebbe
 	// sembrare un valore salvato quando non lo è. Il fallback si applica
 	// solo in GET /api/site, nel webui e nelle email.
-	SiteTitle       string `json:"siteTitle"`
-	LogoFilename    string `json:"logoFilename"`
-	FaviconFilename string `json:"faviconFilename"`
-	TermsMarkdown   string `json:"termsMarkdown"`
-	PrivacyMarkdown string `json:"privacyMarkdown"`
+	SiteTitle             string `json:"siteTitle"`
+	LogoFilename          string `json:"logoFilename"`
+	FaviconFilename       string `json:"faviconFilename"`
+	TermsMarkdown         string `json:"termsMarkdown"`
+	PrivacyMarkdown       string `json:"privacyMarkdown"`
+	HideFromSearchEngines bool   `json:"hideFromSearchEngines"`
 }
 
 func maskKey(key string) string {
@@ -103,6 +104,7 @@ func (s *Server) getSettingsHandler(w http.ResponseWriter, r *http.Request) {
 	resp.FaviconFilename = cfg.FaviconFilename
 	resp.TermsMarkdown = cfg.TermsMarkdown
 	resp.PrivacyMarkdown = cfg.PrivacyMarkdown
+	resp.HideFromSearchEngines = cfg.HideFromSearchEngines
 	writeJSON(w, http.StatusOK, resp)
 }
 
@@ -124,6 +126,9 @@ type updateSettingsRequest struct {
 	SiteTitle       string        `json:"siteTitle"`
 	TermsMarkdown   string        `json:"termsMarkdown"`
 	PrivacyMarkdown string        `json:"privacyMarkdown"`
+	// Puntatore perché assente vuol dire "lascia com'è": un client che non
+	// conosce il campo non deve rendere il sito indicizzabile per sbaglio.
+	HideFromSearchEngines *bool `json:"hideFromSearchEngines"`
 }
 
 // smtpPortValue decodes SMTPPort tolerantly. No SMTP field is required, so a
@@ -237,6 +242,11 @@ func (s *Server) putSettingsHandler(w http.ResponseWriter, r *http.Request) {
 		FaviconFilename: current.FaviconFilename,
 		TermsMarkdown:   req.TermsMarkdown,
 		PrivacyMarkdown: req.PrivacyMarkdown,
+
+		HideFromSearchEngines: current.HideFromSearchEngines,
+	}
+	if req.HideFromSearchEngines != nil {
+		next.HideFromSearchEngines = *req.HideFromSearchEngines
 	}
 	if req.BGGAPIToken != "" {
 		next.BGGAPIToken = req.BGGAPIToken

@@ -72,6 +72,7 @@ func NewRouter(s *Server) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Logger)
+	r.Use(s.noIndex)
 
 	bookingCredentialsLimiter := newRateLimiter(10, time.Minute)
 	matchResultLimiter := newRateLimiter(60, time.Minute)
@@ -174,4 +175,19 @@ func NewRouter(s *Server) http.Handler {
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// noIndex chiede ai motori di ricerca di non indicizzare le risposte
+// dell'API, compresi manuali e immagini caricati, finché l'admin non lo
+// permette dalle impostazioni. Le pagine del frontend portano lo stesso
+// divieto nel meta robots che il webui inietta in index.html. Se le
+// impostazioni non si leggono il divieto resta: meglio un sito non
+// trovato che uno indicizzato per sbaglio.
+func (s *Server) noIndex(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if cfg, err := s.Settings.Get(r.Context()); err != nil || cfg.HideFromSearchEngines {
+			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+		}
+		next.ServeHTTP(w, r)
+	})
 }

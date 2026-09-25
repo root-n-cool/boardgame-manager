@@ -27,6 +27,7 @@ var distFS embed.FS
 const (
 	defaultSiteTitle   = "BoardGames Manager"
 	defaultFaviconHref = "/favicon.svg"
+	robotsNoIndexMeta  = `<meta name="robots" content="noindex, nofollow" />`
 )
 
 // SettingsReader è il sottoinsieme di settings.Store che serve qui: leggere
@@ -51,7 +52,8 @@ func Handler(store SettingsReader) (http.Handler, error) {
 // fallback) never comes straight from the filesystem: its <title> and
 // favicon <link> carry two placeholders, __SITE_TITLE__ and
 // __FAVICON_URL__ (see frontend/index.html), replaced per-request with the
-// configured branding so a hard refresh — not just the SPA's own DOM
+// configured branding — plus __ROBOTS_META__, the noindex tag when the
+// admin keeps the site hidden from search engines — so a hard refresh — not just the SPA's own DOM
 // updates — already shows the right title and favicon.
 func handlerFor(root fs.FS, store SettingsReader) (http.Handler, error) {
 	// Without this check an unbuilt frontend fails silently: the SPA fallback
@@ -68,10 +70,15 @@ func handlerFor(root fs.FS, store SettingsReader) (http.Handler, error) {
 	fileServer := http.FileServer(http.FS(root))
 
 	serveIndex := func(w http.ResponseWriter, r *http.Request) {
-		title, faviconHref := defaultSiteTitle, defaultFaviconHref
+		// Senza impostazioni leggibili il divieto d'indicizzazione resta:
+		// meglio un sito non trovato che uno indicizzato per sbaglio.
+		title, faviconHref, robotsMeta := defaultSiteTitle, defaultFaviconHref, robotsNoIndexMeta
 		if cfg, err := store.Get(r.Context()); err != nil {
 			log.Printf("webui: could not load site settings, serving defaults: %v", err)
 		} else {
+			if !cfg.HideFromSearchEngines {
+				robotsMeta = ""
+			}
 			if cfg.SiteTitle != "" {
 				title = cfg.SiteTitle
 			}
@@ -82,6 +89,7 @@ func handlerFor(root fs.FS, store SettingsReader) (http.Handler, error) {
 		body := strings.NewReplacer(
 			"__SITE_TITLE__", html.EscapeString(title),
 			"__FAVICON_URL__", html.EscapeString(faviconHref),
+			"__ROBOTS_META__", robotsMeta,
 		).Replace(string(indexTemplate))
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write([]byte(body))

@@ -43,6 +43,10 @@ type Settings struct {
 	FaviconFilename string
 	TermsMarkdown   string
 	PrivacyMarkdown string
+	// HideFromSearchEngines chiede ai motori di ricerca di non
+	// indicizzare il sito. Vero di default: il sito si raggiunge per QR
+	// code alle serate, non da una ricerca.
+	HideFromSearchEngines bool
 }
 
 type Store struct {
@@ -62,11 +66,13 @@ func (s *Store) Get(ctx context.Context) (Settings, error) {
 	err := s.db.QueryRowContext(ctx,
 		`SELECT default_language, public_base_url, bgg_api_token, ai_base_url, ai_api_key, ai_model, ai_vision_model,
 		        smtp_host, smtp_port, smtp_username, smtp_password, smtp_from_address, smtp_from_name, smtp_tls_mode,
-		        site_title, logo_filename, favicon_filename, terms_markdown, privacy_markdown
+		        site_title, logo_filename, favicon_filename, terms_markdown, privacy_markdown,
+		        hide_from_search_engines
 		 FROM app_settings WHERE id = 1`,
 	).Scan(&out.DefaultLanguage, &baseURL, &bggToken, &aiBaseURL, &aiAPIKey, &aiModel, &aiVisionModel,
 		&smtpHost, &smtpPort, &smtpUser, &smtpPass, &smtpFrom, &smtpFromName, &smtpTLS,
-		&siteTitle, &logoFilename, &faviconFilename, &termsMarkdown, &privacyMarkdown)
+		&siteTitle, &logoFilename, &faviconFilename, &termsMarkdown, &privacyMarkdown,
+		&out.HideFromSearchEngines)
 	if err != nil {
 		return Settings{}, err
 	}
@@ -97,7 +103,8 @@ func (s *Store) Update(ctx context.Context, in Settings) error {
 		 ai_base_url = ?, ai_api_key = ?, ai_model = ?, ai_vision_model = ?,
 		 smtp_host = ?, smtp_port = ?, smtp_username = ?, smtp_password = ?,
 		 smtp_from_address = ?, smtp_from_name = ?, smtp_tls_mode = ?,
-		 site_title = ?, logo_filename = ?, favicon_filename = ?, terms_markdown = ?, privacy_markdown = ?
+		 site_title = ?, logo_filename = ?, favicon_filename = ?, terms_markdown = ?, privacy_markdown = ?,
+		 hide_from_search_engines = ?
 		 WHERE id = 1`,
 		in.DefaultLanguage, nullIfEmpty(in.PublicBaseURL), nullIfEmpty(in.BGGAPIToken),
 		nullIfEmpty(in.AIBaseURL), nullIfEmpty(in.AIAPIKey), nullIfEmpty(in.AIModel), nullIfEmpty(in.AIVisionModel),
@@ -106,6 +113,7 @@ func (s *Store) Update(ctx context.Context, in Settings) error {
 		nullIfEmpty(in.SMTPFromName), nullIfEmpty(in.SMTPTLSMode),
 		nullIfEmpty(in.SiteTitle), nullIfEmpty(in.LogoFilename), nullIfEmpty(in.FaviconFilename),
 		nullIfEmpty(in.TermsMarkdown), nullIfEmpty(in.PrivacyMarkdown),
+		in.HideFromSearchEngines,
 	)
 	return err
 }

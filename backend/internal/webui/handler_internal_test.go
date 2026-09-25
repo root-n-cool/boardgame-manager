@@ -45,7 +45,7 @@ func TestHandlerFor_ErrorsWhenIndexHTMLMissing(t *testing.T) {
 func indexFS() fstest.MapFS {
 	return fstest.MapFS{
 		"index.html": {Data: []byte(
-			`<title>__SITE_TITLE__</title><link rel="icon" href="__FAVICON_URL__" /><div id="app"></div>`,
+			`<title>__SITE_TITLE__</title><link rel="icon" href="__FAVICON_URL__" />__ROBOTS_META__<div id="app"></div>`,
 		)},
 		"assets/index.css": {Data: []byte(".layout{}")},
 	}
@@ -157,5 +157,39 @@ func TestHandlerFor_EscapesTheConfiguredTitle(t *testing.T) {
 	}
 	if !strings.Contains(body, "&lt;/title&gt;&lt;script&gt;") {
 		t.Fatalf("expected an escaped title, got: %s", body)
+	}
+}
+
+const robotsMeta = `<meta name="robots" content="noindex, nofollow" />`
+
+func TestHandlerFor_RobotsMetaFollowsTheSetting(t *testing.T) {
+	cases := []struct {
+		name     string
+		reader   fakeSettingsReader
+		wantMeta bool
+	}{
+		{"hidden", fakeSettingsReader{cfg: settings.Settings{HideFromSearchEngines: true}}, true},
+		{"indexable", fakeSettingsReader{cfg: settings.Settings{HideFromSearchEngines: false}}, false},
+		// Senza impostazioni leggibili si sceglie la strada prudente:
+		// meglio un sito non trovato che uno indicizzato per sbaglio.
+		{"settings unavailable", fakeSettingsReader{err: errTestSettingsUnavailable}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handler, err := handlerFor(indexFS(), tc.reader)
+			if err != nil {
+				t.Fatalf("handlerFor: %v", err)
+			}
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest("GET", "/events/1", nil))
+
+			body := rec.Body.String()
+			if got := strings.Contains(body, robotsMeta); got != tc.wantMeta {
+				t.Errorf("robots meta present = %v, want %v; body: %s", got, tc.wantMeta, body)
+			}
+			if strings.Contains(body, "__ROBOTS_META__") {
+				t.Errorf("placeholder left in the page: %s", body)
+			}
+		})
 	}
 }

@@ -221,3 +221,35 @@ func TestGet_SiteBrandingEmptyAfterMigration(t *testing.T) {
 		t.Fatalf("expected empty site branding on a fresh instance, got %+v", out)
 	}
 }
+
+// Il sito si raggiunge per QR code alle serate: un'installazione nuova
+// parte già nascosta ai motori di ricerca, e chi vuole farsi trovare lo
+// sceglie dalle impostazioni.
+func TestGet_HidesFromSearchEnginesByDefault(t *testing.T) {
+	store := newTestStore(t)
+	out, err := store.Get(context.Background())
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if !out.HideFromSearchEngines {
+		t.Fatal("expected a fresh instance to be hidden from search engines")
+	}
+}
+
+func TestUpdate_RoundTripsHideFromSearchEngines(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	for _, want := range []bool{false, true} {
+		if err := store.Update(ctx, settings.Settings{DefaultLanguage: "it", HideFromSearchEngines: want}); err != nil {
+			t.Fatalf("update: %v", err)
+		}
+		out, err := store.Get(ctx)
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		if out.HideFromSearchEngines != want {
+			t.Fatalf("expected HideFromSearchEngines=%v, got %v", want, out.HideFromSearchEngines)
+		}
+	}
+}

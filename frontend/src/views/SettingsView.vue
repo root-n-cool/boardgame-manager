@@ -12,6 +12,7 @@ interface SettingsResponse {
   faviconFilename: string
   termsMarkdown: string
   privacyMarkdown: string
+  hideFromSearchEngines: boolean
   bggApiTokenSet: boolean
   bggApiTokenMasked?: string
   aiBaseUrl: string
@@ -39,6 +40,7 @@ const logoFilename = ref('')
 const faviconFilename = ref('')
 const termsMarkdown = ref('')
 const privacyMarkdown = ref('')
+const hideFromSearchEngines = ref(true)
 const logoInput = ref<HTMLInputElement | null>(null)
 const faviconInput = ref<HTMLInputElement | null>(null)
 const logoUploading = ref(false)
@@ -77,6 +79,7 @@ async function load() {
   faviconFilename.value = s.faviconFilename || ''
   termsMarkdown.value = s.termsMarkdown || ''
   privacyMarkdown.value = s.privacyMarkdown || ''
+  hideFromSearchEngines.value = s.hideFromSearchEngines
   bggApiTokenMasked.value = s.bggApiTokenMasked || ''
   aiBaseUrl.value = s.aiBaseUrl || ''
   aiModel.value = s.aiModel || ''
@@ -102,6 +105,7 @@ async function save() {
       siteTitle: siteTitle.value,
       termsMarkdown: termsMarkdown.value,
       privacyMarkdown: privacyMarkdown.value,
+      hideFromSearchEngines: hideFromSearchEngines.value,
       bggApiToken: bggApiToken.value,
       aiBaseUrl: aiBaseUrl.value,
       aiApiKey: aiApiKey.value,
@@ -314,6 +318,15 @@ onMounted(async () => {
           </div>
         </div>
         <p v-if="brandingError" class="error">{{ brandingError }}</p>
+
+        <label class="checkbox-label">
+          <input v-model="hideFromSearchEngines" type="checkbox" />
+          Nascondi dai motori di ricerca
+        </label>
+        <p class="field-hint">
+          Il sito resta raggiungibile da chi ha il link o il QR code, ma Google
+          e gli altri motori di ricerca non lo mostrano nei risultati.
+        </p>
 
         <div class="markdown-field">
           Termini e condizioni

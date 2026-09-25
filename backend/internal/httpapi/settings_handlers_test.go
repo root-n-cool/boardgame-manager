@@ -692,3 +692,51 @@ func TestPutSettings_SavesTermsAndPrivacyMarkdown(t *testing.T) {
 		t.Errorf("privacyMarkdown = %v", got["privacyMarkdown"])
 	}
 }
+
+// putSettingsJSON è putSettings per i payload con valori non stringa.
+func putSettingsJSON(t *testing.T, router http.Handler, cookie *http.Cookie, payload map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(body))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestPutSettings_TogglesHideFromSearchEngines(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	if got := getSettings(t, router, cookie)["hideFromSearchEngines"]; got != true {
+		t.Fatalf("expected hideFromSearchEngines true by default, got %v", got)
+	}
+
+	rec := putSettingsJSON(t, router, cookie, map[string]any{
+		"defaultLanguage":       "it",
+		"hideFromSearchEngines": false,
+	})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := getSettings(t, router, cookie)["hideFromSearchEngines"]; got != false {
+		t.Fatalf("expected hideFromSearchEngines false after saving it, got %v", got)
+	}
+}
+
+// Un client che non conosce il campo non deve rendere il sito
+// indicizzabile per sbaglio: assente vuol dire "lascia com'è".
+func TestPutSettings_MissingHideFromSearchEnginesKeepsTheStoredValue(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	rec := putSettings(t, router, cookie, map[string]string{"defaultLanguage": "it"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	if got := getSettings(t, router, cookie)["hideFromSearchEngines"]; got != true {
+		t.Fatalf("expected hideFromSearchEngines to stay true, got %v", got)
+	}
+}

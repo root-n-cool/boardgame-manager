@@ -263,7 +263,10 @@ Dalla pagina "Impostazioni" (da admin autenticato):
   si presenta come "BoardGames Manager" con l'icona di default, e le due
   pagine legali restano vuote finché non ci scrivi qualcosa. Una volta
   caricati, logo e favicon non si possono rimuovere dall'interfaccia:
-  si sostituiscono con un altro caricamento.
+  si sostituiscono con un altro caricamento. L'opzione "Nascondi dai
+  motori di ricerca", **attiva di default**, chiede a Google & co. di
+  non indicizzare il sito (meta `robots` e header `X-Robots-Tag`): chi
+  ha il link o il QR code lo raggiunge comunque.
 
 ### Traduzione automatica delle descrizioni (opzionale)
 
