@@ -172,7 +172,7 @@ function newConversation() {
 // disabilitata (il selettore stesso resta nascosto sotto i due agenti, ma
 // qui i due esistono sempre — è `disabled` a cambiare).
 const agents = computed<ComposerAgent[]>(() => [
-  { key: 'rules', label: 'Manuale', tag: 'regole', disabled: !props.chat.rules },
+  { key: 'rules', label: 'Regolamento', tag: 'regole', disabled: !props.chat.rules },
   { key: 'strategy', label: 'Strategia', tag: 'consigli', disabled: !props.chat.strategy },
 ])
 

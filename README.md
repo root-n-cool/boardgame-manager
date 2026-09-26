@@ -93,7 +93,7 @@ esterno obbligatorio.
   resta legato al codice di prenotazione: un gioco mai prenotabile non
   entra in classifica, anche se in prestito è passato di mano più volte.
 - **Il Mentore**: sulla scheda pubblica di un gioco compare una chat con
-  due agenti, uno alla volta dal selettore nel campo — **Manuale**, che
+  due agenti, uno alla volta dal selettore nel campo — **Regolamento**, che
   risponde a parole proprie, tipo "quando finisce la partita?", citando
   il documento e la pagina da cui viene la risposta; **Strategia**, che
   dà consigli di gioco presi dal forum *Strategy* di BoardGameGeek e,
@@ -347,7 +347,7 @@ perché l'app non lo conserva: solo le sezioni cercabili restano. Un
 la sola libreria standard, un `.txt` o un PDF con testo selezionabile
 passano dal modello che vi inserisce i titoli, uno scan passa per l'OCR
 di un modello multimodale una pagina alla volta. Senza una fonte
-preparata il gioco perde l'agente Manuale — a meno che non risponda già
+preparata il gioco perde l'agente Regolamento — a meno che non risponda già
 dal forum di BGG, vedi la chiave Tavily più sotto — ma non
 necessariamente l'intera chat: se il gioco ha anche la Strategia, quella
 resta. Senza nessuno dei due agenti disponibili la scheda pubblica non
@@ -406,7 +406,7 @@ mostra nessuna chat: nessun errore, solo l'assenza del comando.
 [Tavily](https://tavily.com) nelle impostazioni (piano gratuito: 1.000
 ricerche al mese, senza carta) e un gioco collegato a BGG:
 
-- l'agente **Manuale**, quando il documento indicizzato non basta, cerca
+- l'agente **Regolamento**, quando il documento indicizzato non basta, cerca
   anche nel forum *Rules* del gioco su BoardGameGeek e cita il commento
   con un link: le FAQ completano il manuale, non lo sostituiscono;
 - compare l'agente **Strategia**, che pesca consigli dal forum
@@ -414,14 +414,14 @@ ricerche al mese, senza carta) e un gioco collegato a BGG:
   indicizzato, controlla che la mossa suggerita sia permessa prima di
   proporla;
 - un gioco **senza un manuale indicizzato** ottiene comunque l'agente
-  Manuale, che in quel caso risponde solo dal forum *Rules* — presentata
+  Regolamento, che in quel caso risponde solo dal forum *Rules* — presentata
   come opinione della community, non come citazione di un documento
   ufficiale.
 
 La domanda, tradotta in inglese, viene mandata a Tavily per trovare i
 thread (al massimo due ricerche per domanda, per tenere basso il
 consumo del piano gratuito); il thread scelto si legge poi direttamente
-da BoardGameGeek. Senza chiave: solo l'agente Manuale, solo su un gioco
+da BoardGameGeek. Senza chiave: solo l'agente Regolamento, solo su un gioco
 con un manuale già preparato, solo dai documenti indicizzati — la
 Strategia non compare.
 

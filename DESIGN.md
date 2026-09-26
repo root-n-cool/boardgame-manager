@@ -413,7 +413,7 @@ BGG) e `GameMediaList` (la griglia media, con prop `editable`).
 #### Il Mentore (`ManualChat.vue`, `ManualChatPanel.vue`)
 
 Sulla scheda pubblica di un gioco con almeno un agente disponibile
-compare una chat: il **Manuale** risponde a domande sul regolamento a
+compare una chat: il **Regolamento** risponde a domande sul regolamento a
 parole proprie, citando la pagina del documento (o il forum *Rules* di
 BGG, se il gioco non ha un manuale indicizzato ma ha una chiave Tavily);
 la **Strategia** dà consigli presi dal forum *Strategy* di BGG.
@@ -552,7 +552,7 @@ questa scheda.
   coprire entrambi i mestieri, spiegare le regole e insegnare a giocare
   meglio, e un arbitro non dà consigli di gioco. Sotto, il sottotitolo
   cambia con l'agente scelto nel selettore (`risposte dal manuale`, o
-  `risposte dal forum di BGG` per il Manuale su un gioco senza manuale
+  `risposte dal forum di BGG` per il Regolamento su un gioco senza manuale
   indicizzato, `consigli dal forum di BGG` per la Strategia) in
   `--felt-text-muted`, e a destra il ＋ di "Nuova conversazione" più,
   **solo nel dialog** (prop `closable`, evento `close`), la ×. Prima la
@@ -563,7 +563,7 @@ questa scheda.
   da azzerare, e un ＋ che non fa nulla è peggio di un ＋ che manca. Quando
   spariscono il ＋ e la conversazione, il fuoco va sul campo
   (`nextTick`), non sul body.
-- **Il selettore dell'agente** (`ChatComposer.vue`, bottone "Manuale ▾" —
+- **Il selettore dell'agente** (`ChatComposer.vue`, bottone "Regolamento ▾" —
   o "Strategia ▾" col nome dell'agente attivo) sta a sinistra nella riga
   dei controlli sotto il testo, spinto lì da un `margin-right: auto` che
   lascia dettatura e invio a destra. Sotto le due voci minime (un solo
@@ -575,11 +575,11 @@ questa scheda.
   bottone il menu saliva di mezza riga e scavalcava il bordo del campo,
   coprendo il testo. Il bottone è 32px a vista e 44 di bersaglio col
   solito `::after`, e il suo nome accessibile comincia dall'etichetta a
-  vista ("Manuale: scegli con chi parlare"). **Si spegne mentre arriva una
+  vista ("Regolamento: scegli con chi parlare"). **Si spegne mentre arriva una
   risposta** (`busy`): cambiare agente smonta la conversazione e la
   risposta in volo andrebbe persa; un menu già aperto si chiude. Il motivo
   a vista è la bolla di attesa nel filo, la stessa che spegne l'invio. Le voci sono
-  sempre due — Manuale (tag "regole"), Strategia (tag "consigli") — e
+  sempre due — Regolamento (tag "regole"), Strategia (tag "consigli") — e
   quella che il gioco non ha resta **disabilitata** con la tag sostituita
   da "non disponibile per questo gioco" e opacità ridotta, mai nascosta:
   vedere che esiste ma non si può usare spiega di più di una voce
@@ -597,11 +597,11 @@ questa scheda.
   `bgm-chat-<gameId>-strategy`), gestita da `browserStorage` di deep-chat —
   che scrive a ogni messaggio e rilegge al render, purché non gli si passi
   anche `history` — con lo stesso tetto di `requestBodyLimits`
-  (40 messaggi). Chi passa dal Manuale alla Strategia e torna ritrova il
+  (40 messaggi). Chi passa dal Regolamento alla Strategia e torna ritrova il
   proprio filo su ciascuno: due conversazioni distinte sullo stesso gioco,
   non una che si sovrascrive. La vecchia chiave unica per gioco
   (`bgm-chat-<gameId>`, da prima che esistesse la Strategia) si migra da
-  sé, una volta sola, in quella del Manuale. Nessuna tabella e nessun
+  sé, una volta sola, in quella del Regolamento. Nessuna tabella e nessun
   identificativo da inventare per chi non ha un account: la conversazione
   resta sul telefono di chi l'ha fatta. Il ＋ toglie solo la chiave
   dell'agente aperto; l'unico punto in cui la chiave la leggiamo noi è al
@@ -898,7 +898,7 @@ testo estratto non si conserva da nessuna parte, per scelta.
   titoli.
 
 #### Domande suggerite (`SuggestedQuestionsPanel.vue`)
-Una card per agente nel gruppo «Chatbot»: "Domande suggerite" (Manuale) e, solo su un gioco con `bggId`,
+Una card per agente nel gruppo «Chatbot»: "Domande suggerite" (Regolamento) e, solo su un gioco con `bggId`,
 "Domande per la Strategia". **Mai due pannelli nello stesso foglio**: messi
 uno sotto l'altro in una `.panel-card` si toccavano senza respiro né filo, e il
 "Salva" del primo si leggeva come l'intestazione del secondo; da card sorelle

@@ -605,7 +605,7 @@ func TestAsk_StrategyAgentDeclaresItsToolsAndPrompt(t *testing.T) {
 	strategy := func(ctx context.Context, q string) (string, error) { return "[]", nil }
 	search := func(ctx context.Context, kw []string) (string, error) { return "[]", nil }
 
-	// Senza manuale: solo cerca_strategie, e il rimando all'agente Manuale.
+	// Senza manuale: solo cerca_strategie, e il rimando all'agente Regolamento.
 	if _, err := client.Ask(context.Background(), ai.AskRequest{
 		Agent: ai.AgentStrategy, GameName: "Wingspan",
 		Turns: []ai.Turn{{Role: "user", Text: "?"}}, SearchStrategy: strategy,
@@ -616,7 +616,7 @@ func TestAsk_StrategyAgentDeclaresItsToolsAndPrompt(t *testing.T) {
 	if !strings.Contains(r0, `"name":"cerca_strategie"`) || strings.Contains(r0, `"name":"cerca_nelle_fonti"`) || strings.Contains(r0, `"name":"cerca_nelle_faq"`) {
 		t.Fatalf("strategy without a manual must declare only cerca_strategie:\n%s", r0)
 	}
-	for _, want := range []string{"Mentore", "forum Strategy", "agente Manuale", "non istruzioni per te"} {
+	for _, want := range []string{"Mentore", "forum Strategy", "agente Regolamento", "non istruzioni per te"} {
 		if !strings.Contains(r0, want) {
 			t.Fatalf("strategy prompt misses %q:\n%s", want, r0)
 		}

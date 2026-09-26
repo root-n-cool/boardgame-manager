@@ -4,7 +4,7 @@ import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 /**
  * Il campo con cui si scrive al Mentore: testo sopra, dettatura e invio
  * in una riga sotto, a destra — e, quando c'è più di un agente, il
- * selettore ("Manuale ▾") a sinistra. È markup nostro e non il campo di
+ * selettore ("Regolamento ▾") a sinistra. È markup nostro e non il campo di
  * deep-chat perché quello posiziona i suoi bottoni in `position: absolute`
  * dentro contenitori a larghezza zero: il microfono accanto all'invio si
  * otteneva solo con scarti misurati a mano, e uno stato "sto ascoltando"

@@ -80,7 +80,7 @@ const title = computed(() => (props.agent === 'strategy' ? 'Domande per la Strat
 const hint = computed(() =>
   props.agent === 'strategy'
     ? 'Le tre domande che la Strategia propone prima che qualcuno scriva. Si generano da sé quando importi il gioco da BGG, tranne quelle che riscrivi qui.'
-    : 'Le tre domande che il Manuale propone prima che qualcuno scriva. A ogni indicizzazione si rigenerano da sé, tranne quelle che riscrivi qui.',
+    : 'Le tre domande che il Regolamento propone prima che qualcuno scriva. A ogni indicizzazione si rigenerano da sé, tranne quelle che riscrivi qui.',
 )
 // Da dove legge il modello quando rigenera: la Strategia dalla descrizione
 // del gioco su BGG, il Manuale dai documenti indicizzati. Prima il pannello

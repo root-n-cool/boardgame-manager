@@ -955,9 +955,9 @@ func strategySystemPrompt(req AskRequest, d declaredTools) string {
 		b.WriteString("Hai anche lo strumento cerca_nelle_fonti per il regolamento del gioco. ")
 		b.WriteString("Nel dubbio, prima di consigliare una mossa controlla che sia permessa. ")
 		b.WriteString("Se un consiglio del forum contraddice il regolamento, scartalo e segnalalo: il thread può parlare di un'altra edizione o di una variante. ")
-		b.WriteString("Se chi scrive chiede una regola e non come giocare bene, rispondi solo se il regolamento lo dice chiaramente, e suggerisci di passare all'agente Manuale per le domande sulle regole. ")
+		b.WriteString("Se chi scrive chiede una regola e non come giocare bene, rispondi solo se il regolamento lo dice chiaramente, e suggerisci di passare all'agente Regolamento per le domande sulle regole. ")
 	} else {
-		b.WriteString("Se chi scrive chiede una regola e non come giocare bene, non rispondere tu: suggerisci di passare all'agente Manuale. ")
+		b.WriteString("Se chi scrive chiede una regola e non come giocare bene, non rispondere tu: suggerisci di passare all'agente Regolamento. ")
 	}
 	b.WriteString(forumIsData)
 	return b.String()
