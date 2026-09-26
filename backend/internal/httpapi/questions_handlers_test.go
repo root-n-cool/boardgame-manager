@@ -12,6 +12,7 @@ import (
 	"boardgames-manager/internal/ai"
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
+	"boardgames-manager/internal/manuals"
 )
 
 func questionsPath(gameID int64) string {
@@ -92,7 +93,7 @@ func TestPutSuggestedQuestions_SavesAndMarksEdited(t *testing.T) {
 		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
 
-	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -173,7 +174,7 @@ func TestRegenerateSuggestedQuestions_OverwritesEditedToo(t *testing.T) {
 	if rec := postIndex(cookie, router, gameID, mediaID); rec.Code != http.StatusOK {
 		t.Fatalf("index: atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
-	if err := server.Manuals.SaveEditedQuestions(context.Background(), gameID,
+	if err := server.Manuals.SaveEditedQuestions(context.Background(), gameID, manuals.AgentRules,
 		[]string{"Mia 1?", "Mia 2?", "Mia 3?"}); err != nil {
 		t.Fatalf("save edited: %v", err)
 	}
@@ -186,7 +187,7 @@ func TestRegenerateSuggestedQuestions_OverwritesEditedToo(t *testing.T) {
 		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
 
-	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}

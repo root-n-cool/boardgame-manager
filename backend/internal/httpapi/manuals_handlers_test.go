@@ -1239,7 +1239,7 @@ func TestIndexMedia_GeneratesSuggestedQuestions(t *testing.T) {
 		t.Fatalf("attesa 1 chiamata a SuggestQuestions, fatte %d", sug.calls.Load())
 	}
 
-	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -1293,7 +1293,7 @@ func TestIndexMedia_SkipsSuggestionWhenAllThreeAreEdited(t *testing.T) {
 		"regole.md", "")
 
 	// Tutte tre scritte a mano prima dell'indicizzazione.
-	if err := server.Manuals.SaveEditedQuestions(context.Background(), gameID,
+	if err := server.Manuals.SaveEditedQuestions(context.Background(), gameID, manuals.AgentRules,
 		[]string{"Mia 1?", "Mia 2?", "Mia 3?"}); err != nil {
 		t.Fatalf("save edited: %v", err)
 	}
@@ -1306,7 +1306,7 @@ func TestIndexMedia_SkipsSuggestionWhenAllThreeAreEdited(t *testing.T) {
 		t.Fatalf("con tutte tre edited non c'è niente da generare: fatte %d chiamate", sug.calls.Load())
 	}
 
-	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}

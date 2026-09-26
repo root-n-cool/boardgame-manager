@@ -72,9 +72,9 @@ func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, all bool
 	}
 
 	if all {
-		return s.Manuals.SaveAllQuestions(ctx, gameID, texts)
+		return s.Manuals.SaveAllQuestions(ctx, gameID, manuals.AgentRules, texts)
 	}
-	return s.Manuals.SaveGeneratedQuestions(ctx, gameID, texts)
+	return s.Manuals.SaveGeneratedQuestions(ctx, gameID, manuals.AgentRules, texts)
 }
 
 // allQuestionsEdited dice se le tre domande sono tutte scritte a mano: in
@@ -116,7 +116,7 @@ func (s *Server) getSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "id del gioco non valido")
 		return
 	}
-	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID)
+	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, manuals.AgentRules)
 	if err != nil {
 		log.Printf("questions: read for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not read the suggested questions")
@@ -159,13 +159,13 @@ func (s *Server) putSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	if err := s.Manuals.SaveEditedQuestions(r.Context(), gameID, texts); err != nil {
+	if err := s.Manuals.SaveEditedQuestions(r.Context(), gameID, manuals.AgentRules, texts); err != nil {
 		log.Printf("questions: save for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not save the suggested questions")
 		return
 	}
 
-	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID)
+	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, manuals.AgentRules)
 	if err != nil {
 		log.Printf("questions: read back for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not read the suggested questions")
@@ -216,7 +216,7 @@ func (s *Server) regenerateSuggestedQuestionsHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID)
+	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, manuals.AgentRules)
 	if err != nil {
 		log.Printf("questions: read back for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not read the suggested questions")

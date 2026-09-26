@@ -608,7 +608,7 @@ func TestGameDetail_ExposesSuggestedQuestionsNotHeadings(t *testing.T) {
 	router := httpapi.NewRouter(server)
 	gameID := seedBareGame(t, server)
 
-	if err := server.Manuals.SaveGeneratedQuestions(context.Background(), gameID,
+	if err := server.Manuals.SaveGeneratedQuestions(context.Background(), gameID, manuals.AgentRules,
 		[]string{"Come si piazza una tessera?", "Quando finisce?", "Quanti punti?"}); err != nil {
 		t.Fatalf("save generated: %v", err)
 	}

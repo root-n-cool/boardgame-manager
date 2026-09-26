@@ -11,6 +11,19 @@ import (
 // vedi i non-obiettivi della spec.
 const SuggestedQuestionCount = 3
 
+// Gli agenti della chat che hanno domande suggerite proprie. Stringhe e
+// non un tipo di ai: manuals non conosce il pacchetto ai.
+const (
+	AgentRules    = "rules"
+	AgentStrategy = "strategy"
+)
+
+// ValidAgent dice se a è uno dei due agenti. Serve alle rotte admin, che
+// ricevono l'agente dalla query string.
+func ValidAgent(a string) bool {
+	return a == AgentRules || a == AgentStrategy
+}
+
 // SuggestedQuestion è una delle tre domande mostrate nello stato di riposo
 // della chat. Edited dice che l'ha riscritta l'admin: è il flag che
 // protegge il suo lavoro da una reindicizzazione.
@@ -23,10 +36,10 @@ type SuggestedQuestion struct {
 // SuggestedQuestions restituisce le domande di un gioco in ordine di
 // posizione. Una lista vuota è un esito normale: un gioco mai indicizzato
 // non ne ha, e il frontend ripiega sulle domande fisse.
-func (s *Store) SuggestedQuestions(ctx context.Context, gameID int64) ([]SuggestedQuestion, error) {
+func (s *Store) SuggestedQuestions(ctx context.Context, gameID int64, agent string) ([]SuggestedQuestion, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT position, text, edited FROM game_suggested_question
-		 WHERE game_id = ? ORDER BY position`, gameID)
+		 WHERE game_id = ? AND agent = ? ORDER BY position`, gameID, agent)
 	if err != nil {
 		return nil, fmt.Errorf("suggested questions: %w", err)
 	}
@@ -51,22 +64,22 @@ func (s *Store) SuggestedQuestions(ctx context.Context, gameID int64) ([]Suggest
 // La clausola WHERE excluded.edited = 0 non basterebbe: excluded è la riga
 // in arrivo, che ha sempre edited = 0. Il confronto va fatto sulla riga
 // ESISTENTE, ed è per questo che l'upsert ha la sua condizione.
-func (s *Store) SaveGeneratedQuestions(ctx context.Context, gameID int64, texts []string) error {
-	return s.saveQuestions(ctx, gameID, texts,
-		`INSERT INTO game_suggested_question (game_id, position, text, edited)
-		 VALUES (?, ?, ?, 0)
-		 ON CONFLICT(game_id, position) DO UPDATE SET text = excluded.text
+func (s *Store) SaveGeneratedQuestions(ctx context.Context, gameID int64, agent string, texts []string) error {
+	return s.saveQuestions(ctx, gameID, agent, texts,
+		`INSERT INTO game_suggested_question (game_id, agent, position, text, edited)
+		 VALUES (?, ?, ?, ?, 0)
+		 ON CONFLICT(game_id, agent, position) DO UPDATE SET text = excluded.text
 		 WHERE game_suggested_question.edited = 0`)
 }
 
 // SaveAllQuestions sovrascrive tutte e tre le domande e azzera edited: è il
 // pulsante "rigenera", premuto deliberatamente dall'admin. Se lo premi, lo
 // stai chiedendo — anche per le domande che avevi scritto a mano.
-func (s *Store) SaveAllQuestions(ctx context.Context, gameID int64, texts []string) error {
-	return s.saveQuestions(ctx, gameID, texts,
-		`INSERT INTO game_suggested_question (game_id, position, text, edited)
-		 VALUES (?, ?, ?, 0)
-		 ON CONFLICT(game_id, position) DO UPDATE SET text = excluded.text, edited = 0`)
+func (s *Store) SaveAllQuestions(ctx context.Context, gameID int64, agent string, texts []string) error {
+	return s.saveQuestions(ctx, gameID, agent, texts,
+		`INSERT INTO game_suggested_question (game_id, agent, position, text, edited)
+		 VALUES (?, ?, ?, ?, 0)
+		 ON CONFLICT(game_id, agent, position) DO UPDATE SET text = excluded.text, edited = 0`)
 }
 
 // SaveEditedQuestions salva i testi che arrivano dal pannello admin,
@@ -79,7 +92,7 @@ func (s *Store) SaveAllQuestions(ctx context.Context, gameID int64, texts []stri
 // È un upsert perché un gioco mai indicizzato non ha righe: l'admin deve
 // poter scrivere le sue tre domande prima (o invece) di ogni generazione, e
 // quelle nascono edited.
-func (s *Store) SaveEditedQuestions(ctx context.Context, gameID int64, texts []string) error {
+func (s *Store) SaveEditedQuestions(ctx context.Context, gameID int64, agent string, texts []string) error {
 	if len(texts) != SuggestedQuestionCount {
 		return fmt.Errorf("suggested questions: attesi %d testi, ricevuti %d",
 			SuggestedQuestionCount, len(texts))
@@ -100,8 +113,8 @@ func (s *Store) SaveEditedQuestions(ctx context.Context, gameID int64, texts []s
 		// l'UPDATE che ne seguiva non creava mai la riga mancante.
 		var current string
 		err := tx.QueryRowContext(ctx,
-			`SELECT text FROM game_suggested_question WHERE game_id = ? AND position = ?`,
-			gameID, i).Scan(&current)
+			`SELECT text FROM game_suggested_question WHERE game_id = ? AND agent = ? AND position = ?`,
+			gameID, agent, i).Scan(&current)
 		exists := true
 		switch {
 		case err == sql.ErrNoRows:
@@ -123,16 +136,16 @@ func (s *Store) SaveEditedQuestions(ctx context.Context, gameID int64, texts []s
 			// promuoverla.
 			if _, err := tx.ExecContext(ctx,
 				`UPDATE game_suggested_question SET text = ?
-				 WHERE game_id = ? AND position = ?`, text, gameID, i); err != nil {
+				 WHERE game_id = ? AND agent = ? AND position = ?`, text, gameID, agent, i); err != nil {
 				return fmt.Errorf("update question %d: %w", i, err)
 			}
 			continue
 		}
 		if _, err := tx.ExecContext(ctx,
-			`INSERT INTO game_suggested_question (game_id, position, text, edited)
-			 VALUES (?, ?, ?, ?)
-			 ON CONFLICT(game_id, position) DO UPDATE SET text = excluded.text, edited = excluded.edited`,
-			gameID, i, text, edited); err != nil {
+			`INSERT INTO game_suggested_question (game_id, agent, position, text, edited)
+			 VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT(game_id, agent, position) DO UPDATE SET text = excluded.text, edited = excluded.edited`,
+			gameID, agent, i, text, edited); err != nil {
 			return fmt.Errorf("upsert question %d: %w", i, err)
 		}
 	}
@@ -142,7 +155,7 @@ func (s *Store) SaveEditedQuestions(ctx context.Context, gameID int64, texts []s
 // saveQuestions è il corpo comune di SaveGeneratedQuestions e
 // SaveAllQuestions: stessa transazione, stesso ciclo, solo la query
 // dell'upsert cambia.
-func (s *Store) saveQuestions(ctx context.Context, gameID int64, texts []string, stmt string) error {
+func (s *Store) saveQuestions(ctx context.Context, gameID int64, agent string, texts []string, stmt string) error {
 	if len(texts) != SuggestedQuestionCount {
 		return fmt.Errorf("suggested questions: attesi %d testi, ricevuti %d",
 			SuggestedQuestionCount, len(texts))
@@ -155,7 +168,7 @@ func (s *Store) saveQuestions(ctx context.Context, gameID int64, texts []string,
 	defer tx.Rollback()
 
 	for i, text := range texts {
-		if _, err := tx.ExecContext(ctx, stmt, gameID, i, text); err != nil {
+		if _, err := tx.ExecContext(ctx, stmt, gameID, agent, i, text); err != nil {
 			return fmt.Errorf("save question %d: %w", i, err)
 		}
 	}
