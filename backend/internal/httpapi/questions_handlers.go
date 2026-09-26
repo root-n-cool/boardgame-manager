@@ -36,6 +36,20 @@ func (s *Server) suggester(ctx context.Context) ai.QuestionSuggester {
 // "riprova".
 var errNoHeadings = errors.New("questions: il gioco non ha nessuna fonte indicizzata")
 
+// errNoBGGID: le domande della Strategia partono da nome e descrizione BGG,
+// e un gioco inserito a mano non ha né l'una né il forum dietro.
+var errNoBGGID = errors.New("questions: il gioco non è collegato a BoardGameGeek")
+
+// questionsAgent legge ?agent= dalle rotte admin. Assente = Manuale, come
+// prima di questa funzione; un valore diverso dai due è un errore del client.
+func questionsAgent(r *http.Request) (string, bool) {
+	a := r.URL.Query().Get("agent")
+	if a == "" {
+		return manuals.AgentRules, true
+	}
+	return a, manuals.ValidAgent(a)
+}
+
 // regenerateQuestions genera le tre domande e le salva. Con all = true
 // sovrascrive anche quelle scritte a mano e azzera i flag (è il pulsante
 // "rigenera"); con all = false rispetta le posizioni modificate (è la
@@ -44,7 +58,7 @@ var errNoHeadings = errors.New("questions: il gioco non ha nessuna fonte indiciz
 // Non scrive niente sulla ResponseWriter: i due chiamanti raccontano
 // l'esito in modo diverso — l'indicizzazione lo ignora, il pulsante lo
 // riporta all'admin.
-func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, all bool) error {
+func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, agent string, all bool) error {
 	// Il nome del gioco lo carica questa funzione, non il chiamante:
 	// indexMediaHandler ha in scope solo gameID, e farglielo caricare
 	// significherebbe scriverlo due volte per i due chiamanti.
@@ -53,28 +67,43 @@ func (s *Server) regenerateQuestions(ctx context.Context, gameID int64, all bool
 		return fmt.Errorf("questions: get game %d: %w", gameID, err)
 	}
 
-	summary, err := s.Manuals.Summary(ctx, gameID)
-	if err != nil {
-		return fmt.Errorf("questions: summary: %w", err)
+	var texts []string
+	if agent == manuals.AgentStrategy {
+		// La Strategia non guarda il manuale indicizzato (non ce l'ha):
+		// parte da nome e descrizione BGG, salvati alla creazione del
+		// gioco. Senza un BGGID non c'è niente da cui generare.
+		if game.BGGID == nil || *game.BGGID == "" {
+			return errNoBGGID
+		}
+		description := ""
+		if game.BGGDescription != nil {
+			description = *game.BGGDescription
+		}
+		texts, err = s.suggester(ctx).SuggestStrategyQuestions(ctx, game.Name, description)
+	} else {
+		summary, sErr := s.Manuals.Summary(ctx, gameID)
+		if sErr != nil {
+			return fmt.Errorf("questions: summary: %w", sErr)
+		}
+		if len(summary.Headings) == 0 {
+			return errNoHeadings
+		}
+		texts, err = s.suggester(ctx).SuggestQuestions(ctx, game.Name, summary.Headings)
 	}
-	if len(summary.Headings) == 0 {
-		return errNoHeadings
-	}
-
-	texts, err := s.suggester(ctx).SuggestQuestions(ctx, game.Name, summary.Headings)
 	if err != nil {
 		return err
 	}
 	if len(texts) != manuals.SuggestedQuestionCount {
-		// SuggestQuestions valida già il conteggio; questo è il controllo
-		// che protegge lo store da un finto scritto male nei test.
+		// SuggestQuestions/SuggestStrategyQuestions validano già il
+		// conteggio; questo è il controllo che protegge lo store da un
+		// finto scritto male nei test.
 		return fmt.Errorf("%w: ricevute %d domande", ai.ErrSuggestionsRejected, len(texts))
 	}
 
 	if all {
-		return s.Manuals.SaveAllQuestions(ctx, gameID, manuals.AgentRules, texts)
+		return s.Manuals.SaveAllQuestions(ctx, gameID, agent, texts)
 	}
-	return s.Manuals.SaveGeneratedQuestions(ctx, gameID, manuals.AgentRules, texts)
+	return s.Manuals.SaveGeneratedQuestions(ctx, gameID, agent, texts)
 }
 
 // allQuestionsEdited dice se le tre domande sono tutte scritte a mano: in
@@ -116,7 +145,12 @@ func (s *Server) getSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "id del gioco non valido")
 		return
 	}
-	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, manuals.AgentRules)
+	agent, ok := questionsAgent(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "agente non valido")
+		return
+	}
+	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, agent)
 	if err != nil {
 		log.Printf("questions: read for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not read the suggested questions")
@@ -129,6 +163,11 @@ func (s *Server) putSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Req
 	gameID, err := parseIDParam(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "id del gioco non valido")
+		return
+	}
+	agent, ok := questionsAgent(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "agente non valido")
 		return
 	}
 
@@ -159,13 +198,13 @@ func (s *Server) putSuggestedQuestionsHandler(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	if err := s.Manuals.SaveEditedQuestions(r.Context(), gameID, manuals.AgentRules, texts); err != nil {
+	if err := s.Manuals.SaveEditedQuestions(r.Context(), gameID, agent, texts); err != nil {
 		log.Printf("questions: save for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not save the suggested questions")
 		return
 	}
 
-	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, manuals.AgentRules)
+	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, agent)
 	if err != nil {
 		log.Printf("questions: read back for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not read the suggested questions")
@@ -178,6 +217,11 @@ func (s *Server) regenerateSuggestedQuestionsHandler(w http.ResponseWriter, r *h
 	gameID, err := parseIDParam(r, "id")
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "id del gioco non valido")
+		return
+	}
+	agent, ok := questionsAgent(r)
+	if !ok {
+		writeError(w, http.StatusBadRequest, "agente non valido")
 		return
 	}
 	// Il 404 su un gioco inesistente prima di qualunque lavoro:
@@ -196,11 +240,15 @@ func (s *Server) regenerateSuggestedQuestionsHandler(w http.ResponseWriter, r *h
 
 	// A differenza dell'indicizzazione, qui l'esito si racconta: è un
 	// pulsante premuto a mano, e chi lo preme deve sapere se ha funzionato.
-	switch err := s.regenerateQuestions(r.Context(), gameID, true); {
+	switch err := s.regenerateQuestions(r.Context(), gameID, agent, true); {
 	case err == nil:
 	case errors.Is(err, errNoHeadings):
 		writeError(w, http.StatusUnprocessableEntity,
 			"Per generare le domande serve un manuale già indicizzato: indicizza prima un documento nella sezione Chatbot.")
+		return
+	case errors.Is(err, errNoBGGID):
+		writeError(w, http.StatusUnprocessableEntity,
+			"Le domande per la Strategia servono solo ai giochi collegati a BoardGameGeek.")
 		return
 	case errors.Is(err, ai.ErrNotConfigured):
 		writeError(w, http.StatusUnprocessableEntity,
@@ -216,7 +264,7 @@ func (s *Server) regenerateSuggestedQuestionsHandler(w http.ResponseWriter, r *h
 		return
 	}
 
-	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, manuals.AgentRules)
+	qs, err := s.Manuals.SuggestedQuestions(r.Context(), gameID, agent)
 	if err != nil {
 		log.Printf("questions: read back for game %d: %v", gameID, err)
 		writeError(w, http.StatusInternalServerError, "could not read the suggested questions")

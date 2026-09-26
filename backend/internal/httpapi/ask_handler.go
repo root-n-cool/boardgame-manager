@@ -41,6 +41,11 @@ func (s *Server) aiConfigured(ctx context.Context) bool {
 	if s.Asker != nil {
 		return true
 	}
+	// Un generatore iniettato (test) vale come provider configurato: stesso
+	// schema del caso Asker qui sopra.
+	if s.Suggester != nil {
+		return true
+	}
 	cfg, err := s.Settings.Get(ctx)
 	if err != nil {
 		return false
