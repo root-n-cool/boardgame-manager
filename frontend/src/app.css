@@ -264,24 +264,124 @@ a {
   transform: none;
 }
 
-/* Da 900px la sidebar è una colonna nel flusso: il contenuto le fa spazio da
-   sé, senza che nessuno animi larghezze o padding (layout thrash a ogni
-   frame). Chiusa esce dal flusso e il passaggio è istantaneo — meglio uno
-   scatto onesto di una riflow animata. */
+/* Da 900px la sidebar è una colonna a sé, a tutta altezza: parte da
+   `top: 0` accanto alla topbar invece di starle sotto, e la topbar copre
+   solo la colonna centrale (col marchio, che si sposta quando la sidebar
+   si apre o si chiude). Chiusa non sparisce: resta la colonna di icone, e
+   la linguetta sul bordo la riapre. Il contenuto le fa spazio con il
+   `padding-left` della shell — topbar e pagina insieme — e il passaggio è
+   istantaneo: meglio uno scatto onesto di una riflow animata a ogni frame.
+   z-index 31 come la barra della chat: sopra la topbar sticky (30). */
 @media (min-width: 900px) {
+  .app-shell {
+    padding-left: 15rem;
+  }
+
+  .app-shell:not(.is-open) {
+    padding-left: 3.5rem;
+  }
+
+  .app-nav-toggle {
+    display: none;
+  }
+
   .app-sidebar {
-    position: sticky;
-    top: 3.25rem;
-    bottom: auto;
-    flex: none;
-    align-self: flex-start;
-    height: calc(100vh - 3.25rem);
+    top: 0;
+    z-index: 31;
     transform: none;
     transition: none;
   }
 
   .app-shell:not(.is-open) .app-sidebar {
-    display: none;
+    width: 3.5rem;
+    padding-right: 0.4rem;
+    padding-left: 0.4rem;
+  }
+
+  .app-shell:not(.is-open) .app-sidebar a {
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  /* Nascosto a vista, non a chi legge: resta il nome del link. */
+  .app-shell:not(.is-open) .app-sidebar-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
+  /* L'etichetta del gruppo si riduce al suo filetto: il confine fra sito
+     pubblico e gestione resta visibile anche fra sole icone. */
+  .app-shell:not(.is-open) .app-sidebar-group {
+    height: 0;
+    margin: 0.75rem 0.3rem;
+    padding: 0;
+    overflow: hidden;
+    color: transparent;
+  }
+
+  /* La prima riga della sidebar è alta quanto la topbar e ne continua il
+     filetto: ci sta l'hamburger, che da desktop è della sidebar e non della
+     topbar. Il `margin` negativo porta il filetto da bordo a bordo oltre il
+     padding laterale della colonna. */
+  .app-sidebar {
+    padding-top: 0;
+  }
+
+  .app-sidebar-head {
+    display: flex;
+    align-items: center;
+    height: 3.25rem;
+    margin: 0 -0.7rem 1rem;
+    padding: 0 0.7rem;
+    border-bottom: 1px solid var(--felt-line);
+  }
+
+  .app-shell:not(.is-open) .app-sidebar-head {
+    margin-right: -0.4rem;
+    margin-left: -0.4rem;
+    padding: 0 0.4rem;
+  }
+
+  /* Misure e colori di una voce della sidebar: da aperta è "≡ Menù" in
+     riga con le voci sotto, da chiusa un'icona centrata come le altre. */
+  .app-sidebar-toggle {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.5rem 0.7rem;
+    font-size: 0.94rem;
+    font-weight: 600;
+    color: var(--felt-text);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-sm);
+  }
+
+  .app-shell:not(.is-open) .app-sidebar-toggle {
+    justify-content: center;
+    padding-right: 0;
+    padding-left: 0;
+  }
+
+  .app-sidebar-toggle:hover {
+    background: var(--felt-line);
+  }
+
+  .app-sidebar-toggle:active {
+    transform: none;
+  }
+
+  .app-sidebar-toggle svg {
+    flex: none;
+    width: 1.15rem;
+    height: 1.15rem;
   }
 }
 
@@ -295,6 +395,16 @@ a {
   background: none;
   border: none;
   box-shadow: none;
+}
+
+/* Spogliate come `.manual-chat-suggestions li`: la regola globale `li`
+   (flex, padding, filetto sotto) stringeva ogni link dentro una riga con
+   la sua cornice — nella colonna di icone la voce accesa si riduceva a una
+   striscia da 17px — e disegnava un filetto fra una voce e l'altra. */
+.app-sidebar li {
+  display: block;
+  padding: 0;
+  border: 0;
 }
 
 .app-sidebar a {
@@ -4697,7 +4807,7 @@ tbody tr:nth-child(3) .rank-medal {
      sotto la topbar, a prescindere da dove `.app-page` si centra. */
   .manual-chat-aside {
     position: fixed;
-    top: 3.25rem;
+    top: 0;
     right: 0;
     bottom: 0;
     z-index: 25;
@@ -4711,8 +4821,42 @@ tbody tr:nth-child(3) .rank-medal {
        il viewport come una card gigante fuori posto — è il difetto che li
        ha fatti togliere. Una barra è una parete, e una parete non ha
        angoli smussati. */
-    border-left: 1px solid var(--card-line);
-    box-shadow: var(--shadow-card);
+    /* Un'ombra interna e non un `border-left`: i figli la coprono, e così
+       nella riga della testata (sotto) il filetto chiaro non si vede. Un
+       bordo vero starebbe fuori dal padding box, dove né un figlio né un
+       suo margine negativo arrivano (`overflow: hidden` taglia lì). */
+    box-shadow: inset 1px 0 0 var(--card-line), var(--shadow-card);
+  }
+
+  /* La barra sale fino in cima (`top: 0`, sopra la topbar: z-index 31
+     contro 30) e la sua testata diventa la parte destra della topbar: stessa
+     altezza, stesso filetto sotto, niente scalino fra la riga del sito e
+     quella della chat (segnalato dall'utente). Il bordo sinistro della
+     barra, `--card-line`, su feltro sarebbe una riga chiara: nella riga
+     della testata lo copre un filetto da 1px in `--felt-line`, lo stesso
+     tono di quello sotto la topbar, che fa da demarcatore fra le due. */
+  .manual-chat-aside {
+    z-index: 31;
+  }
+
+  .manual-chat-aside .manual-chat-head {
+    height: 3.25rem;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  /* Il demarcatore solo nella barra: nella modale ingrandita (che vive
+     nello stesso <dialog>) non c'è una topbar accanto da cui staccarsi, e
+     la cornice ce l'ha già. */
+  .manual-chat-sheet:not(:modal) .manual-chat-head {
+    border-left: 1px solid var(--felt-line);
+  }
+
+  /* La topbar lascia alla chat la sua larghezza: l'utente (ultimo figlio,
+     spinto a destra dal `margin-right: auto` del marchio) si ferma subito
+     prima della testata invece di finirci sotto. */
+  .app-shell:has(.manual-chat-aside) .app-topbar {
+    padding-right: calc(22rem + 0.85rem);
   }
 
   /* La riserva vive su `.app-main` (in `AppShell.vue`), non su
@@ -4732,6 +4876,50 @@ tbody tr:nth-child(3) .rank-medal {
   .app-main:has(.manual-chat-aside) {
     padding-right: 22rem;
   }
+}
+
+/* Il <dialog> dentro la barra (ManualChat.vue). Aperto con `show()` è la
+   barra stessa: qui gli si tolgono le misure di serie di un dialog non
+   modale (posizione assoluta, margine automatico, bordo, padding, fondo)
+   e riempie l'aside come faceva il pannello. `[open]` per la stessa
+   ragione di `.manual-chat-dialog[open]`: un `display` d'autore senza il
+   selettore d'attributo scavalca il `display: none` di serie del chiuso. */
+.manual-chat-sheet[open] {
+  position: static;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+}
+
+/* Aperto con `showModal()` è la modale: nel top layer, quindi fuori
+   dall'`overflow: hidden` e dal `position: fixed` della barra. Metà
+   schermo in larghezza (mai sotto 40rem, dove una risposta tornerebbe una
+   colonna stretta — a 1100px sono 550px contro 640), 85% in altezza.
+   Stessa cornice di `.modal`. */
+.manual-chat-sheet[open]:modal {
+  position: fixed;
+  inset: 0;
+  width: min(max(50vw, 40rem), calc(100vw - 4rem));
+  height: min(85dvh, 60rem);
+  margin: auto;
+  overflow: hidden;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+}
+
+.manual-chat-sheet::backdrop {
+  background: rgb(20 53 40 / 55%);
 }
 
 /* Il pannello è la colonna: testata ferma in cima, corpo che prende il

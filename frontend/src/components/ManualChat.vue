@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ManualChatPanel from './ManualChatPanel.vue'
 
@@ -15,6 +15,15 @@ import ManualChatPanel from './ManualChatPanel.vue'
  * un desktop). La soglia è 1100 e non 900 perché `.app-page` è larga 56rem:
  * una sidebar da 22rem dentro quello spazio lascerebbe al testo 34rem,
  * sotto la misura leggibile.
+ *
+ * Da desktop la barra si può anche **ingrandire** in una modale centrata,
+ * larga metà schermo: a 22rem una risposta lunga è una colonna stretta da
+ * scorrere. La barra contiene un <dialog> che passa da `show()` (barra,
+ * nel flusso dell'aside) a `showModal()` (modale, nel top layer) e
+ * ritorno: il nodo non si sposta mai, quindi deep-chat non viene
+ * scollegato e rimontato, e una risposta in arrivo non si perde. Sfondo,
+ * focus trap ed Esc vengono dal <dialog> modale; Esc qui riduce, non
+ * chiude (`cancel` intercettato).
  *
  * Sotto 1100px è un bottone tondo in basso al centro che apre un <dialog>
  * nativo a tutto schermo. Il <dialog> regala focus trap, Esc e sfondo
@@ -35,9 +44,18 @@ const route = useRoute()
 const wide = ref(false)
 const dialogMounted = ref(false)
 const dialog = ref<HTMLDialogElement | null>(null)
+const sheet = ref<HTMLDialogElement | null>(null)
+const panel = ref<InstanceType<typeof ManualChatPanel> | null>(null)
+const expanded = ref(false)
 
 let media: MediaQueryList | null = null
 function syncWide(e: MediaQueryList | MediaQueryListEvent) {
+  // Scendendo sotto i 1100px la barra sparisce (v-if) con la modale
+  // dentro: `expanded` va azzerato, o risalendo la barra rinascerebbe
+  // "ingrandita" senza esserlo davvero.
+  if (!e.matches) {
+    expanded.value = false
+  }
   wide.value = e.matches
 }
 
@@ -73,6 +91,67 @@ function openDialog() {
   requestAnimationFrame(() => dialog.value?.showModal())
 }
 
+// Il <dialog> della barra nasce aperto non modale: `show()` e non
+// l'attributo `open` nel template, perché passare fra i due modi richiede
+// close() + show()/showModal(), e un `open` legato da Vue lo rimetterebbe
+// a ogni patch.
+//
+// `show()` però, come `showModal()`, mette il fuoco sul primo elemento
+// focalizzabile del dialog: al caricamento della scheda il bottone per
+// ingrandire risultava già selezionato (segnalato dall'utente). La barra
+// si apre da sola, non per un gesto: il fuoco torna dov'era, o si toglie
+// se era sul body.
+watch(sheet, (el) => {
+  if (el && !el.open) {
+    const previous = document.activeElement
+    el.show()
+    if (previous instanceof HTMLElement && previous !== document.body) {
+      previous.focus({ preventScroll: true })
+    } else if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+  }
+})
+
+function setExpanded(value: boolean) {
+  const el = sheet.value
+  if (!el || value === expanded.value) {
+    return
+  }
+  el.close()
+  if (value) {
+    el.showModal()
+  } else {
+    el.show()
+  }
+  expanded.value = value
+  // showModal() mette il fuoco sul primo elemento focalizzabile (il ＋ della
+  // testata): nella modale si è lì per scrivere, e il fuoco va sul campo.
+  // Riducendo torna sul bottone che ha ingrandito, come ogni modale.
+  nextTick(() => (value ? panel.value?.focusComposer() : panel.value?.focusExpand()))
+}
+
+// Esc nella modale riduce invece di chiudere: chiudere il <dialog> della
+// barra la lascerebbe vuota.
+function onSheetCancel(e: Event) {
+  e.preventDefault()
+  setExpanded(false)
+}
+
+// Un clic sullo sfondo (il target è il <dialog> stesso, non il pannello
+// che lo riempie) riduce, come in ogni modale. Conta anche dove è partito:
+// una selezione di testo iniziata nel pannello e rilasciata fuori genera
+// un click sul <dialog>, e ridurre lì butterebbe via la selezione.
+let pressedOnBackdrop = false
+function onSheetPointerdown(e: PointerEvent) {
+  pressedOnBackdrop = e.target === sheet.value
+}
+function onSheetClick(e: MouseEvent) {
+  if (expanded.value && pressedOnBackdrop && e.target === sheet.value) {
+    setExpanded(false)
+  }
+}
+
 function closeDialog() {
   if (dialog.value?.open) {
     dialog.value.close()
@@ -90,7 +169,25 @@ function closeDialog() {
     "complementary" e basta, e da lì la chat non si trova.
   -->
   <aside v-if="wide" class="manual-chat-aside" aria-label="L'Arbitro — chiedi al manuale">
-    <ManualChatPanel :game-id="gameId" :game-name="gameName" :suggested-questions="suggestedQuestions" />
+    <dialog
+      ref="sheet"
+      class="manual-chat-sheet"
+      :class="{ 'is-expanded': expanded }"
+      aria-label="L'Arbitro — chiedi al manuale"
+      @cancel="onSheetCancel"
+      @pointerdown="onSheetPointerdown"
+      @click="onSheetClick"
+    >
+      <ManualChatPanel
+        ref="panel"
+        :game-id="gameId"
+        :game-name="gameName"
+        :suggested-questions="suggestedQuestions"
+        expandable
+        :expanded="expanded"
+        @toggle-expand="setExpanded(!expanded)"
+      />
+    </dialog>
   </aside>
 
   <!-- Mobile: bottone tondo sempre visibile, e dialog a tutto schermo. -->

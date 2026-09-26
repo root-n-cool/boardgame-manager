@@ -169,12 +169,28 @@ laterale 1.5rem che scende a 1rem sotto i 640px. Le griglie di card
 passaggio a colonna singola su mobile.
 
 **Shell:** una sola shell (`AppShell.vue`) per tutta l'app — topbar in
-feltro alta 3.25rem, sticky, con hamburger + marchio a sinistra e menù
-utente a destra; sidebar in feltro profondo larga 15rem, chiusa per
-default. Da 900px è una colonna `sticky` nel flusso e il contenuto le fa
-spazio da sé — chiusa esce dal flusso e il passaggio è istantaneo: nessuna
-larghezza o padding animato, che sarebbe un reflow a ogni frame. Sotto i
-900px è un drawer `fixed` che entra in `transform` sopra la pagina, con
+feltro alta 3.25rem, sticky, con marchio a sinistra e menù utente a
+destra; sidebar in feltro profondo larga 15rem. **Da 900px la sidebar è
+un elemento a sé, a tutta altezza** (`position: fixed; top: 0`, z-index 31
+sopra la topbar): non sta sotto la topbar ma accanto, e la topbar copre
+solo la colonna centrale — lo stesso schema della barra della chat a
+destra, così le due ali sono speculari (segnalato dall'utente: la sidebar
+«sotto» la topbar faceva lo scalino e leggeva squilibrata). Il marchio sta
+nella topbar, quindi segue il contenuto: si sposta quando la sidebar si
+apre o si chiude. **Chiusa non sparisce**: resta una colonna di sole icone
+da 3.5rem, col nome della voce nel `title` e nel testo nascosto a vista
+(`.app-sidebar-label`, che resta il nome del link per gli screen reader);
+del gruppo Gestione resta il filetto. Si apre e chiude dall'**hamburger in
+cima alla sidebar** (`.app-sidebar-head`): una prima riga alta quanto la
+topbar, col suo stesso filetto sotto, dove da aperta si legge "≡ Menù" e
+da chiusa resta l'icona centrata come le altre. Da desktop l'hamburger
+della topbar non c'è: il bottone appartiene alla colonna che apre. Aperta
+per default finché non la si chiude. Il contenuto le fa spazio con il
+`padding-left` della shell (15rem o 3.5rem) e il passaggio è istantaneo:
+nessuna larghezza o padding animato, che sarebbe un reflow a ogni frame.
+Le `li` della sidebar sono spogliate della regola globale (flex, padding,
+filetto sotto): stringevano i link e disegnavano un filetto fra le voci.
+Sotto i 900px è un drawer `fixed` che entra in `transform` sopra la pagina, con
 overlay in dissolvenza, scroll del body bloccato
 (`body.has-open-drawer`) e contenuto reso `inert`, così il Tab non esce dal
 menù per finire in una pagina che non si vede. Lo stato aperto/chiuso è una
@@ -498,6 +514,34 @@ questa scheda.
   `ManualChatPanel.vue` e aggiornare i valori a mano, altrimenti la chat
   resta l'unica isola col colore vecchio, e niente nel codice lo segnala da
   solo.
+- **Da desktop la testata della chat è la parte destra della topbar.** La
+  barra sale a `top: 0` (z-index 31, sopra i 30 della topbar) e la sua
+  testata prende l'altezza della topbar (3.25rem) e lo stesso filetto
+  sotto: una riga di feltro sola, senza lo scalino fra sito e chat
+  (segnalato dall'utente). La topbar si ritira della larghezza della chat
+  (`.app-shell:has(.manual-chat-aside)`, `padding-right: 22rem + 0.85rem`)
+  e l'utente si ferma subito prima della testata. Fra le due un filetto da
+  1px in `--felt-line`, lo stesso tono di quello sotto la topbar; il bordo
+  sinistro della barra, `--card-line`, è un'ombra interna
+  (`inset 1px 0 0`) e non un `border-left`, perché su feltro sarebbe una
+  riga chiara e un bordo vero, fuori dal padding box, nessun figlio lo può
+  coprire. Nella modale ingrandita il filetto non c'è.
+- **Da desktop la barra si ingrandisce in una modale** (bottone con le
+  frecce che si allargano, accanto al ＋, solo nella barra — prop
+  `expandable`). A 22rem una risposta lunga è una colonna stretta da
+  scorrere (segnalato dall'utente: «da pc usare la chat così è scomoda»).
+  La modale è centrata, **metà schermo** in larghezza (mai sotto 40rem,
+  mai oltre il viewport meno 4rem) e 85% in altezza, con la cornice e lo
+  sfondo di `.modal`. Meccanismo: la barra contiene un `<dialog>`
+  (`.manual-chat-sheet`) aperto con `show()`, che per ingrandire passa a
+  `close()` + `showModal()` e per ridurre torna a `show()`. **Il nodo non
+  si sposta mai**: spostare `<deep-chat>` nel DOM (Teleport, o un secondo
+  contenitore) lo scollegherebbe e rimonterebbe, con la risposta in arrivo
+  persa; così invece sfondo, focus trap ed Esc arrivano dal browser. Esc
+  **riduce** (`cancel` intercettato: chiudere il dialog lascerebbe la barra
+  vuota), e così il clic sullo sfondo — solo se anche il `pointerdown` era
+  lì, altrimenti una selezione di testo rilasciata fuori chiuderebbe.
+  Entrando il fuoco va sul campo, uscendo torna sul bottone.
 - **La chat ha un nome e una testata** (`.manual-chat-head`, dentro
   `ManualChatPanel.vue`, quindi la stessa in barra e in dialog): fondo
   feltro, **"L'Arbitro"** in Display — chi risolve le dispute al tavolo —

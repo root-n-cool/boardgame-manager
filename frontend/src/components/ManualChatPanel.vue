@@ -32,14 +32,26 @@ const props = defineProps<{
   suggestedQuestions: string[]
   /** Nel dialog mobile la testata porta anche la ×; nella sidebar no. */
   closable?: boolean
+  /** Nella barra desktop la testata porta il bottone per ingrandire in modale. */
+  expandable?: boolean
+  /** La barra è ingrandita: cambia icona ed etichetta del bottone. */
+  expanded?: boolean
 }>()
 
-const emit = defineEmits<{ close: [] }>()
+const emit = defineEmits<{ close: []; toggleExpand: [] }>()
+
+const expandButton = ref<HTMLButtonElement | null>(null)
 
 const started = ref(false)
 const failed = ref(false)
 const chat = ref<HTMLElement | null>(null)
 const composer = ref<InstanceType<typeof ChatComposer> | null>(null)
+
+// Per ManualChat: dove mettere il fuoco entrando e uscendo dalla modale.
+defineExpose({
+  focusComposer: () => composer.value?.focus(),
+  focusExpand: () => expandButton.value?.focus(),
+})
 // Una risposta è in arrivo: il campo accetta la prossima domanda ma non la
 // manda, così due richieste non si accavallano sulla stessa conversazione.
 const busy = ref(false)
@@ -347,6 +359,26 @@ const auxiliaryStyle = `
         >
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" />
+          </svg>
+        </button>
+        <!--
+          Frecce che si allargano per ingrandire, che rientrano per
+          ridurre: lo stesso tratto da 1.9 del ＋ accanto.
+        -->
+        <button
+          v-if="expandable"
+          ref="expandButton"
+          type="button"
+          class="manual-chat-new"
+          :title="expanded ? 'Riduci' : 'Ingrandisci'"
+          :aria-label="expanded ? 'Riduci la chat' : 'Ingrandisci la chat'"
+          @click="emit('toggleExpand')"
+        >
+          <svg v-if="expanded" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 14h6v6M20 10h-6V4M10 14l-6 6M14 10l6-6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" />
           </svg>
         </button>
         <button

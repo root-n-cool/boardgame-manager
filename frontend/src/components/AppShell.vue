@@ -5,8 +5,11 @@ import { useAuthStore } from '../stores/auth'
 import { useSiteStore } from '../stores/site'
 import UserMenu from './UserMenu.vue'
 
-// Sopra questa soglia la sidebar aperta sta nel flusso accanto al contenuto;
-// sotto diventa un drawer che ci scivola sopra con l'overlay.
+// Sopra questa soglia la sidebar è una colonna a tutta altezza accanto al
+// contenuto — aperta con le voci, chiusa ridotta alle sole icone — e si
+// apre e chiude dall'hamburger in cima alla colonna; sotto diventa un drawer che
+// scivola sopra la pagina con l'overlay. Lo apre sempre l'hamburger: da
+// desktop sta in cima alla sidebar stessa, da telefono nella topbar.
 const DESKTOP_QUERY = '(min-width: 900px)'
 const STORAGE_KEY = 'bgm.sidebar'
 const BODY_LOCK_CLASS = 'has-open-drawer'
@@ -77,7 +80,9 @@ const groups = computed(() =>
 
 function readStored(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'open'
+    // Aperta finché non la si chiude: da chiusa resta la colonna di icone,
+    // ma chi arriva per la prima volta deve leggere le voci per intero.
+    return localStorage.getItem(STORAGE_KEY) !== 'closed'
   } catch {
     // Safari in navigazione privata solleva sull'accesso allo storage: si
     // perde la preferenza, non la sidebar.
@@ -219,8 +224,44 @@ watch(
     </header>
 
     <div class="app-body">
-      <!-- `inert` a sidebar chiusa: fuori schermo non deve restare in tab. -->
-      <nav id="app-sidebar" ref="sidebar" class="app-sidebar" :inert="!open" aria-label="Navigazione">
+      <!-- `inert` solo per il drawer chiuso, che sta fuori schermo e non deve
+           restare in tab. Da desktop chiusa è la colonna di icone: si usa. -->
+      <nav
+        id="app-sidebar"
+        ref="sidebar"
+        class="app-sidebar"
+        :inert="!open && !isDesktop"
+        aria-label="Navigazione"
+      >
+        <!--
+          Da desktop l'hamburger sta qui, nella prima riga della sidebar,
+          alta quanto la topbar: la sidebar è una colonna a sé e non sta più
+          sotto la topbar, quindi il bottone che la apre e chiude le
+          appartiene. Da aperta dice anche "Menù"; da chiusa resta l'icona,
+          allineata alle altre della colonna.
+        -->
+        <div v-if="isDesktop" class="app-sidebar-head">
+          <button
+            type="button"
+            class="app-sidebar-toggle"
+            :aria-expanded="open"
+            aria-controls="app-sidebar"
+            :aria-label="open ? 'Riduci il menù' : 'Espandi il menù'"
+            :title="open ? undefined : 'Espandi il menù'"
+            @click="toggle"
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path
+                d="M4 7h16M4 12h16M4 17h16"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+            <span v-if="open" aria-hidden="true">Menù</span>
+          </button>
+        </div>
         <template v-for="group in groups" :key="group.id">
           <p v-if="group.label" :id="`app-sidebar-${group.id}`" class="app-sidebar-group">
             {{ group.label }}
@@ -231,6 +272,7 @@ watch(
                 :to="item.to"
                 :class="{ 'is-active': isActive(item) }"
                 :aria-current="isActive(item) ? 'page' : undefined"
+                :title="isDesktop && !open ? item.label : undefined"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path
@@ -242,7 +284,9 @@ watch(
                     stroke-linejoin="round"
                   />
                 </svg>
-                {{ item.label }}
+                <!-- Nella colonna di icone il testo è nascosto a vista ma
+                     resta il nome del link per chi usa uno screen reader. -->
+                <span class="app-sidebar-label">{{ item.label }}</span>
               </router-link>
             </li>
           </ul>
