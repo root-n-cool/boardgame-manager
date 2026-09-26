@@ -96,9 +96,10 @@ che dichiara il tool è la stessa che lo promette nel prompt» resta: i
 booleani si calcolano una volta in `Ask` e si passano al costruttore del
 prompt.
 
-Un `strategy` senza `SearchStrategy`, o un `rules` senza né `Search` né
-`SearchFAQ`, non dovrebbe arrivare (l'handler risponde 404 prima). Se
-arriva, `Ask` restituisce `ErrNotConfigured`.
+Un `strategy` senza `SearchStrategy` non dovrebbe arrivare (l'handler
+risponde 404 prima); se arriva, `Ask` restituisce `ErrNotConfigured`. Un
+`rules` senza né `Search` né `SearchFAQ` mantiene il ramo «nessuno strumento»
+che esiste già (lo usano alcuni test).
 
 ### 2.3 Handler `ask`
 
@@ -187,9 +188,10 @@ func (c *HTTPClient) SuggestStrategyQuestions(
   inglese; il prompt chiede comunque le domande in italiano. Descrizione
   mancante → si genera dal solo nome.
 
-**Quando.** In automatico e best-effort, dopo il salvataggio di un gioco
-(creazione o modifica) il cui `bggId` è nuovo o cambiato, se il provider AI
-è configurato. Si rigenerano solo le posizioni con `edited = 0`, come per il
+**Quando.** In automatico e best-effort, alla creazione di un gioco da BGG
+(il `bggId` oggi non si modifica dopo la creazione), se il provider AI è
+configurato. I giochi già in catalogo le ottengono con «rigenera»; fino ad
+allora valgono le domande generiche. Si rigenerano solo le posizioni con `edited = 0`, come per il
 manuale. Un errore si logga e non cambia la risposta del salvataggio. La
 generazione non dipende da Tavily: le domande restano pronte anche se la
 chiave arriva dopo.
@@ -316,8 +318,9 @@ chiave Tavily, la chat senza manuale), `PRODUCT.md` se ne parla.
 
 ## 6. Errori e costi
 
-- Tavily o geekdo non rispondono → lo strumento restituisce «Il forum non è
-  disponibile in questo momento.» e l'agente lo dice. Per la Strategia e
+- Tavily o geekdo non rispondono → lo strumento restituisce «Le FAQ non
+  sono disponibili in questo momento.» (forum Rules, invariato) o «Il forum
+  Strategy non è disponibile in questo momento.», e l'agente lo dice. Per la Strategia e
   per il Manuale senza manuale vuol dire, in pratica, «non riesco a
   consultare il forum adesso».
 - Agente non disponibile per il gioco (es. chiave Tavily tolta a chat
