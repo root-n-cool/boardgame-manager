@@ -264,12 +264,12 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
             class="chat-composer-agent-trigger"
             aria-haspopup="listbox"
             :aria-expanded="menuOpen"
-            :aria-label="`${current?.label}: scegli con chi parlare`"
+            :aria-label="`${current?.label ?? 'Agente'}: scegli con chi parlare`"
             :disabled="busy"
             :title="busy ? 'Aspetta la risposta per cambiare' : undefined"
             @click="menuOpen ? closeMenu() : openMenu()"
           >
-            {{ current?.label }}
+            {{ current?.label ?? 'Agente' }}
             <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
               <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
             </svg>

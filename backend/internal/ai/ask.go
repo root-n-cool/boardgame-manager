@@ -808,7 +808,7 @@ func (c *HTTPClient) Ask(ctx context.Context, req AskRequest) (string, error) {
 		}
 
 		if iteration+1 >= MaxToolIterations {
-			log.Printf("ask: il modello ha chiamato %s %d volte: forzo la risposta senza tool", "i tool", iteration+1)
+			log.Printf("ask: il modello ha chiamato gli strumenti %d volte: forzo la risposta senza tool", iteration+1)
 		}
 	}
 }

@@ -64,8 +64,10 @@ const (
 	ForumStrategy Forum = "Strategy"
 )
 
-// StrategySearchResults: misurato il 2026-09-26 (vedi spec §9).
-const StrategySearchResults = 8 // ← il valore deciso nel Task 1
+// StrategySearchResults non è mai stato misurato (nessuna chiave Tavily
+// disponibile): valore provvisorio, uguale a Rules, da rimisurare quando
+// sarà configurata una chiave Tavily (vedi spec §9).
+const StrategySearchResults = 8
 
 var threadIDPattern = regexp.MustCompile(`boardgamegeek\.com/thread/(\d+)`)
 

@@ -343,7 +343,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		log.Printf("ask about game %d: %v", gameID, err)
 		writeError(w, http.StatusBadGateway,
-			"Non riesco a rispondere in questo momento. Riprova, o guarda il manuale nella scheda del gioco.")
+			"Non riesco a rispondere in questo momento. Riprova tra poco.")
 		return
 	}
 
