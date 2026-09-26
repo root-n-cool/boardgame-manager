@@ -172,3 +172,47 @@ func TestMigration0020_AppliesToAnAlreadyPopulatedBookingsTable(t *testing.T) {
 		t.Fatalf("expected participant_email/participant_phone to be dropped, found %d matching columns", count)
 	}
 }
+
+func TestMigration0024_TagsExistingQuestionsAsRules(t *testing.T) {
+	conn, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer conn.Close()
+
+	// La tabella come l'ha lasciata la 0016, con una riga dentro.
+	if _, err := conn.Exec(`
+		CREATE TABLE game_suggested_question (
+		    id INTEGER PRIMARY KEY AUTOINCREMENT,
+		    game_id INTEGER NOT NULL,
+		    position INTEGER NOT NULL,
+		    text TEXT NOT NULL,
+		    edited INTEGER NOT NULL DEFAULT 0,
+		    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+		);
+		CREATE UNIQUE INDEX idx_suggested_question_game_pos ON game_suggested_question(game_id, position);
+		INSERT INTO game_suggested_question (game_id, position, text) VALUES (1, 0, 'Come finisce?');`); err != nil {
+		t.Fatalf("create pre-0024 table: %v", err)
+	}
+
+	migrationSQL, err := os.ReadFile("migrations/0024_suggested_questions_agent.sql")
+	if err != nil {
+		t.Fatalf("read migration 0024: %v", err)
+	}
+	if _, err := conn.Exec(string(migrationSQL)); err != nil {
+		t.Fatalf("migration 0024: %v", err)
+	}
+
+	var agent string
+	if err := conn.QueryRow(`SELECT agent FROM game_suggested_question WHERE game_id = 1`).Scan(&agent); err != nil || agent != "rules" {
+		t.Fatalf("existing row must become rules, got %q (%v)", agent, err)
+	}
+	// Stessa posizione, altro agente: permesso.
+	if _, err := conn.Exec(`INSERT INTO game_suggested_question (game_id, agent, position, text) VALUES (1, 'strategy', 0, 'Conviene?')`); err != nil {
+		t.Fatalf("position 0 for strategy must be allowed: %v", err)
+	}
+	// Stessa posizione, stesso agente: vietato.
+	if _, err := conn.Exec(`INSERT INTO game_suggested_question (game_id, agent, position, text) VALUES (1, 'strategy', 0, 'Doppia?')`); err == nil {
+		t.Fatal("two strategy questions at position 0 must be rejected")
+	}
+}

@@ -1,4 +1,4 @@
-// Package faq cerca la risposta a una domanda sulle regole nel forum Rules
+// Package faq cerca la risposta a una domanda nel forum Rules o Strategy
 // di BoardGameGeek, al volo: una ricerca web trova i thread, il JSON di
 // geekdo li legge. Niente si salva.
 package faq
@@ -53,6 +53,22 @@ const (
 	overallTimeout = 20 * time.Second
 )
 
+// Forum è il forum BGG in cui cercare. Rules per le FAQ sulle regole,
+// Strategy per l'agente Strategia: stessa ricerca, stesso filtro sul
+// gioco, cambia solo quale forum si accetta e la parola in coda alla
+// query per il motore.
+type Forum string
+
+const (
+	ForumRules    Forum = "Rules"
+	ForumStrategy Forum = "Strategy"
+)
+
+// StrategySearchResults non è mai stato misurato (nessuna chiave Tavily
+// disponibile): valore provvisorio, uguale a Rules, da rimisurare quando
+// sarà configurata una chiave Tavily (vedi spec §9).
+const StrategySearchResults = 8
+
 var threadIDPattern = regexp.MustCompile(`boardgamegeek\.com/thread/(\d+)`)
 
 // validCommentURL accetta come link di un commento solo un URL BGG senza
@@ -69,12 +85,16 @@ func validCommentURL(link string) bool {
 
 // Search è legata al gioco dal chiamante: bggID non è un parametro del
 // tool, così il modello non può leggere il forum di un altro gioco.
-func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName, bggID, query string) ([]Hit, error) {
+func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName, bggID string, forum Forum, query string) ([]Hit, error) {
 	ctx, cancel := context.WithTimeout(ctx, overallTimeout)
 	defer cancel()
 
+	max := SearchResults
+	if forum == ForumStrategy {
+		max = StrategySearchResults
+	}
 	sctx, cancel2 := context.WithTimeout(ctx, callTimeout)
-	results, err := s.Search(sctx, fmt.Sprintf("%q %s rules", gameName, query), []string{"boardgamegeek.com/thread"}, SearchResults)
+	results, err := s.Search(sctx, fmt.Sprintf("%q %s %s", gameName, query, strings.ToLower(string(forum))), []string{"boardgamegeek.com/thread"}, max)
 	cancel2()
 	if err != nil {
 		return nil, err
@@ -116,10 +136,11 @@ func Search(ctx context.Context, s websearch.Searcher, f ThreadFetcher, gameName
 			continue
 		}
 		// Un thread di un'espansione o di un gioco omonimo, o fuori dal
-		// forum Rules (Variants sono regole della casa), non è una FAQ di
-		// questo gioco: si scarta senza spendere la seconda chiamata che
-		// legge i commenti.
-		if th.ObjectType != "things" || th.ObjectID != bggID || th.Forum != "Rules" {
+		// forum richiesto (Variants sono regole della casa, Strategy non è
+		// una FAQ sulle regole e viceversa), non è pertinente per questa
+		// ricerca: si scarta senza spendere la seconda chiamata che legge i
+		// commenti.
+		if th.ObjectType != "things" || th.ObjectID != bggID || th.Forum != string(forum) {
 			fetchedAny = true
 			continue
 		}

@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"boardgames-manager/internal/ai"
 	"boardgames-manager/internal/games"
 	"boardgames-manager/internal/httpapi"
+	"boardgames-manager/internal/manuals"
 )
 
 func questionsPath(gameID int64) string {
@@ -92,7 +94,7 @@ func TestPutSuggestedQuestions_SavesAndMarksEdited(t *testing.T) {
 		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
 
-	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -173,7 +175,7 @@ func TestRegenerateSuggestedQuestions_OverwritesEditedToo(t *testing.T) {
 	if rec := postIndex(cookie, router, gameID, mediaID); rec.Code != http.StatusOK {
 		t.Fatalf("index: atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
-	if err := server.Manuals.SaveEditedQuestions(context.Background(), gameID,
+	if err := server.Manuals.SaveEditedQuestions(context.Background(), gameID, manuals.AgentRules,
 		[]string{"Mia 1?", "Mia 2?", "Mia 3?"}); err != nil {
 		t.Fatalf("save edited: %v", err)
 	}
@@ -186,7 +188,7 @@ func TestRegenerateSuggestedQuestions_OverwritesEditedToo(t *testing.T) {
 		t.Fatalf("atteso 200, ottenuto %d: %s", rec.Code, rec.Body.String())
 	}
 
-	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID)
+	got, err := server.Manuals.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -220,5 +222,87 @@ func TestRegenerateSuggestedQuestions_ProviderRejectionIsAClearError(t *testing.
 	}
 	if !bytes.Contains(rec.Body.Bytes(), []byte("riprova")) {
 		t.Fatalf("il messaggio deve invitare a riprovare: %s", rec.Body.String())
+	}
+}
+
+// TestRegenerateQuestions_StrategyUsesTheBGGDescription: l'agente Strategia
+// non guarda il manuale indicizzato (non ce l'ha) ma nome e descrizione BGG
+// del gioco, salvati alla creazione.
+func TestRegenerateQuestions_StrategyUsesTheBGGDescription(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	sug := &fakeSuggester{}
+	server.Suggester = sug
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	g, _ := conn.Exec(`INSERT INTO games (name, seats, bgg_id, bgg_description) VALUES ('Wingspan', 1, '266192', 'Attract birds.')`)
+	gameID, _ := g.LastInsertId()
+
+	rec := doLoanRequest(router, http.MethodPost,
+		fmt.Sprintf("/api/games/%d/suggested-questions/regenerate?agent=strategy", gameID), cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	if sug.strategyCalls.Load() != 1 || sug.lastDescription != "Attract birds." {
+		t.Fatalf("expected one strategy call with the BGG description, got %d %q", sug.strategyCalls.Load(), sug.lastDescription)
+	}
+	if !strings.Contains(rec.Body.String(), "Strategia 1?") {
+		t.Fatalf("response must carry the strategy questions:\n%s", rec.Body.String())
+	}
+	// Le domande del Manuale restano intatte (nessuna riga).
+	rec = doLoanRequest(router, http.MethodGet, fmt.Sprintf("/api/games/%d/suggested-questions", gameID), cookie, "")
+	if strings.Contains(rec.Body.String(), "Strategia") {
+		t.Fatalf("rules questions must not contain strategy ones:\n%s", rec.Body.String())
+	}
+}
+
+// TestRegenerateQuestions_StrategyWithoutBGGIDIsExplained: un gioco inserito
+// a mano non ha un BGGID né una descrizione da cui partire.
+func TestRegenerateQuestions_StrategyWithoutBGGIDIsExplained(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.Suggester = &fakeSuggester{}
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	g, _ := conn.Exec(`INSERT INTO games (name, seats) VALUES ('Fatto in casa', 1)`)
+	gameID, _ := g.LastInsertId()
+
+	rec := doLoanRequest(router, http.MethodPost,
+		fmt.Sprintf("/api/games/%d/suggested-questions/regenerate?agent=strategy", gameID), cookie, "")
+	if rec.Code != http.StatusUnprocessableEntity || !strings.Contains(rec.Body.String(), "BoardGameGeek") {
+		t.Fatalf("expected 422 mentioning BoardGameGeek, got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestSuggestedQuestions_RejectsAnUnknownAgent: ?agent= arriva dalla query
+// string di una rotta admin, quindi un valore diverso dai due è un errore
+// del client, non un 500 o un fallback silenzioso.
+func TestSuggestedQuestions_RejectsAnUnknownAgent(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID := seedBareGame(t, server)
+
+	rec := doLoanRequest(router, http.MethodGet, fmt.Sprintf("/api/games/%d/suggested-questions?agent=boh", gameID), cookie, "")
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+// TestPutSuggestedQuestions_StrategyAgent: PUT con ?agent=strategy scrive
+// nelle righe dell'agente Strategia, non in quelle del Manuale.
+func TestPutSuggestedQuestions_StrategyAgent(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	cookie := loginAsAdmin(t, router)
+	gameID := seedBareGame(t, server)
+
+	rec := doLoanRequest(router, http.MethodPut,
+		fmt.Sprintf("/api/games/%d/suggested-questions?agent=strategy", gameID), cookie,
+		`{"questions":["A?","B?","C?"]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	qs, _ := manuals.NewStore(conn).SuggestedQuestions(context.Background(), gameID, manuals.AgentStrategy)
+	if len(qs) != 3 || qs[0].Text != "A?" {
+		t.Fatalf("strategy questions not saved: %+v", qs)
 	}
 }

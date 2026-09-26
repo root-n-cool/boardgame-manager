@@ -28,7 +28,7 @@ func TestSuggestedQuestions_EmptyWhenNothingSaved(t *testing.T) {
 	store := manuals.NewStore(conn)
 	gameID := seedGameForQuestions(t, conn)
 
-	got, err := store.SuggestedQuestions(context.Background(), gameID)
+	got, err := store.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -43,11 +43,11 @@ func TestSaveGeneratedQuestions_WritesThreeInOrder(t *testing.T) {
 	gameID := seedGameForQuestions(t, conn)
 
 	texts := []string{"Come si prepara?", "Cosa faccio nel turno?", "Come finisce?"}
-	if err := store.SaveGeneratedQuestions(context.Background(), gameID, texts); err != nil {
+	if err := store.SaveGeneratedQuestions(context.Background(), gameID, manuals.AgentRules, texts); err != nil {
 		t.Fatalf("save generated: %v", err)
 	}
 
-	got, err := store.SuggestedQuestions(context.Background(), gameID)
+	got, err := store.SuggestedQuestions(context.Background(), gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -76,22 +76,22 @@ func TestSaveGeneratedQuestions_PreservesEdited(t *testing.T) {
 	ctx := context.Background()
 	gameID := seedGameForQuestions(t, conn)
 
-	if err := store.SaveGeneratedQuestions(ctx, gameID,
+	if err := store.SaveGeneratedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"Generata A?", "Generata B?", "Generata C?"}); err != nil {
 		t.Fatalf("save generated: %v", err)
 	}
 	// L'admin riscrive la seconda: solo quella diventa edited.
-	if err := store.SaveEditedQuestions(ctx, gameID,
+	if err := store.SaveEditedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"Generata A?", "Scritta a mano?", "Generata C?"}); err != nil {
 		t.Fatalf("save edited: %v", err)
 	}
 	// Una reindicizzazione rigenera tutte e tre.
-	if err := store.SaveGeneratedQuestions(ctx, gameID,
+	if err := store.SaveGeneratedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"Rigenerata A?", "Rigenerata B?", "Rigenerata C?"}); err != nil {
 		t.Fatalf("save generated dopo edit: %v", err)
 	}
 
-	got, err := store.SuggestedQuestions(ctx, gameID)
+	got, err := store.SuggestedQuestions(ctx, gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -119,17 +119,17 @@ func TestSaveEditedQuestions_MarksOnlyChangedTexts(t *testing.T) {
 	ctx := context.Background()
 	gameID := seedGameForQuestions(t, conn)
 
-	if err := store.SaveGeneratedQuestions(ctx, gameID,
+	if err := store.SaveGeneratedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"Generata A?", "Generata B?", "Generata C?"}); err != nil {
 		t.Fatalf("save generated: %v", err)
 	}
 	// Rimanda le tre domande cambiandone solo una.
-	if err := store.SaveEditedQuestions(ctx, gameID,
+	if err := store.SaveEditedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"Generata A?", "Cambiata?", "Generata C?"}); err != nil {
 		t.Fatalf("save edited: %v", err)
 	}
 
-	got, err := store.SuggestedQuestions(ctx, gameID)
+	got, err := store.SuggestedQuestions(ctx, gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -150,12 +150,12 @@ func TestSaveEditedQuestions_UpsertsOnAGameWithNoRows(t *testing.T) {
 	ctx := context.Background()
 	gameID := seedGameForQuestions(t, conn)
 
-	if err := store.SaveEditedQuestions(ctx, gameID,
+	if err := store.SaveEditedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"Prima?", "Seconda?", "Terza?"}); err != nil {
 		t.Fatalf("save edited su gioco senza righe: %v", err)
 	}
 
-	got, err := store.SuggestedQuestions(ctx, gameID)
+	got, err := store.SuggestedQuestions(ctx, gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -182,12 +182,12 @@ func TestSaveEditedQuestions_EmptyTextOnAGameWithNoRowsStillCreatesThreeRows(t *
 	ctx := context.Background()
 	gameID := seedGameForQuestions(t, conn)
 
-	if err := store.SaveEditedQuestions(ctx, gameID,
+	if err := store.SaveEditedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"", "Seconda?", "Terza?"}); err != nil {
 		t.Fatalf("save edited con testo vuoto: %v", err)
 	}
 
-	got, err := store.SuggestedQuestions(ctx, gameID)
+	got, err := store.SuggestedQuestions(ctx, gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -214,16 +214,16 @@ func TestSaveAllQuestions_OverwritesEditedToo(t *testing.T) {
 	ctx := context.Background()
 	gameID := seedGameForQuestions(t, conn)
 
-	if err := store.SaveEditedQuestions(ctx, gameID,
+	if err := store.SaveEditedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"A mano 1?", "A mano 2?", "A mano 3?"}); err != nil {
 		t.Fatalf("save edited: %v", err)
 	}
-	if err := store.SaveAllQuestions(ctx, gameID,
+	if err := store.SaveAllQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"Nuova 1?", "Nuova 2?", "Nuova 3?"}); err != nil {
 		t.Fatalf("save all: %v", err)
 	}
 
-	got, err := store.SuggestedQuestions(ctx, gameID)
+	got, err := store.SuggestedQuestions(ctx, gameID, manuals.AgentRules)
 	if err != nil {
 		t.Fatalf("suggested questions: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestSuggestedQuestions_CascadeOnGameDelete(t *testing.T) {
 	ctx := context.Background()
 	gameID := seedGameForQuestions(t, conn)
 
-	if err := store.SaveGeneratedQuestions(ctx, gameID,
+	if err := store.SaveGeneratedQuestions(ctx, gameID, manuals.AgentRules,
 		[]string{"A?", "B?", "C?"}); err != nil {
 		t.Fatalf("save generated: %v", err)
 	}
@@ -259,5 +259,44 @@ func TestSuggestedQuestions_CascadeOnGameDelete(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("la cascata deve portare via le domande col gioco, restano %d righe", count)
+	}
+}
+
+func TestSuggestedQuestions_AreSeparatePerAgent(t *testing.T) {
+	conn := newTestDB(t)
+	store := manuals.NewStore(conn)
+	gameID := seedGameForQuestions(t, conn)
+	ctx := context.Background()
+
+	if err := store.SaveGeneratedQuestions(ctx, gameID, manuals.AgentRules, []string{"R1?", "R2?", "R3?"}); err != nil {
+		t.Fatalf("save rules: %v", err)
+	}
+	if err := store.SaveGeneratedQuestions(ctx, gameID, manuals.AgentStrategy, []string{"S1?", "S2?", "S3?"}); err != nil {
+		t.Fatalf("save strategy: %v", err)
+	}
+	if err := store.SaveEditedQuestions(ctx, gameID, manuals.AgentStrategy, []string{"S1?", "Mia?", "S3?"}); err != nil {
+		t.Fatalf("edit strategy: %v", err)
+	}
+
+	rules, _ := store.SuggestedQuestions(ctx, gameID, manuals.AgentRules)
+	strategy, _ := store.SuggestedQuestions(ctx, gameID, manuals.AgentStrategy)
+	if len(rules) != 3 || rules[1].Text != "R2?" || rules[1].Edited {
+		t.Fatalf("editing strategy must not touch rules, got %+v", rules)
+	}
+	if len(strategy) != 3 || strategy[1].Text != "Mia?" || !strategy[1].Edited {
+		t.Fatalf("unexpected strategy questions %+v", strategy)
+	}
+}
+
+func TestValidAgent(t *testing.T) {
+	for _, a := range []string{"rules", "strategy"} {
+		if !manuals.ValidAgent(a) {
+			t.Fatalf("%q must be valid", a)
+		}
+	}
+	for _, a := range []string{"", "Rules", "x"} {
+		if manuals.ValidAgent(a) {
+			t.Fatalf("%q must be invalid", a)
+		}
 	}
 }

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, nextTick } from 'vue'
 import { api } from '../api/client'
+import type { ChatAvailability } from '../utils/game'
 import { removeMyBooking } from '../utils/myBookings'
 
 /**
@@ -40,12 +41,11 @@ interface BookingResult {
   /** Quante prenotazioni attive ci sono su questo tavolo, compresa la mia. */
   tableBookings: number
   /**
-   * Vero quando il gioco ha un manuale preparato e il provider AI è
-   * configurato: è la stessa condizione che fa comparire la chat sulla
-   * scheda del gioco. Senza, il link "Chiedi al manuale" prometteva una
-   * pagina dove non succedeva niente.
+   * Quali agenti stanno dietro il link "Chiedi al Mentore": è la stessa
+   * condizione che fa comparire la chat sulla scheda del gioco. Nessuno dei
+   * due = niente link, o prometteva una pagina dove non succedeva niente.
    */
-  canAsk: boolean
+  chat: ChatAvailability
   matchResult: { players: PlayerScore[] } | null
 }
 
@@ -198,9 +198,9 @@ onMounted(async () => {
     <div v-if="booking">
       <div class="booking-summary">
         <h2>{{ gameLabel }}</h2>
-        <p v-if="booking.gameId && booking.canAsk" class="row-meta">
+        <p v-if="booking.gameId && (booking.chat.rules || booking.chat.strategy)" class="row-meta">
           <router-link :to="{ path: `/games/${booking.gameId}`, query: { chat: '1' } }">
-            Dubbi sulle regole? Chiedi al manuale
+            Dubbi o consigli? Chiedi al Mentore
           </router-link>
         </p>
         <p class="booking-summary-meta">

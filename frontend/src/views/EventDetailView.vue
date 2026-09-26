@@ -7,6 +7,7 @@ import GameDifficulty from '../components/GameDifficulty.vue'
 import MarkdownText from '../components/MarkdownText.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
+import type { ChatAvailability } from '../utils/game'
 import { listMyBookings, removeMyBooking, saveMyBooking, type MyBooking } from '../utils/myBookings'
 
 interface EventGameInfo {
@@ -20,12 +21,12 @@ interface EventGameInfo {
   weight: number | null
   bookable: boolean
   /**
-   * Vero quando dietro il link "Chiedi al manuale" c'è davvero una chat
-   * (manuale preparato + provider AI configurato). Senza, il link portava
-   * alla scheda del gioco e non succedeva niente: nessuna chat, nessun
-   * messaggio — al tavolo si legge come un'app rotta.
+   * Quali agenti stanno dietro il link "Chiedi al Mentore" (manuale
+   * preparato / chiave Tavily + provider AI configurati). Nessuno dei due =
+   * niente link: senza, il link portava alla scheda del gioco e non
+   * succedeva niente — al tavolo si legge come un'app rotta.
    */
-  canAsk: boolean
+  chat: ChatAvailability
 }
 
 interface EventDetail {
@@ -381,9 +382,9 @@ onMounted(async () => {
                sulle schede col manuale. Qui è anche il posto giusto per
                senso: è un'informazione sul gioco, non un passo della
                prenotazione. -->
-          <p v-if="g.canAsk" class="event-game-ask">
+          <p v-if="g.chat.rules || g.chat.strategy" class="event-game-ask">
             <router-link :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }">
-              Dubbi sulle regole? Chiedi al manuale
+              Dubbi o consigli? Chiedi al Mentore
               <span class="visually-hidden">di {{ copyLabel(g) }}</span>
             </router-link>
           </p>

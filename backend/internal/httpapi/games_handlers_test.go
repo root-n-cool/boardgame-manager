@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,8 +11,10 @@ import (
 	"net/url"
 	"testing"
 
+	"boardgames-manager/internal/ai"
 	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/httpapi"
+	"boardgames-manager/internal/manuals"
 )
 
 func TestCreateGame_RequiresAuth(t *testing.T) {
@@ -139,6 +142,69 @@ func TestCreateGame_FromBGGSucceedsWithFakeClient(t *testing.T) {
 	}
 	if body.Languages[0].Description == nil || *body.Languages[0].Description != "A settling game." {
 		t.Fatal("expected base language prefilled with BGG description")
+	}
+}
+
+// TestCreateGame_FromBGGGeneratesStrategyQuestions: un import da BGG ha
+// sempre id e descrizione, quindi è il momento naturale per generare anche
+// le domande della Strategia — senza aspettare un'indicizzazione che questo
+// agente non usa.
+func TestCreateGame_FromBGGGeneratesStrategyQuestions(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.BGG = &fakeBGGClient{thing: bgg.ThingDetail{ID: "13", Name: "Catan", Description: "A settling game."}}
+	sug := &fakeSuggester{}
+	server.Suggester = sug
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	settingsPayload, _ := json.Marshal(map[string]string{"defaultLanguage": "it", "bggApiToken": "fake-token"})
+	settingsReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(settingsPayload))
+	settingsReq.AddCookie(cookie)
+	router.ServeHTTP(httptest.NewRecorder(), settingsReq)
+
+	payload, _ := json.Marshal(map[string]string{"bggId": "13", "languageCode": "it"})
+	req := httptest.NewRequest(http.MethodPost, "/api/games", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID int64 `json:"id"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &created)
+
+	if sug.strategyCalls.Load() != 1 || sug.lastDescription != "A settling game." {
+		t.Fatalf("expected strategy questions generated from the BGG description, got %d %q", sug.strategyCalls.Load(), sug.lastDescription)
+	}
+	qs, _ := manuals.NewStore(conn).SuggestedQuestions(context.Background(), created.ID, manuals.AgentStrategy)
+	if len(qs) != 3 {
+		t.Fatalf("expected 3 saved strategy questions, got %+v", qs)
+	}
+}
+
+// TestCreateGame_FromBGGSucceedsEvenIfQuestionsFail: la generazione è
+// best-effort, come quella del Manuale dopo l'indicizzazione — un provider
+// che rifiuta non deve far fallire l'import.
+func TestCreateGame_FromBGGSucceedsEvenIfQuestionsFail(t *testing.T) {
+	server, _ := newTestServerWithDB(t)
+	server.BGG = &fakeBGGClient{thing: bgg.ThingDetail{ID: "13", Name: "Catan"}}
+	server.Suggester = &fakeSuggester{err: ai.ErrSuggestionsRejected}
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	settingsPayload, _ := json.Marshal(map[string]string{"defaultLanguage": "it", "bggApiToken": "fake-token"})
+	settingsReq := httptest.NewRequest(http.MethodPut, "/api/settings", bytes.NewReader(settingsPayload))
+	settingsReq.AddCookie(cookie)
+	router.ServeHTTP(httptest.NewRecorder(), settingsReq)
+
+	payload, _ := json.Marshal(map[string]string{"bggId": "13", "languageCode": "it"})
+	req := httptest.NewRequest(http.MethodPost, "/api/games", bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("a failed generation must not fail the import: %d %s", rec.Code, rec.Body.String())
 	}
 }
 

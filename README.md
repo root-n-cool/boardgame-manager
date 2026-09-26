@@ -92,15 +92,19 @@ esterno obbligatorio.
   Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio
   resta legato al codice di prenotazione: un gioco mai prenotabile non
   entra in classifica, anche se in prestito è passato di mano più volte.
-- **Domande sul manuale**: sulla scheda pubblica di un gioco con una fonte
-  preparata compare una chat — a parole proprie, tipo "quando finisce la
-  partita?" — che risponde citando il documento e la pagina da cui viene
-  la risposta. Si prepara un PDF, un file di testo, un markdown o un
-  docx fra i media del gioco premendo «Prepara per le domande» nella
-  scheda di modifica: una sola richiesta legge il file e lo spezza in
-  sezioni cercabili, senza altro da rivedere o correggere a mano.
-  Richiede un provider AI configurato, per qualunque formato. Dettagli
-  sotto.
+- **Il Mentore**: sulla scheda pubblica di un gioco compare una chat con
+  due agenti, uno alla volta dal selettore nel campo — **Manuale**, che
+  risponde a parole proprie, tipo "quando finisce la partita?", citando
+  il documento e la pagina da cui viene la risposta; **Strategia**, che
+  dà consigli di gioco presi dal forum *Strategy* di BoardGameGeek e,
+  se il gioco ha un manuale, verifica che la mossa suggerita sia
+  regolare. Un agente che il gioco non ha ancora compare disabilitato nel
+  selettore, non nascosto. Si prepara un PDF, un file di testo, un
+  markdown o un docx fra i media del gioco premendo «Prepara per le
+  domande» nella scheda di modifica: una sola richiesta legge il file e
+  lo spezza in sezioni cercabili, senza altro da rivedere o correggere a
+  mano. Richiede un provider AI configurato, per qualunque formato.
+  Dettagli sotto.
 - **Amministrazione**: bootstrap del primo admin al primo avvio (come
   n8n); dopo, un admin ne invita un altro inserendo solo l'email — il
   sistema genera un link di invito che chi lo riceve apre per scegliere la
@@ -256,10 +260,10 @@ Dalla pagina "Impostazioni" (da admin autenticato):
   dell'app: i giochi si inseriscono a mano.
 - **Provider AI**: traduce automaticamente le descrizioni di BGG (arrivano
   solo in inglese) nella lingua della scheda, sia importando un gioco sia
-  aggiungendo una lingua a uno esistente, e alimenta anche la chat "Chiedi
-  al manuale" sulla scheda pubblica di un gioco. Se assente, l'app
-  funziona come prima: descrizioni in inglese, nessun comando di
-  traduzione, nessuna chat sul manuale. Dettagli sotto.
+  aggiungendo una lingua a uno esistente, e alimenta anche "Il Mentore",
+  la chat sulla scheda pubblica di un gioco. Se assente, l'app funziona
+  come prima: descrizioni in inglese, nessun comando di traduzione,
+  nessuna chat. Dettagli sotto.
 - **Email (SMTP)**: se configurato, l'app manda da sé l'invito di un
   amministratore e la conferma di una prenotazione (se chi prenota ha
   lasciato un'email — è facoltativa e non viene mai salvata). Se
@@ -343,8 +347,11 @@ perché l'app non lo conserva: solo le sezioni cercabili restano. Un
 la sola libreria standard, un `.txt` o un PDF con testo selezionabile
 passano dal modello che vi inserisce i titoli, uno scan passa per l'OCR
 di un modello multimodale una pagina alla volta. Senza una fonte
-preparata la scheda pubblica del gioco non mostra nessuna chat: nessun
-errore, solo l'assenza del comando.
+preparata il gioco perde l'agente Manuale — a meno che non risponda già
+dal forum di BGG, vedi la chiave Tavily più sotto — ma non
+necessariamente l'intera chat: se il gioco ha anche la Strategia, quella
+resta. Senza nessuno dei due agenti disponibili la scheda pubblica non
+mostra nessuna chat: nessun errore, solo l'assenza del comando.
 
 - **Modello per i manuali scansionati (`ai_vision_model`, opzionale)**:
   quando il PDF caricato è la scansione di un libretto (niente testo
@@ -395,14 +402,28 @@ errore, solo l'assenza del comando.
   ed è vero: la dettatura è un optional del browser, non dell'app, ma vale
   la pena saperlo prima di attivarla, non scoprirlo dopo.
 
-**FAQ da BoardGameGeek (facoltativo).** Con una chiave [Tavily](https://tavily.com)
-nelle impostazioni (piano gratuito: 1.000 ricerche al mese, senza carta),
-l'assistente regole, quando il manuale non basta, cerca nel forum *Rules*
-del gioco su BoardGameGeek e cita il commento con un link. Serve un gioco
-collegato a BGG e un manuale già preparato: le FAQ completano il manuale,
-non lo sostituiscono. La domanda, tradotta in inglese, viene mandata a
-Tavily per trovare i thread; il thread scelto si legge poi direttamente
-da BoardGameGeek. Senza chiave l'assistente usa solo i documenti.
+**Una chiave Tavily sblocca tre cose (facoltativo).** Con una chiave
+[Tavily](https://tavily.com) nelle impostazioni (piano gratuito: 1.000
+ricerche al mese, senza carta) e un gioco collegato a BGG:
+
+- l'agente **Manuale**, quando il documento indicizzato non basta, cerca
+  anche nel forum *Rules* del gioco su BoardGameGeek e cita il commento
+  con un link: le FAQ completano il manuale, non lo sostituiscono;
+- compare l'agente **Strategia**, che pesca consigli dal forum
+  *Strategy* dello stesso gioco e, se il gioco ha anche un manuale
+  indicizzato, controlla che la mossa suggerita sia permessa prima di
+  proporla;
+- un gioco **senza un manuale indicizzato** ottiene comunque l'agente
+  Manuale, che in quel caso risponde solo dal forum *Rules* — presentata
+  come opinione della community, non come citazione di un documento
+  ufficiale.
+
+La domanda, tradotta in inglese, viene mandata a Tavily per trovare i
+thread (al massimo due ricerche per domanda, per tenere basso il
+consumo del piano gratuito); il thread scelto si legge poi direttamente
+da BoardGameGeek. Senza chiave: solo l'agente Manuale, solo su un gioco
+con un manuale già preparato, solo dai documenti indicizzati — la
+Strategia non compare.
 
 ### Email (SMTP) (opzionale)
 

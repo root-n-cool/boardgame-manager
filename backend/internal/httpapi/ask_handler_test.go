@@ -515,6 +515,7 @@ func TestAskHandler_WithoutAProviderIs404(t *testing.T) {
 }
 
 func TestAskHandler_WithoutAPreparedManualIs404(t *testing.T) {
+	// Senza manuale e senza forum: nessun agente è disponibile.
 	server, conn := newTestServerWithDB(t)
 	server.Asker = &fakeAsker{answer: "ok"}
 	router := httpapi.NewRouter(server)
@@ -526,6 +527,108 @@ func TestAskHandler_WithoutAPreparedManualIs404(t *testing.T) {
 	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("atteso 404, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAskHandler_AvailabilityPerAgent verifica chatAvailability a livello di
+// handler: manuale e forum sono le due fonti indipendenti, ciascuna basta a
+// sbloccare l'agente Manuale, ma solo il forum sblocca l'agente Strategia
+// (che non ha un equivalente "manuale-only", vedi la spec §1.1).
+func TestAskHandler_AvailabilityPerAgent(t *testing.T) {
+	cases := []struct {
+		name                string
+		manual, forum       bool
+		rulesOK, strategyOK bool
+	}{
+		{"niente", false, false, false, false},
+		{"solo manuale", true, false, true, false},
+		{"solo forum", false, true, true, true},
+		{"manuale e forum", true, true, true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			server, conn := newTestServerWithDB(t)
+			server.Asker = &fakeAsker{answer: "ok"}
+			var gameID int64
+			if c.manual {
+				gameID = seedGameWithPreparedManual(t, conn)
+			} else {
+				gameID = seedBareGame(t, server)
+			}
+			if c.forum {
+				server.WebSearch = &fakeWebSearch{}
+				setBGGID(t, conn, gameID, "266192")
+			}
+			router := httpapi.NewRouter(server)
+
+			for agent, want := range map[string]bool{"rules": c.rulesOK, "strategy": c.strategyOK} {
+				rec := postAsk(t, router, gameID, `{"agent":"`+agent+`","messages":[{"role":"user","text":"?"}]}`)
+				if want && rec.Code != http.StatusOK {
+					t.Fatalf("%s: expected 200, got %d %s", agent, rec.Code, rec.Body.String())
+				}
+				if !want && rec.Code != http.StatusNotFound {
+					t.Fatalf("%s: expected 404, got %d %s", agent, rec.Code, rec.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestAskHandler_AgentDefaultsToRules(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	for _, body := range []string{
+		`{"messages":[{"role":"user","text":"?"}]}`,
+		`{"agent":"boh","messages":[{"role":"user","text":"?"}]}`,
+	} {
+		rec := postAsk(t, router, gameID, body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", body, rec.Code)
+		}
+		if asker.got.Agent != ai.AgentRules {
+			t.Fatalf("%s: expected the rules agent, got %q", body, asker.got.Agent)
+		}
+	}
+}
+
+func TestAskHandler_StrategyAgentGetsTheStrategyForumAndTheManual(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	ws := &fakeWebSearch{}
+	server.WebSearch = ws
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	postAsk(t, router, gameID, `{"agent":"strategy","messages":[{"role":"user","text":"?"}]}`)
+	if asker.got.Agent != ai.AgentStrategy || asker.got.SearchStrategy == nil || asker.got.Search == nil {
+		t.Fatalf("strategy needs its forum and the manual, got %+v", asker.got)
+	}
+	if asker.got.SearchFAQ != nil {
+		t.Fatal("the strategy agent must not get the Rules forum")
+	}
+}
+
+func TestAskHandler_RulesAgentWithoutAManualGetsOnlyTheForum(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{}
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedBareGame(t, server)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	if asker.got.Search != nil || asker.got.SearchFAQ == nil {
+		t.Fatalf("rules without a manual: no manual search, only the forum; got %+v", asker.got)
 	}
 }
 
@@ -569,46 +672,18 @@ func TestAskHandler_IsRateLimited(t *testing.T) {
 	}
 }
 
-func TestGameDetail_ExposesCanAsk(t *testing.T) {
-	server, conn := newTestServerWithDB(t)
-	router := httpapi.NewRouter(server)
-
-	// Senza provider e senza manuale: falso.
-	g, _ := conn.Exec(`INSERT INTO games (name, seats) VALUES ('Nudo', 1)`)
-	bareID, _ := g.LastInsertId()
-	if canAsk(t, router, bareID) {
-		t.Fatal("un gioco senza manuale e senza AI non può ricevere domande")
-	}
-
-	// Con manuale ma senza provider: ancora falso.
-	preparedID := seedGameWithPreparedManual(t, conn)
-	if canAsk(t, router, preparedID) {
-		t.Fatal("senza provider AI configurato canAsk deve essere falso")
-	}
-
-	// Con provider e con manuale: vero.
-	server.Asker = &fakeAsker{answer: "ok"}
-	if !canAsk(t, router, preparedID) {
-		t.Fatal("con provider e manuale preparato canAsk deve essere vero")
-	}
-
-	// Con provider ma senza manuale: falso.
-	if canAsk(t, router, bareID) {
-		t.Fatal("senza manuale preparato canAsk deve essere falso anche con l'AI attiva")
-	}
-}
-
 // TestGameDetail_ExposesSuggestedQuestionsNotHeadings: la scheda pubblica
 // manda le domande già formulate, non i titoli di sezione da cui il
 // frontend le costruiva con una tabella fissa. Solo le domande NON vuote
 // escono: il frontend ripiega sulle domande fisse quando la lista è vuota,
-// e tre stringhe vuote non sono una lista vuota.
+// e tre stringhe vuote non sono una lista vuota. Le domande sono per
+// agente: rules e strategy hanno ciascuna il proprio array.
 func TestGameDetail_ExposesSuggestedQuestionsNotHeadings(t *testing.T) {
 	server, _ := newTestServerWithDB(t)
 	router := httpapi.NewRouter(server)
 	gameID := seedBareGame(t, server)
 
-	if err := server.Manuals.SaveGeneratedQuestions(context.Background(), gameID,
+	if err := server.Manuals.SaveGeneratedQuestions(context.Background(), gameID, manuals.AgentRules,
 		[]string{"Come si piazza una tessera?", "Quando finisce?", "Quanti punti?"}); err != nil {
 		t.Fatalf("save generated: %v", err)
 	}
@@ -627,9 +702,13 @@ func TestGameDetail_ExposesSuggestedQuestionsNotHeadings(t *testing.T) {
 	if _, ok := resp["sourceHeadings"]; ok {
 		t.Fatal("sourceHeadings non deve più esistere nella risposta")
 	}
-	qs, ok := resp["suggestedQuestions"].([]any)
+	sq, ok := resp["suggestedQuestions"].(map[string]any)
 	if !ok {
-		t.Fatalf("suggestedQuestions manca o non è una lista: %s", rec.Body.String())
+		t.Fatalf("suggestedQuestions manca o non è un oggetto: %s", rec.Body.String())
+	}
+	qs, ok := sq["rules"].([]any)
+	if !ok {
+		t.Fatalf("suggestedQuestions.rules manca o non è una lista: %s", rec.Body.String())
 	}
 	if len(qs) != 3 || qs[0] != "Come si piazza una tessera?" {
 		t.Fatalf("domande inattese: %v", qs)
@@ -649,16 +728,105 @@ func TestGameDetail_SuggestedQuestionsIsAlwaysAnArray(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("risposta non JSON: %v", err)
 	}
-	qs, ok := resp["suggestedQuestions"].([]any)
+	sq, ok := resp["suggestedQuestions"].(map[string]any)
 	if !ok {
-		t.Fatalf("un gioco senza domande deve mandare una lista vuota, non null: %s", rec.Body.String())
+		t.Fatalf("suggestedQuestions manca o non è un oggetto: %s", rec.Body.String())
 	}
-	if len(qs) != 0 {
-		t.Fatalf("attesa lista vuota, ottenuta %v", qs)
+	for _, agent := range []string{"rules", "strategy"} {
+		qs, ok := sq[agent].([]any)
+		if !ok {
+			t.Fatalf("%s: un gioco senza domande deve mandare una lista vuota, non null: %s", agent, rec.Body.String())
+		}
+		if len(qs) != 0 {
+			t.Fatalf("%s: attesa lista vuota, ottenuta %v", agent, qs)
+		}
 	}
 }
 
-func TestEventDetail_ExposesCanAskPerGame(t *testing.T) {
+// TestGameDetail_SuggestedQuestionsPerAgent verifica che ogni agente legga
+// le proprie domande, senza mischiarle: quelle salvate per rules non devono
+// comparire (né vuote né altrimenti) sotto strategy.
+func TestGameDetail_SuggestedQuestionsPerAgent(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	store := manuals.NewStore(conn)
+	if err := store.SaveGeneratedQuestions(context.Background(), gameID, manuals.AgentRules, []string{"R1?", "R2?", "R3?"}); err != nil {
+		t.Fatalf("save: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/games/"+strconv.FormatInt(gameID, 10), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var body struct {
+		SuggestedQuestions struct {
+			Rules    []string `json:"rules"`
+			Strategy []string `json:"strategy"`
+		} `json:"suggestedQuestions"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.SuggestedQuestions.Rules) != 3 || body.SuggestedQuestions.Rules[0] != "R1?" {
+		t.Fatalf("unexpected rules questions %v", body.SuggestedQuestions.Rules)
+	}
+	if body.SuggestedQuestions.Strategy == nil || len(body.SuggestedQuestions.Strategy) != 0 {
+		t.Fatalf("strategy must be an empty array, got %v", body.SuggestedQuestions.Strategy)
+	}
+	if !strings.Contains(rec.Body.String(), `"strategy":[]`) {
+		t.Fatalf("strategy must serialize as [], not null:\n%s", rec.Body.String())
+	}
+}
+
+// chatFlags è la forma di "chat" nelle tre schede pubbliche (gioco, evento,
+// prenotazione): un booleano per agente, mai un unico canAsk.
+type chatFlags struct {
+	Rules    bool `json:"rules"`
+	Strategy bool `json:"strategy"`
+}
+
+func gameChat(t *testing.T, router http.Handler, gameID int64) chatFlags {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/games/"+strconv.FormatInt(gameID, 10), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET game %d: %d %s", gameID, rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Chat chatFlags `json:"chat"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("risposta non JSON: %v", err)
+	}
+	return body.Chat
+}
+
+func TestGameDetail_ExposesChatPerAgent(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	router := httpapi.NewRouter(server)
+	bare := seedBareGame(t, server)
+	prepared := seedGameWithPreparedManual(t, conn)
+
+	// Senza provider: niente, nemmeno col manuale.
+	if c := gameChat(t, router, prepared); c.Rules || c.Strategy {
+		t.Fatalf("without AI there is no chat, got %+v", c)
+	}
+	server.Asker = &fakeAsker{answer: "ok"}
+	if c := gameChat(t, router, prepared); !c.Rules || c.Strategy {
+		t.Fatalf("manual only: rules yes, strategy no; got %+v", c)
+	}
+	if c := gameChat(t, router, bare); c.Rules || c.Strategy {
+		t.Fatalf("no manual, no forum: no chat; got %+v", c)
+	}
+	server.WebSearch = &fakeWebSearch{}
+	setBGGID(t, conn, bare, "266192")
+	if c := gameChat(t, router, bare); !c.Rules || !c.Strategy {
+		t.Fatalf("forum only: both agents; got %+v", c)
+	}
+}
+
+func TestEventDetail_ExposesChatPerGame(t *testing.T) {
 	// Il link "Dubbi sulle regole? Chiedi al manuale" compariva su ogni
 	// gioco della serata. Su uno senza manuale preparato portava a una
 	// scheda dove non succedeva niente: nessuna chat, nessun messaggio. Al
@@ -670,11 +838,14 @@ func TestEventDetail_ExposesCanAskPerGame(t *testing.T) {
 
 	conManuale := seedGameWithPreparedManual(t, conn)
 	senzaManuale := createTestGameForEvent(t, server.Games, "Senza manuale")
+	soloForum := createTestGameForEvent(t, server.Games, "Solo forum")
+	setBGGID(t, conn, soloForum, "266192")
+	server.WebSearch = &fakeWebSearch{}
 
 	body := fmt.Sprintf(
 		`{"title":"Serata","eventDate":"2099-01-01","startTime":"21:00",`+
-			`"games":[{"gameId":%d,"copies":1},{"gameId":%d,"copies":1}]}`,
-		conManuale, senzaManuale)
+			`"games":[{"gameId":%d,"copies":1},{"gameId":%d,"copies":1},{"gameId":%d,"copies":1}]}`,
+		conManuale, senzaManuale, soloForum)
 	rec := doLoanRequest(router, http.MethodPost, "/api/events", cookie, body)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("creazione evento: %d %s", rec.Code, rec.Body.String())
@@ -685,22 +856,25 @@ func TestEventDetail_ExposesCanAskPerGame(t *testing.T) {
 	json.NewDecoder(rec.Body).Decode(&created)
 
 	detail := getEventDetailGames(t, router, created.ID)
-	if len(detail.Games) != 2 {
-		t.Fatalf("attesi 2 giochi, ottenuti %d", len(detail.Games))
+	if len(detail.Games) != 3 {
+		t.Fatalf("attesi 3 giochi, ottenuti %d", len(detail.Games))
 	}
-	byGame := map[int64]bool{}
+	byGame := map[int64]chatFlags{}
 	for _, g := range detail.Games {
-		byGame[g.GameID] = g.CanAsk
+		byGame[g.GameID] = g.Chat
 	}
-	if !byGame[conManuale] {
-		t.Fatal("il gioco col manuale preparato deve avere canAsk vero")
+	if !byGame[conManuale].Rules {
+		t.Fatal("il gioco col manuale preparato deve avere chat.rules vero")
 	}
-	if byGame[senzaManuale] {
-		t.Fatal("il gioco senza manuale deve avere canAsk falso: il link non ha nulla dietro")
+	if byGame[senzaManuale].Rules || byGame[senzaManuale].Strategy {
+		t.Fatal("il gioco senza manuale e senza forum deve avere chat falso: il link non ha nulla dietro")
+	}
+	if !byGame[soloForum].Rules || !byGame[soloForum].Strategy {
+		t.Fatal("il gioco senza manuale ma con bggId e Tavily deve avere entrambi gli agenti")
 	}
 }
 
-func TestBookingDetail_ExposesCanAsk(t *testing.T) {
+func TestBookingDetail_ExposesChat(t *testing.T) {
 	// Stessa cosa sulla pagina della prenotazione, dove il gioco è uno solo.
 	server, conn := newTestServerWithDB(t)
 	router := httpapi.NewRouter(server)
@@ -739,38 +913,21 @@ func TestBookingDetail_ExposesCanAsk(t *testing.T) {
 		t.Fatalf("lettura prenotazione: %d %s", rec.Code, rec.Body.String())
 	}
 	var got struct {
-		CanAsk bool `json:"canAsk"`
+		Chat chatFlags `json:"chat"`
 	}
 	json.NewDecoder(rec.Body).Decode(&got)
-	// Senza provider AI configurato canAsk resta falso anche col manuale:
+	// Senza provider AI configurato la chat resta falsa anche col manuale:
 	// sono due condizioni, come sulla scheda gioco.
-	if got.CanAsk {
+	if got.Chat.Rules {
 		t.Fatal("senza provider AI la prenotazione non deve promettere la chat")
 	}
 
 	server.Asker = &fakeAsker{answer: "ok"}
 	rec = doLoanRequest(router, http.MethodPost, "/api/bookings/lookup", nil, lookup)
 	json.NewDecoder(rec.Body).Decode(&got)
-	if !got.CanAsk {
-		t.Fatal("col manuale preparato e il provider configurato canAsk deve essere vero")
+	if !got.Chat.Rules {
+		t.Fatal("col manuale preparato e il provider configurato chat.rules deve essere vero")
 	}
-}
-
-func canAsk(t *testing.T, router http.Handler, gameID int64) bool {
-	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/api/games/"+strconv.FormatInt(gameID, 10), nil)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("GET game %d: %d %s", gameID, rec.Code, rec.Body.String())
-	}
-	var body struct {
-		CanAsk bool `json:"canAsk"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
-		t.Fatalf("risposta non JSON: %v", err)
-	}
-	return body.CanAsk
 }
 
 type fakeWebSearch struct {

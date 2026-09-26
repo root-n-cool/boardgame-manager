@@ -1,24 +1,33 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 
 /**
- * Il campo con cui si scrive all'Arbitro: testo sopra, dettatura e invio
- * in una riga sotto, a destra. È markup nostro e non il campo di deep-chat
- * perché quello posiziona i suoi bottoni in `position: absolute` dentro
- * contenitori a larghezza zero: il microfono accanto all'invio si otteneva
- * solo con scarti misurati a mano, e uno stato "sto ascoltando" che cambia
- * bottone e segnaposto non si poteva fare. deep-chat resta a disegnare la
- * conversazione; questo componente gli passa solo il testo (`send`).
+ * Il campo con cui si scrive al Mentore: testo sopra, dettatura e invio
+ * in una riga sotto, a destra — e, quando c'è più di un agente, il
+ * selettore ("Manuale ▾") a sinistra. È markup nostro e non il campo di
+ * deep-chat perché quello posiziona i suoi bottoni in `position: absolute`
+ * dentro contenitori a larghezza zero: il microfono accanto all'invio si
+ * otteneva solo con scarti misurati a mano, e uno stato "sto ascoltando"
+ * che cambia bottone e segnaposto non si poteva fare. deep-chat resta a
+ * disegnare la conversazione; questo componente gli passa solo il testo
+ * (`send`).
  *
- * Non sa niente della chat: chi lo monta decide cosa fare del testo e
- * quando è `busy` (risposta in arrivo — si può scrivere la prossima
- * domanda, non mandarla).
+ * Non sa niente della chat: chi lo monta decide cosa fare del testo,
+ * quali agenti offrire e quando è `busy` (risposta in arrivo — si può
+ * scrivere la prossima domanda, non mandarla).
  */
+export type ComposerAgent = { key: string; label: string; tag: string; disabled: boolean }
+
 const props = defineProps<{
   busy?: boolean
+  /** Le voci del selettore. Meno di due voci = nessun selettore. */
+  agents?: ComposerAgent[]
+  placeholder?: string
 }>()
 
 const emit = defineEmits<{ send: [text: string] }>()
+
+const agent = defineModel<string>('agent', { default: '' })
 
 const draft = ref('')
 const field = ref<HTMLTextAreaElement | null>(null)
@@ -151,6 +160,82 @@ function focus() {
 }
 
 defineExpose({ focus })
+
+/* ---------- Selettore dell'agente ----------
+ * Sotto le due voci minime resta nascosto: chi monta il componente con un
+ * solo agente non vede né bottone né menu, com'era prima di questo task. */
+const menuOpen = ref(false)
+const menu = ref<HTMLElement | null>(null)
+const trigger = ref<HTMLButtonElement | null>(null)
+// Id delle voci unici per istanza: `aria-activedescendant` punta a un id
+// del documento, e due composer montati insieme non devono condividerlo.
+const uid = useId()
+// La voce sotto il cursore o sotto le frecce: l'evidenziazione scivola lì.
+const highlighted = ref(0)
+const showPicker = computed(() => (props.agents?.length ?? 0) >= 2)
+const current = computed(() => props.agents?.find((a) => a.key === agent.value))
+
+// La prossima voce sceglibile nella direzione `dir` (+1 giù, -1 su), con
+// wrap: le voci disabilitate si saltano in entrambi i versi — prima ↓ le
+// saltava e ↑ no, e l'evidenziazione finiva su una voce che non si sceglie.
+function nextEnabled(from: number, dir: 1 | -1): number {
+  const list = props.agents ?? []
+  for (let step = 1; step <= list.length; step++) {
+    const i = (from + dir * step + list.length) % list.length
+    if (!list[i].disabled) return i
+  }
+  return from
+}
+
+function openMenu() {
+  if (props.busy) return
+  const list = props.agents ?? []
+  const i = list.findIndex((a) => a.key === agent.value)
+  highlighted.value = i >= 0 && !list[i].disabled ? i : nextEnabled(-1, 1)
+  menuOpen.value = true
+  nextTick(() => menu.value?.focus())
+}
+function closeMenu(refocus = true) {
+  menuOpen.value = false
+  if (refocus) trigger.value?.focus()
+}
+function pick(a: ComposerAgent) {
+  if (a.disabled) return
+  agent.value = a.key
+  closeMenu(false)
+  focus()
+}
+function onMenuKeydown(e: KeyboardEvent) {
+  const list = props.agents ?? []
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault()
+    highlighted.value = nextEnabled(highlighted.value, e.key === 'ArrowDown' ? 1 : -1)
+  } else if (e.key === 'Enter' || e.key === ' ') {
+    e.preventDefault()
+    pick(list[highlighted.value])
+  } else if (e.key === 'Escape' || e.key === 'Tab') {
+    closeMenu(e.key === 'Escape')
+  }
+}
+// Cambiare agente smonta la conversazione in corso: con una risposta in
+// arrivo la si perderebbe. Il bottone si spegne finché `busy`, e un menu
+// già aperto si chiude.
+watch(
+  () => props.busy,
+  (b) => {
+    if (b && menuOpen.value) closeMenu(false)
+  },
+)
+// Clic fuori chiude: pointerdown e non click, così il menu non si
+// riapre sotto il dito quando si tocca di nuovo il bottone.
+function onDocPointerDown(e: PointerEvent) {
+  if (!(e.target as Element).closest('.chat-composer-agent')) closeMenu(false)
+}
+watch(menuOpen, (open) => {
+  if (open) document.addEventListener('pointerdown', onDocPointerDown)
+  else document.removeEventListener('pointerdown', onDocPointerDown)
+})
+onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDown))
 </script>
 
 <template>
@@ -168,10 +253,55 @@ defineExpose({ focus })
         rows="1"
         enterkeyhint="send"
         aria-label="La tua domanda"
-        :placeholder="listening ? 'Sto ascoltando…' : 'Chiedi una regola…'"
+        :placeholder="listening ? 'Sto ascoltando…' : (placeholder ?? 'Chiedi una regola…')"
         @keydown="onKeydown"
       />
       <div class="chat-composer-actions" @click.self="focus">
+        <div v-if="showPicker" class="chat-composer-agent">
+          <button
+            ref="trigger"
+            type="button"
+            class="chat-composer-agent-trigger"
+            aria-haspopup="listbox"
+            :aria-expanded="menuOpen"
+            :aria-label="`${current?.label ?? 'Agente'}: scegli con chi parlare`"
+            :disabled="busy"
+            :title="busy ? 'Aspetta la risposta per cambiare' : undefined"
+            @click="menuOpen ? closeMenu() : openMenu()"
+          >
+            {{ current?.label ?? 'Agente' }}
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" />
+            </svg>
+          </button>
+          <ul
+            v-if="menuOpen"
+            ref="menu"
+            class="chat-composer-agent-menu"
+            role="listbox"
+            tabindex="-1"
+            :aria-activedescendant="`${uid}-opt-${highlighted}`"
+            @keydown="onMenuKeydown"
+          >
+            <li
+              v-for="(a, i) in agents"
+              :id="`${uid}-opt-${i}`"
+              :key="a.key"
+              role="option"
+              :aria-selected="a.key === agent"
+              :aria-disabled="a.disabled"
+              :class="{ 'is-highlighted': i === highlighted, 'is-disabled': a.disabled }"
+              @pointerenter="!a.disabled && (highlighted = i)"
+              @click="pick(a)"
+            >
+              <span class="chat-composer-agent-name">{{ a.label }}</span>
+              <span class="chat-composer-agent-tag">{{ a.disabled ? 'non disponibile per questo gioco' : a.tag }}</span>
+              <svg v-if="a.key === agent" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M20 6L9 17l-5-5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+            </li>
+          </ul>
+        </div>
         <button
           v-if="speechSupported"
           type="button"

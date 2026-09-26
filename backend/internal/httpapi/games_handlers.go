@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"slices"
 	"strings"
@@ -12,6 +13,7 @@ import (
 
 	"boardgames-manager/internal/bgg"
 	"boardgames-manager/internal/games"
+	"boardgames-manager/internal/manuals"
 	"boardgames-manager/internal/storage"
 )
 
@@ -122,6 +124,15 @@ func (s *Server) createGameFromBGG(w http.ResponseWriter, r *http.Request, req c
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create game language")
 		return
+	}
+
+	// Le domande della Strategia si generano qui, best-effort come quelle
+	// del Manuale dopo l'indicizzazione: un import riuscito non diventa un
+	// errore per tre bottoni. Senza provider non si prova nemmeno.
+	if s.aiConfigured(r.Context()) {
+		if err := s.regenerateQuestions(r.Context(), game.ID, manuals.AgentStrategy, false); err != nil {
+			log.Printf("create game %d: strategy questions: %v", game.ID, err)
+		}
 	}
 
 	resp, err := s.toGameDetail(r.Context(), game, []games.GameLanguage{lang}, true)

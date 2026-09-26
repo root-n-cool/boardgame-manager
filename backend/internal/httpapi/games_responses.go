@@ -56,12 +56,8 @@ func toMediaResponse(m games.GameMedia, chunksByMedia map[int64]int) map[string]
 }
 
 func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.GameLanguage, signedIn bool) (map[string]any, error) {
-	// canAsk governa la comparsa della chat sulla scheda pubblica. Vero solo
-	// se entrambe le condizioni valgono: provider AI configurato e almeno
-	// una fonte indicizzata. In UI non esiste il pulsante disabilitato con
-	// la spiegazione: se è falso, la chat non c'è.
-	//
-	// PerMedia alimenta indexedChunks di ogni media, per il pannello admin.
+	// summary alimenta chatAvailability sotto (HasChunks) e PerMedia
+	// alimenta indexedChunks di ogni media, per il pannello admin.
 	// Chiederli con una seconda query costerebbe un giro in più alla
 	// pagina che ogni partecipante apre.
 	summary := manuals.SourceSummary{}
@@ -88,7 +84,11 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 	}
 	detail := toGameSummary(g, nil)
 	detail["languages"] = langOut
-	detail["canAsk"] = summary.HasChunks && s.aiConfigured(ctx)
+	// chat governa la comparsa della chat e quali voci del selettore sono
+	// attive: la regola è una sola (chatAvailability), la stessa dell'handler.
+	rules, strategy := chatAvailability(s.aiConfigured(ctx), summary.HasChunks,
+		hasBGGID(g) && s.tavilyConfigured(ctx))
+	detail["chat"] = map[string]bool{"rules": rules, "strategy": strategy}
 	// missingPieces racconta cosa non è tornato: solo a chi ha una
 	// sessione, per lo stesso motivo di incomplete in toGameSummary.
 	if signedIn {
@@ -98,31 +98,37 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 		}
 		detail["missingPieces"] = toMissingPiecesResponse(pieces[g.ID])
 	}
-	// Le tre domande suggerite, già formulate. Prima qui uscivano i titoli
-	// di sezione (`sourceHeadings`) e il frontend li trasformava in domande
-	// con una tabella fissa: quella catena produceva "Cosa dice il manuale
-	// su di Klaus-Jürgen Wrede?" su un manuale reale, perché prendeva i
-	// primi titoli in ordine di pagina — copertina e contenuto della
-	// scatola — e ripiegava su un template per tutto ciò che la tabella non
-	// conosceva.
-	//
-	// Solo le domande NON vuote: il pannello pubblico ripiega sulle sue tre
-	// domande fisse quando la lista è vuota, e tre stringhe vuote non sono
-	// una lista vuota. Sempre un array, mai null.
-	questions := []string{}
-	if s.Manuals != nil {
-		if qs, err := s.Manuals.SuggestedQuestions(ctx, g.ID); err != nil {
-			// Un errore qui non deve costare la scheda del gioco: senza
-			// domande suggerite il frontend usa le sue tre fisse.
-			log.Printf("game detail: suggested questions for game %d: %v", g.ID, err)
-		} else {
-			for _, q := range qs {
-				if strings.TrimSpace(q.Text) != "" {
-					questions = append(questions, q.Text)
-				}
-			}
+	// Le domande suggerite, già formulate, per agente: sempre due array,
+	// mai null. Prima qui uscivano i titoli di sezione (`sourceHeadings`) e
+	// il frontend li trasformava in domande con una tabella fissa: quella
+	// catena produceva "Cosa dice il manuale su di Klaus-Jürgen Wrede?" su
+	// un manuale reale, perché prendeva i primi titoli in ordine di pagina
+	// — copertina e contenuto della scatola — e ripiegava su un template
+	// per tutto ciò che la tabella non conosceva.
+	detail["suggestedQuestions"] = map[string][]string{
+		"rules":    s.publicQuestions(ctx, g.ID, manuals.AgentRules),
+		"strategy": s.publicQuestions(ctx, g.ID, manuals.AgentStrategy),
+	}
+	return detail, nil
+}
+
+// publicQuestions restituisce le domande NON vuote di un agente, sempre come
+// array (mai nil): il pannello pubblico ripiega sulle sue fisse quando la
+// lista è vuota. Un errore non costa la scheda: si logga e si ripiega.
+func (s *Server) publicQuestions(ctx context.Context, gameID int64, agent string) []string {
+	out := []string{}
+	if s.Manuals == nil {
+		return out
+	}
+	qs, err := s.Manuals.SuggestedQuestions(ctx, gameID, agent)
+	if err != nil {
+		log.Printf("game detail: %s questions for game %d: %v", agent, gameID, err)
+		return out
+	}
+	for _, q := range qs {
+		if strings.TrimSpace(q.Text) != "" {
+			out = append(out, q.Text)
 		}
 	}
-	detail["suggestedQuestions"] = questions
-	return detail, nil
+	return out
 }

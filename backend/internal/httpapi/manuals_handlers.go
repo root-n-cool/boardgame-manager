@@ -958,10 +958,10 @@ func (s *Server) indexMediaHandler(w http.ResponseWriter, r *http.Request) {
 	// Le posizioni che l'admin ha riscritto a mano non si toccano (all =
 	// false), e se sono tutte e tre a mano la chiamata al modello non parte
 	// nemmeno.
-	if existing, qErr := s.Manuals.SuggestedQuestions(r.Context(), gameID); qErr != nil {
+	if existing, qErr := s.Manuals.SuggestedQuestions(r.Context(), gameID, manuals.AgentRules); qErr != nil {
 		log.Printf("index: read suggested questions for game %d: %v", gameID, qErr)
 	} else if !allQuestionsEdited(existing) {
-		if qErr := s.regenerateQuestions(r.Context(), gameID, false); qErr != nil {
+		if qErr := s.regenerateQuestions(r.Context(), gameID, manuals.AgentRules, false); qErr != nil {
 			log.Printf("index: suggested questions for game %d: %v", gameID, qErr)
 		}
 	}
