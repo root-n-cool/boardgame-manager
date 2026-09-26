@@ -35,6 +35,10 @@ export interface MissingPiece {
   since: string
 }
 
+export type ChatAgent = 'rules' | 'strategy'
+/** Quali agenti della chat ha il gioco. Nessuno dei due = niente chat. */
+export type ChatAvailability = Record<ChatAgent, boolean>
+
 export interface GameDetail {
   id: number
   bggId: string | null
@@ -49,16 +53,16 @@ export interface GameDetail {
   seats: number
   /** Vero quando esiste una descrizione BGG originale da cui ritradurre. */
   canTranslate: boolean
-  /** Vero quando il gioco ha un manuale indicizzato e il provider AI è configurato. */
-  canAsk: boolean
+  /** Quali agenti della chat ha il gioco (Manuale/regole, Strategia). */
+  chat: ChatAvailability
   /**
-   * Le tre domande suggerite della chat, scritte dal modello a partire dal
-   * manuale indicizzato. L'admin può correggerle a mano nella scheda di
-   * modifica. Vuota quando il gioco non ne ha (indicizzato prima di questa
-   * funzione, o generazione mai riuscita): in quel caso il pannello usa le
-   * sue domande fisse.
+   * Le tre domande suggerite della chat, scritte dal modello, per agente.
+   * L'admin può correggerle a mano nella scheda di modifica. Vuota quando il
+   * gioco non ne ha per quell'agente (indicizzato prima di questa funzione,
+   * o generazione mai riuscita): in quel caso il pannello usa le sue
+   * domande fisse.
    */
-  suggestedQuestions: string[]
+  suggestedQuestions: Record<ChatAgent, string[]>
   languages: GameLanguageInfo[]
   /**
    * Presente solo con una sessione admin (assente per la scheda pubblica).

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue'
-import ChatComposer from './ChatComposer.vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import ChatComposer, { type ComposerAgent } from './ChatComposer.vue'
+import type { ChatAgent, ChatAvailability } from '../utils/game'
 
 /**
  * Il contenuto della chat, indipendente da dove vive: la sidebar su
@@ -28,8 +29,12 @@ import ChatComposer from './ChatComposer.vue'
 const props = defineProps<{
   gameId: number
   gameName: string
-  /** Le tre domande suggerite, già formulate dal modello. Vuota = si usano le fisse. */
-  suggestedQuestions: string[]
+  /** Quali agenti ha il gioco (Manuale/regole, Strategia). */
+  chat: ChatAvailability
+  /** Le tre domande suggerite per agente, già formulate dal modello. Vuota = si usano le fisse. */
+  suggestedQuestions: Record<ChatAgent, string[]>
+  /** Il gioco ha un manuale indicizzato: cambia il sottotitolo del Manuale. */
+  hasManual: boolean
   /** Nel dialog mobile la testata porta anche la ×; nella sidebar no. */
   closable?: boolean
   /** Nella barra desktop la testata porta il bottone per ingrandire in modale. */
@@ -56,11 +61,43 @@ defineExpose({
 // manda, così due richieste non si accavallano sulla stessa conversazione.
 const busy = ref(false)
 
-// Una chiave per gioco: le conversazioni di due giochi diversi non si
-// mescolano, e chi torna sulla scheda ritrova la sua. deep-chat la
-// gestisce da sé (`browserStorage` qui sotto) — scrive a ogni messaggio e
-// rilegge al render — quindi non c'è codice nostro che serializza niente.
-const storageKey = computed(() => `bgm-chat-${props.gameId}`)
+// Una conversazione per agente: chi passa alla Strategia e torna ritrova il
+// suo filo sulle regole. L'agente scelto si ricorda per gioco.
+const agentKey = computed(() => `bgm-chat-${props.gameId}-agent`)
+function initialAgent(): ChatAgent {
+  try {
+    const saved = localStorage.getItem(agentKey.value)
+    if ((saved === 'rules' || saved === 'strategy') && props.chat[saved]) return saved
+  } catch {
+    // Storage negato: si parte dal default.
+  }
+  return props.chat.rules ? 'rules' : 'strategy'
+}
+const agent = ref<ChatAgent>(initialAgent())
+
+// Una chiave per gioco e per agente: le conversazioni di due giochi (o due
+// agenti dello stesso gioco) non si mescolano, e chi torna sulla scheda
+// ritrova la sua. deep-chat la gestisce da sé (`browserStorage` qui sotto)
+// — scrive a ogni messaggio e rilegge al render — quindi non c'è codice
+// nostro che serializza niente.
+const storageKey = computed(() => `bgm-chat-${props.gameId}-${agent.value}`)
+
+// La chiave di prima (una sola conversazione per gioco) diventa quella del
+// Manuale, una volta sola: chi aveva un filo aperto prima dell'aggiornamento
+// non lo perde.
+function migrateLegacyConversation() {
+  try {
+    const legacy = `bgm-chat-${props.gameId}`
+    const raw = localStorage.getItem(legacy)
+    if (raw === null) return
+    if (localStorage.getItem(`${legacy}-rules`) === null) {
+      localStorage.setItem(`${legacy}-rules`, raw)
+    }
+    localStorage.removeItem(legacy)
+  } catch {
+    // Storage negato: niente da migrare.
+  }
+}
 
 /**
  * Dice se su questo gioco c'è una conversazione da riaprire. Legge la
@@ -85,11 +122,27 @@ function hasSavedConversation(): boolean {
 }
 
 onMounted(() => {
+  migrateLegacyConversation()
   if (hasSavedConversation()) {
     // Senza focus: la sidebar è aperta per default e rubare il cursore a
     // chi ha appena aperto la scheda gioco per leggerla sarebbe un agguato.
     start('', false)
   }
+})
+
+// Cambiare agente smonta deep-chat (`:key` sull'agente) e rimonta la
+// conversazione dell'altro, o lo stato di riposo con le sue domande.
+watch(agent, (next) => {
+  try {
+    localStorage.setItem(agentKey.value, next)
+  } catch {
+    // Storage negato: la scelta vale finché la pagina resta aperta.
+  }
+  started.value = false
+  failed.value = false
+  busy.value = false
+  pendingQuestion.value = ''
+  if (hasSavedConversation()) start('', true)
 })
 
 /**
@@ -115,22 +168,46 @@ function newConversation() {
   nextTick(() => composer.value?.focus())
 }
 
-// Le domande suggerite: tre domande fisse. Una chat vuota su un telefono
-// non suggerisce cosa farne.
-const fallbackQuestions = [
-  'Come finisce la partita?',
-  'In quanti si gioca?',
-  'Come si contano i punti?',
-]
+// Le voci del selettore: due sempre, quella senza l'agente disponibile
+// disabilitata (il selettore stesso resta nascosto sotto i due agenti, ma
+// qui i due esistono sempre — è `disabled` a cambiare).
+const agents = computed<ComposerAgent[]>(() => [
+  { key: 'rules', label: 'Manuale', tag: 'regole', disabled: !props.chat.rules },
+  { key: 'strategy', label: 'Strategia', tag: 'consigli', disabled: !props.chat.strategy },
+])
+
+// Le domande suggerite: tre domande fisse per agente. Una chat vuota su un
+// telefono non suggerisce cosa farne.
+const fallbackQuestions: Record<ChatAgent, string[]> = {
+  rules: ['Come finisce la partita?', 'In quanti si gioca?', 'Come si contano i punti?'],
+  strategy: [
+    'Come imposto una buona apertura?',
+    'Su cosa conviene puntare a metà partita?',
+    'Quali errori fanno i principianti?',
+  ],
+}
 
 // Le domande suggerite arrivano già formulate dal server, generate dal
-// modello sui titoli del manuale vero. Prima si costruivano qui da quei
-// titoli con una tabella fissa, e su un manuale reale il risultato era
-// «Cosa dice il manuale su "di Klaus-Jürgen Wrede"?»: il template non
-// poteva fare di meglio, perché una domanda non è un titolo di sezione con
-// un giro di frase intorno.
-const suggestions = computed<string[]>(() =>
-  props.suggestedQuestions.length >= 3 ? props.suggestedQuestions.slice(0, 3) : fallbackQuestions,
+// modello sui titoli del manuale vero (per il Manuale) o dal forum di BGG
+// (per la Strategia). Prima si costruivano qui da quei titoli con una
+// tabella fissa, e su un manuale reale il risultato era «Cosa dice il
+// manuale su "di Klaus-Jürgen Wrede"?»: il template non poteva fare di
+// meglio, perché una domanda non è un titolo di sezione con un giro di
+// frase intorno.
+const suggestions = computed<string[]>(() => {
+  const qs = props.suggestedQuestions[agent.value] ?? []
+  return qs.length >= 3 ? qs.slice(0, 3) : fallbackQuestions[agent.value]
+})
+
+// Il sottotitolo dice da dove arrivano le risposte: dal manuale se il gioco
+// ne ha uno indicizzato, altrimenti dal forum di BGG (la Strategia parla
+// sempre e solo col forum, non ha un manuale da leggere).
+const subtitle = computed(() => {
+  if (agent.value === 'strategy') return 'consigli dal forum di BGG'
+  return props.hasManual ? 'risposte dal manuale' : 'risposte dal forum di BGG'
+})
+const placeholder = computed(() =>
+  agent.value === 'strategy' ? 'Chiedi un consiglio…' : 'Chiedi una regola…',
 )
 
 /**
@@ -241,7 +318,11 @@ function onChatError() {
  * deep-chat, che si aspetta l'oggetto vero e prova a mutarlo (verificato
  * in browser: "Cannot create property 'disabled' on string ...").
  */
-const connect = computed(() => ({ url: `/api/games/${props.gameId}/ask`, method: 'POST' }))
+const connect = computed(() => ({
+  url: `/api/games/${props.gameId}/ask`,
+  method: 'POST',
+  additionalBodyProps: { agent: agent.value },
+}))
 
 // Lo storico sta nel localStorage del browser, non nel database: nessuna
 // tabella, nessun identificativo da inventare per chi non ha un account, e
@@ -260,7 +341,7 @@ const requestBodyLimits = { maxMessages: 40 }
 const errorMessages = {
   overrides: {
     default: 'Qualcosa non ha funzionato. Riprova.',
-    service: 'Non riesco a rispondere in questo momento. Guarda il manuale nella scheda del gioco.',
+    service: 'Non riesco a rispondere in questo momento. Riprova tra poco.',
   },
 }
 
@@ -329,9 +410,9 @@ const auxiliaryStyle = `
   <div class="manual-chat-panel">
     <!--
       La testata dice di cosa si tratta: nella sidebar desktop, senza,
-      restava una colonna di bolle senza nome. "L'Arbitro" è chi risolve le
-      dispute al tavolo — e il sottotitolo tiene fermo che risponde dal
-      manuale, non a memoria.
+      restava una colonna di bolle senza nome. "Il Mentore" spiega le regole
+      e insegna a giocare meglio; il sottotitolo dice da dove arrivano le
+      risposte.
     -->
     <!--
       Un div e non un <header>: dentro un <dialog> un <header> prende il
@@ -341,8 +422,8 @@ const auxiliaryStyle = `
     -->
     <div class="manual-chat-head">
       <div class="manual-chat-head-name">
-        <h2>L'Arbitro</h2>
-        <p>risposte dal manuale</p>
+        <h2>Il Mentore</h2>
+        <p>{{ subtitle }}</p>
       </div>
       <div class="manual-chat-head-actions">
         <!--
@@ -395,7 +476,7 @@ const auxiliaryStyle = `
       </div>
     </div>
 
-    <p class="manual-chat-note">Controlla sempre la pagina citata.</p>
+    <p class="manual-chat-note">Controlla sempre la fonte citata.</p>
 
     <!--
       Il corpo ha UN figlio solo, ed è voluto: il widget di deep-chat vuole
@@ -415,7 +496,8 @@ const auxiliaryStyle = `
         -->
         <div class="manual-chat-rest-scroll">
           <p class="manual-chat-intro">
-            Chiedi una regola di <strong>{{ gameName }}</strong> a parole tue.
+            <template v-if="agent === 'strategy'">Chiedi come giocare meglio a <strong>{{ gameName }}</strong>.</template>
+            <template v-else>Chiedi una regola di <strong>{{ gameName }}</strong> a parole tue.</template>
           </p>
           <!--
             `role="list"` come ogni altra lista spogliata del progetto: con
@@ -442,6 +524,7 @@ const auxiliaryStyle = `
 
       <deep-chat
         v-else
+        :key="agent"
         ref="chat"
         class="manual-chat-widget"
         :connect="connect"
@@ -456,6 +539,15 @@ const auxiliaryStyle = `
       />
     </div>
 
-    <ChatComposer v-if="!failed" ref="composer" class="manual-chat-composer" :busy="busy" @send="onComposerSend" />
+    <ChatComposer
+      v-if="!failed"
+      ref="composer"
+      v-model:agent="agent"
+      class="manual-chat-composer"
+      :busy="busy"
+      :agents="agents"
+      :placeholder="placeholder"
+      @send="onComposerSend"
+    />
   </div>
 </template>

@@ -30,7 +30,7 @@ const props = defineProps<{
   aiConfigured: boolean
 }>()
 
-// indexedChunks, suggestedQuestions e canAsk vivono sul gioco intero: dopo
+// indexedChunks, suggestedQuestions e chat vivono sul gioco intero: dopo
 // ogni indicizzazione o rimozione il genitore li ricarica per tutte le fonti.
 const emit = defineEmits<{ changed: [] }>()
 

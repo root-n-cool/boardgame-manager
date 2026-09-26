@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import ManualChatPanel from './ManualChatPanel.vue'
+import type { ChatAgent, ChatAvailability } from '../utils/game'
 
 /**
  * Decide DOVE vive la chat, non cos'è.
@@ -35,7 +36,9 @@ import ManualChatPanel from './ManualChatPanel.vue'
 const props = defineProps<{
   gameId: number
   gameName: string
-  suggestedQuestions: string[]
+  chat: ChatAvailability
+  suggestedQuestions: Record<ChatAgent, string[]>
+  hasManual: boolean
 }>()
 
 const SIDEBAR_MIN_WIDTH = '(min-width: 1100px)'
@@ -168,12 +171,12 @@ function closeDialog() {
     compare nell'elenco dei landmark di uno screen reader come
     "complementary" e basta, e da lì la chat non si trova.
   -->
-  <aside v-if="wide" class="manual-chat-aside" aria-label="L'Arbitro — chiedi al manuale">
+  <aside v-if="wide" class="manual-chat-aside" aria-label="Il Mentore — chiedi regole e consigli">
     <dialog
       ref="sheet"
       class="manual-chat-sheet"
       :class="{ 'is-expanded': expanded }"
-      aria-label="L'Arbitro — chiedi al manuale"
+      aria-label="Il Mentore — chiedi regole e consigli"
       @cancel="onSheetCancel"
       @pointerdown="onSheetPointerdown"
       @click="onSheetClick"
@@ -182,7 +185,9 @@ function closeDialog() {
         ref="panel"
         :game-id="gameId"
         :game-name="gameName"
+        :chat="chat"
         :suggested-questions="suggestedQuestions"
+        :has-manual="hasManual"
         expandable
         :expanded="expanded"
         @toggle-expand="setExpanded(!expanded)"
@@ -208,7 +213,7 @@ function closeDialog() {
         <circle cx="12" cy="10.3" r="1.25" fill="currentColor" />
         <circle cx="16.3" cy="13" r="1.25" fill="currentColor" />
       </svg>
-      Chiedi al manuale
+      Chiedi al Mentore
     </button>
 
     <!--
@@ -222,7 +227,7 @@ function closeDialog() {
       v-if="dialogMounted"
       ref="dialog"
       class="manual-chat-dialog"
-      aria-label="L'Arbitro — chiedi al manuale"
+      aria-label="Il Mentore — chiedi regole e consigli"
     >
       <!--
         La testata (titolo, nuova conversazione, ×) sta dentro il pannello:
@@ -233,7 +238,9 @@ function closeDialog() {
       <ManualChatPanel
         :game-id="gameId"
         :game-name="gameName"
+        :chat="chat"
         :suggested-questions="suggestedQuestions"
+        :has-manual="hasManual"
         closable
         @close="closeDialog"
       />

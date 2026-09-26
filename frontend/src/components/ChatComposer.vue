@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 
 /**
- * Il campo con cui si scrive all'Arbitro: testo sopra, dettatura e invio
+ * Il campo con cui si scrive al Mentore: testo sopra, dettatura e invio
  * in una riga sotto, a destra — e, quando c'è più di un agente, il
  * selettore ("Manuale ▾") a sinistra. È markup nostro e non il campo di
  * deep-chat perché quello posiziona i suoi bottoni in `position: absolute`

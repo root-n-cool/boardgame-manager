@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { useAuthStore } from '../stores/auth'
@@ -7,7 +7,7 @@ import GameFacts from '../components/GameFacts.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import ManualChat from '../components/ManualChat.vue'
 import MarkdownText from '../components/MarkdownText.vue'
-import type { GameDetail, GameLanguageInfo } from '../utils/game'
+import type { ChatAgent, GameDetail, GameLanguageInfo } from '../utils/game'
 
 const route = useRoute()
 const router = useRouter()
@@ -19,10 +19,22 @@ const error = ref('')
 const activeLangCode = ref('')
 
 // Le domande suggerite arrivano già formulate dal server, generate dal
-// modello sulle fonti indicizzate. Non c'è un endpoint dedicato: arrivano
-// sulla scheda del gioco, insieme alla stessa lettura che decide canAsk. Se
-// non ce ne sono almeno tre il pannello usa le sue domande fisse.
-const suggestedQuestions = ref<string[]>([])
+// modello sulle fonti indicizzate, per agente. Non c'è un endpoint
+// dedicato: arrivano sulla scheda del gioco, insieme alla stessa lettura
+// che decide `chat`. Se un agente non ne ha almeno tre il pannello usa le
+// sue domande fisse.
+const suggestedQuestions = ref<Record<ChatAgent, string[]>>({ rules: [], strategy: [] })
+
+// Vero se almeno un media del gioco ha del testo indicizzato: cambia il
+// sottotitolo del Manuale ("risposte dal manuale" contro "risposte dal
+// forum di BGG", quando la chat di regole ripiega sul forum).
+const hasManual = computed(
+  () => !!game.value && game.value.languages.some((l) => l.media.some((m) => m.indexedChunks > 0)),
+)
+
+// hasChat governa la comparsa del pannello: nessuno dei due agenti = niente
+// chat da montare (stessa regola di `chat`, letta qui una sola volta).
+const hasChat = computed(() => !!game.value && (game.value.chat.rules || game.value.chat.strategy))
 
 function activeLanguage(): GameLanguageInfo | undefined {
   return game.value?.languages.find((l) => l.code === activeLangCode.value)
@@ -42,7 +54,7 @@ function goBack() {
 onMounted(async () => {
   try {
     game.value = await api.get<GameDetail>(`/games/${gameId}`)
-    suggestedQuestions.value = game.value.suggestedQuestions ?? []
+    suggestedQuestions.value = game.value.suggestedQuestions ?? { rules: [], strategy: [] }
     if (game.value.languages.length > 0) {
       activeLangCode.value = game.value.languages[0].code
     }
@@ -57,7 +69,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div v-if="game" class="game-detail-layout" :class="{ 'has-chat': game.canAsk }">
+  <div v-if="game" class="game-detail-layout" :class="{ 'has-chat': hasChat }">
     <div class="game-detail-main">
       <button type="button" class="back-link" @click="goBack">&larr; Indietro</button>
 
@@ -152,10 +164,12 @@ onMounted(async () => {
     </div>
 
     <ManualChat
-      v-if="game.canAsk"
+      v-if="hasChat"
       :game-id="game.id"
       :game-name="game.name"
+      :chat="game.chat"
       :suggested-questions="suggestedQuestions"
+      :has-manual="hasManual"
     />
   </div>
   <div v-else-if="error">
