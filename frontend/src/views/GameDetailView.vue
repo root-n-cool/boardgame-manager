@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api/client'
 import { useAuthStore } from '../stores/auth'
 import GameFacts from '../components/GameFacts.vue'
+import GameMaterialsChecklist from '../components/GameMaterialsChecklist.vue'
 import GameMediaList from '../components/GameMediaList.vue'
 import ManualChat from '../components/ManualChat.vue'
 import MarkdownText from '../components/MarkdownText.vue'
@@ -159,6 +160,8 @@ onMounted(async () => {
         </div>
         <GameMediaList :media="activeLanguage()?.media || []" />
       </section>
+
+      <GameMaterialsChecklist v-if="game.materials?.length" :game-id="game.id" :materials="game.materials" />
 
       <p v-if="error" class="error">{{ error }}</p>
     </div>

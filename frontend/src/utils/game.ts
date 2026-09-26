@@ -39,6 +39,12 @@ export type ChatAgent = 'rules' | 'strategy'
 /** Quali agenti della chat ha il gioco. Nessuno dei due = niente chat. */
 export type ChatAvailability = Record<ChatAgent, boolean>
 
+/** Una voce del contenuto della scatola, come la vede la scheda pubblica. */
+export interface GameMaterialInfo {
+  name: string
+  quantity: number
+}
+
 export interface GameDetail {
   id: number
   bggId: string | null
@@ -64,6 +70,8 @@ export interface GameDetail {
    */
   suggestedQuestions: Record<ChatAgent, string[]>
   languages: GameLanguageInfo[]
+  /** Il contenuto della scatola, nell'ordine dell'admin; vuoto se non definito. */
+  materials: GameMaterialInfo[]
   /**
    * Presente solo con una sessione admin (assente per la scheda pubblica).
    * Assente o vuota quando la scatola è completa o la segnalazione è già
