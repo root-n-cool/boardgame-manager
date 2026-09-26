@@ -43,9 +43,15 @@ const publicItems: NavItem[] = [
     label: 'Eventi',
     to: '/',
     icon: 'calendar',
-    // Anche le schede pubbliche dei giochi (/games/:id) stanno sotto Eventi:
-    // ci si arriva dal tavolo di una serata, non da uno scaffale a sé.
-    matches: (p) => p === '/' || p.startsWith('/events') || p.startsWith('/games'),
+    matches: (p) => p === '/' || p.startsWith('/events'),
+  },
+  {
+    label: 'Giochi',
+    to: '/giochi',
+    icon: 'box',
+    // Le schede pubbliche (/games/:id) stanno sotto lo scaffale da cui
+    // vengono, anche quando ci si arriva dal tavolo di una serata.
+    matches: (p) => p.startsWith('/giochi') || p.startsWith('/games'),
   },
   {
     label: 'Gestisci prenotazione',

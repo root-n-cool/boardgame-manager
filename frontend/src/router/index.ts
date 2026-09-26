@@ -7,6 +7,7 @@ import SettingsView from '../views/SettingsView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameNewView from '../views/GameNewView.vue'
 import GameDetailView from '../views/GameDetailView.vue'
+import CatalogView from '../views/CatalogView.vue'
 import GameAdminDetailView from '../views/GameAdminDetailView.vue'
 import GameLeaderboardView from '../views/GameLeaderboardView.vue'
 import GameLoansView from '../views/GameLoansView.vue'
@@ -76,6 +77,7 @@ const router = createRouter({
       component: InviteAcceptView,
       meta: { public: true, bare: true },
     },
+    { path: '/giochi', name: 'catalog', component: CatalogView, meta: { public: true } },
     { path: '/games/:id', name: 'game-detail', component: GameDetailView, meta: { public: true } },
     { path: '/games/:id/leaderboard', name: 'game-leaderboard', component: GameLeaderboardView, meta: { public: true } },
     // L'area di gestione non ha più un layout proprio (la shell è unica per
