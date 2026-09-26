@@ -724,10 +724,10 @@ func TestGetEvent_ExposesGameWeight(t *testing.T) {
 // per guardare i flag.
 type eventDetailGames struct {
 	Games []struct {
-		EventGameID int64 `json:"eventGameId"`
-		GameID      int64 `json:"gameId"`
-		Bookable    bool  `json:"bookable"`
-		CanAsk      bool  `json:"canAsk"`
+		EventGameID int64     `json:"eventGameId"`
+		GameID      int64     `json:"gameId"`
+		Bookable    bool      `json:"bookable"`
+		Chat        chatFlags `json:"chat"`
 	} `json:"games"`
 }
 

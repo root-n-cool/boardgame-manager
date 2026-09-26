@@ -32,18 +32,19 @@ func toEventListItem(e events.Event) map[string]any {
 	return item
 }
 
-func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int, bookable, canAsk bool) map[string]any {
+func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remaining int, bookable bool, chat map[string]bool) map[string]any {
 	return map[string]any{
 		"eventGameId": eventGameID, "gameId": g.ID, "name": g.Name, "coverPath": g.CoverPath,
 		"copyIndex": copyIndex, "seats": seats, "remaining": remaining, "weight": g.Weight,
 		"bookable": bookable,
-		// canAsk dice se il link "Chiedi al manuale" ha una chat dietro. Senza
-		// questo il link compariva su ogni gioco e, su uno senza manuale
-		// preparato, portava a una scheda dove non succedeva niente: nessun
+		// chat dice se il link "Chiedi al Mentore" ha una chat dietro, e
+		// quali agenti: compare se almeno uno dei due è vero. Senza questo
+		// il link compariva su ogni gioco e, su uno senza manuale preparato
+		// né forum, portava a una scheda dove non succedeva niente: nessun
 		// messaggio, nessuna spiegazione. Al tavolo, con le carte in mano, un
 		// link che non fa niente si legge come un'app rotta, non come una
 		// funzione assente.
-		"canAsk": canAsk,
+		"chat": chat,
 	}
 }
 
@@ -62,15 +63,17 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 	}
 
 	// Quali giochi della serata hanno un manuale preparato, in UNA query per
-	// tutta la risposta, e il provider AI letto una volta sola: sono le due
-	// condizioni di canAsk, e nessuna delle due deve costare una richiesta
-	// per gioco.
+	// tutta la risposta, e il provider AI + Tavily letti una volta sola:
+	// sono le condizioni di chatAvailability, e nessuna deve costare una
+	// richiesta per gioco.
+	aiOK := s.aiConfigured(ctx)
+	tavilyOK := s.tavilyConfigured(ctx)
 	gameIDs := make([]int64, 0, len(eventGames))
 	for _, eg := range eventGames {
 		gameIDs = append(gameIDs, eg.GameID)
 	}
 	withManual := map[int64]bool{}
-	if s.Manuals != nil && s.aiConfigured(ctx) {
+	if s.Manuals != nil && aiOK {
 		if got, err := s.Manuals.GamesWithChunks(ctx, gameIDs); err == nil {
 			withManual = got
 		}
@@ -90,8 +93,10 @@ func (s *Server) toEventDetail(ctx context.Context, e events.Event) (map[string]
 			gameCache[eg.GameID] = game
 		}
 		remaining := eg.Seats - occupied[eg.ID]
+		rules, strategy := chatAvailability(aiOK, withManual[eg.GameID], tavilyOK && hasBGGID(game))
 		gamesOut = append(gamesOut, toEventGameSummary(
-			eg.ID, game, eg.CopyIndex, eg.Seats, remaining, eg.Bookable, withManual[eg.GameID]))
+			eg.ID, game, eg.CopyIndex, eg.Seats, remaining, eg.Bookable,
+			map[string]bool{"rules": rules, "strategy": strategy}))
 	}
 
 	detail := toEventSummary(e)
@@ -125,16 +130,18 @@ func (s *Server) toBookingDetailResponse(ctx context.Context, b events.Booking) 
 	resp["startTime"] = event.StartTime
 	resp["gameId"] = game.ID
 	resp["gameName"] = game.Name
-	// Stessa regola della scheda evento: il link "Chiedi al manuale" compare
+	// Stessa regola della scheda evento: il link "Chiedi al Mentore" compare
 	// solo se dietro c'è davvero una chat. Qui il gioco è uno solo, quindi
 	// basta la condizione presa direttamente.
-	canAsk := false
-	if s.Manuals != nil && s.aiConfigured(ctx) {
+	aiOK := s.aiConfigured(ctx)
+	hasChunks := false
+	if s.Manuals != nil && aiOK {
 		if has, err := s.Manuals.HasChunks(ctx, game.ID); err == nil {
-			canAsk = has
+			hasChunks = has
 		}
 	}
-	resp["canAsk"] = canAsk
+	rules, strategy := chatAvailability(aiOK, hasChunks, s.tavilyConfigured(ctx) && hasBGGID(game))
+	resp["chat"] = map[string]bool{"rules": rules, "strategy": strategy}
 	resp["copyIndex"] = eventGame.CopyIndex
 	resp["seats"] = eventGame.Seats
 	// Whether the copy number is worth showing at all: with one copy of the

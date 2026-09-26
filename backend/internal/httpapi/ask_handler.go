@@ -35,8 +35,8 @@ func (s *Server) asker(ctx context.Context) ai.Asker {
 }
 
 // aiConfigured dice se un provider è impostato, senza fare richieste. Serve
-// a canAsk: la scheda gioco deve sapere se mostrare la chat prima che
-// qualcuno faccia una domanda.
+// a chatAvailability: le schede pubbliche devono sapere se mostrare la chat
+// prima che qualcuno faccia una domanda.
 func (s *Server) aiConfigured(ctx context.Context) bool {
 	if s.Asker != nil {
 		return true
