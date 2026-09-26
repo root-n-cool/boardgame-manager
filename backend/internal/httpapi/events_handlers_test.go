@@ -720,6 +720,45 @@ func TestGetEvent_ExposesGameWeight(t *testing.T) {
 	}
 }
 
+// Il filtro "Quanti siete?" della pagina evento lavora sul numero di
+// giocatori della copia: min e max devono arrivare con la card.
+func TestGetEvent_ExposesPlayerCount(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+
+	min, max := 2, 5
+	g, err := server.Games.CreateGame(context.Background(), games.Game{Name: "Carcassonne", MinPlayers: &min, MaxPlayers: &max})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	event, err := server.Events.CreateEvent(context.Background(), events.EventInput{
+		Title: "Serata giochi", EventDate: "2099-01-01", StartTime: "20:00",
+		Games: []events.EventGameInput{{GameID: g.ID, Copies: 1}},
+	})
+	if err != nil {
+		t.Fatalf("create event: %v", err)
+	}
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d", event.ID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Games []struct {
+			MinPlayers *int `json:"minPlayers"`
+			MaxPlayers *int `json:"maxPlayers"`
+		} `json:"games"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Games) != 1 || body.Games[0].MinPlayers == nil || *body.Games[0].MinPlayers != 2 ||
+		body.Games[0].MaxPlayers == nil || *body.Games[0].MaxPlayers != 5 {
+		t.Fatalf("expected 2–5 players, got %+v", body.Games)
+	}
+}
+
 // eventDetailGames è la lista giochi della risposta pubblica, quanto basta
 // per guardare i flag.
 type eventDetailGames struct {

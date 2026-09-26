@@ -89,6 +89,18 @@ func (s *Server) toGameDetail(ctx context.Context, g games.Game, langs []games.G
 	rules, strategy := chatAvailability(s.aiConfigured(ctx), summary.HasChunks,
 		hasBGGID(g) && s.tavilyConfigured(ctx))
 	detail["chat"] = map[string]bool{"rules": rules, "strategy": strategy}
+	// Il contenuto della scatola esce a tutti: chi gioca lo spunta prima di
+	// riconsegnare. Solo nome e quantità — gli id servono all'editor admin,
+	// che li legge dalla sua rotta.
+	materials, err := s.Games.ListMaterials(ctx, g.ID)
+	if err != nil {
+		return nil, err
+	}
+	materialsOut := make([]map[string]any, 0, len(materials))
+	for _, m := range materials {
+		materialsOut = append(materialsOut, map[string]any{"name": m.Name, "quantity": m.Quantity})
+	}
+	detail["materials"] = materialsOut
 	// missingPieces racconta cosa non è tornato: solo a chi ha una
 	// sessione, per lo stesso motivo di incomplete in toGameSummary.
 	if signedIn {

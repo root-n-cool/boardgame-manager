@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { GameDetail } from '../utils/game'
+import { formatPlayers } from '../utils/gameFilters'
 
 const props = defineProps<{ game: GameDetail }>()
 
@@ -8,10 +9,9 @@ const props = defineProps<{ game: GameDetail }>()
 const facts = computed(() => {
   const g = props.game
   const list: { label: string; value: string; href?: string }[] = []
-  if (g.minPlayers || g.maxPlayers) {
-    const min = g.minPlayers ?? g.maxPlayers
-    const max = g.maxPlayers ?? g.minPlayers
-    list.push({ label: 'Giocatori', value: min === max ? `${min}` : `${min}–${max}` })
+  const players = formatPlayers(g)
+  if (players) {
+    list.push({ label: 'Giocatori', value: players })
   }
   if (g.playtimeMinutes) {
     list.push({ label: 'Durata', value: `${g.playtimeMinutes} min` })

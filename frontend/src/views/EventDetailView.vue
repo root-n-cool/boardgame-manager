@@ -3,11 +3,13 @@ import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import BookingConfirmation from '../components/BookingConfirmation.vue'
+import SelectFilter from '../components/SelectFilter.vue'
 import GameDifficulty from '../components/GameDifficulty.vue'
 import MarkdownText from '../components/MarkdownText.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
 import type { ChatAvailability } from '../utils/game'
+import { PLAYER_FILTER_OPTIONS, fitsPlayers } from '../utils/gameFilters'
 import { listMyBookings, removeMyBooking, saveMyBooking, type MyBooking } from '../utils/myBookings'
 
 interface EventGameInfo {
@@ -19,6 +21,8 @@ interface EventGameInfo {
   seats: number
   remaining: number
   weight: number | null
+  minPlayers: number | null
+  maxPlayers: number | null
   bookable: boolean
   /**
    * Quali agenti stanno dietro il link "Chiedi al Mentore" (manuale
@@ -82,6 +86,12 @@ const bookingError = ref('')
 const bookingResult = ref<BookingResult | null>(null)
 const chipActionError = ref('')
 
+// I filtri sopra "Al tavolo". Si parte sempre da "Tutti": un gioco senza
+// prenotazione è comunque in sala, e nasconderlo di default farebbe
+// credere che la serata ne porti meno di quanti ce ne sono.
+const onlyBookable = ref(false)
+const players = ref<number | null>(null)
+
 /**
  * I codici già confermati restano qui, e nessuno li cancella: al tavolo un
  * telefono solo prenota per due o tre persone, e ogni codice si vede una
@@ -124,6 +134,28 @@ const venueLines = computed(() => {
   }
   return { title: venue.name || venue.address, detail: venue.name ? venue.address : '' }
 })
+
+// Il toggle ha senso solo se la serata mescola i due tipi: con tutti i
+// giochi prenotabili (o nessuno) le due viste sarebbero identiche.
+const hasBookMix = computed(
+  () => !!event.value && event.value.games.some((g) => g.bookable) && event.value.games.some((g) => !g.bookable),
+)
+
+// Con un solo tavolo non c'è niente da filtrare.
+const showFilters = computed(() => !!event.value && event.value.games.length > 1)
+
+const visibleGames = computed(() =>
+  (event.value?.games ?? []).filter(
+    (g) =>
+      (!onlyBookable.value || g.bookable) &&
+      (players.value === null || fitsPlayers(g, players.value)),
+  ),
+)
+
+function resetFilters() {
+  onlyBookable.value = false
+  players.value = null
+}
 
 const hasStarted = computed(() => {
   if (!event.value) {
@@ -348,8 +380,21 @@ onMounted(async () => {
     </p>
     <p v-if="chipActionError" class="error">{{ chipActionError }}</p>
 
-    <ul class="event-games">
-      <li v-for="g in event.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
+    <div v-if="showFilters" class="event-filters">
+      <!-- Due voci, una sempre accesa: un toggle da un tocco, non una
+           tendina. Bottoni con aria-pressed dentro un gruppo etichettato. -->
+      <div v-if="hasBookMix" class="filter-field" role="group" aria-labelledby="filter-show-label">
+        <span id="filter-show-label" class="filter-label">Mostra</span>
+        <div class="filter-toggle">
+          <button type="button" :aria-pressed="!onlyBookable" @click="onlyBookable = false">Tutti</button>
+          <button type="button" :aria-pressed="onlyBookable" @click="onlyBookable = true">Prenotabili</button>
+        </div>
+      </div>
+      <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
+    </div>
+
+    <ul v-if="visibleGames.length > 0" class="event-games">
+      <li v-for="g in visibleGames" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
         <img
           v-if="g.coverPath"
           :src="`/api/uploads/${g.coverPath}`"
@@ -417,7 +462,11 @@ onMounted(async () => {
         </div>
       </li>
     </ul>
-    <p v-if="event.games.some(tableOnly)" class="table-note">
+    <div v-else-if="event.games.length > 0" class="filter-empty">
+      <p class="empty-note">Nessun gioco della serata corrisponde a questi filtri.</p>
+      <button type="button" class="btn-secondary is-compact" @click="resetFilters">Azzera filtri</button>
+    </div>
+    <p v-if="visibleGames.some(tableOnly)" class="table-note">
       I giochi segnati "Senza prenotazione" sono a disposizione al tavolo:
       chiedili all'organizzatore quando arrivi.
     </p>

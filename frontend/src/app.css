@@ -1233,9 +1233,12 @@ button.back-link:active {
 
 /* ---------- Lo scaffale — griglia scatole di gioco (GamesView) ---------- */
 
+/* `--grid-fill` e `--grid-max` lasciano a una variante (il catalogo
+   pubblico) colonne elastiche senza ridichiarare la griglia, e quindi senza
+   scavalcare la regola telefono qui sotto. */
 .game-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 230px));
+  grid-template-columns: repeat(var(--grid-fill, auto-fit), minmax(190px, var(--grid-max, 230px)));
   gap: 1.1rem;
   margin: 0 0 1.75rem;
 }
@@ -4714,7 +4717,8 @@ tbody tr:nth-child(3) .rank-medal {
    cornice che il `fieldset` disegna già, col testo delle righe schiacciato
    contro quel bordo. Il filetto fra le `li` invece resta: sono voci da
    spuntare una per una, e la riga staccata si perde meno sotto il dito. */
-.material-check-list {
+.material-check-list,
+.materials-checklist-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -5989,4 +5993,222 @@ form.game-materials {
     box-shadow: none;
     border-color: #999;
   }
+}
+
+/* ---------- Controllo componenti (scheda pubblica) ---------- */
+
+/* La checklist che il partecipante spunta prima di riconsegnare. Parente
+   di `.material-check` del banco prestiti (ne condivide lista spogliata e
+   nome elastico, vedi sopra), ma qui non ci sono quantità da digitare:
+   l'intera riga è il `<label>` (`.checkbox-label`), così il tocco va a
+   segno ovunque sulla voce, in piedi al tavolo e col telefono in una mano. */
+.materials-checklist-intro {
+  margin: 0;
+  color: var(--ink-muted);
+}
+
+/* Il conteggio sta nella testata, a destra, dove le altre card mettono la
+   pastiglia della lingua — è la stessa `.lang-chip`, ma si legge come
+   frase, non maiuscoletto. Diventa verde quando la scatola è completa. */
+.materials-checklist .section-head {
+  justify-content: space-between;
+}
+
+.lang-chip.materials-checklist-progress {
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lang-chip.materials-checklist-progress.is-done {
+  color: var(--success);
+  background: var(--success-bg);
+}
+
+.materials-checklist-list {
+  margin-top: 0.5rem;
+}
+
+.materials-checklist-list li {
+  padding: 0;
+}
+
+.materials-checklist-list li + li {
+  border-top: 1px solid var(--card-line);
+}
+
+.materials-checklist-list label.checkbox-label {
+  gap: 0.75rem;
+  min-height: 44px;
+  padding: 0.35rem 0;
+  margin: 0;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.materials-checklist-list label.checkbox-label input[type='checkbox'] {
+  flex: none;
+  width: 1.35rem;
+  height: 1.35rem;
+  margin: 0;
+  accent-color: var(--success);
+}
+
+.materials-checklist-qty {
+  flex: none;
+  min-width: 3.5ch;
+  font-family: 'Data', monospace;
+  color: var(--ink-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.materials-checklist-list label.is-checked .material-check-name {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--card-line);
+}
+
+.materials-checklist-done {
+  margin-top: 0.75rem;
+  color: var(--success);
+  font-weight: 600;
+}
+
+/* ---------- Filtri (catalogo, pagina evento) ---------- */
+
+/* L'etichetta sta sopra il controllo e non accanto: su un telefono la
+   tendina o il toggle occupano già la riga. Maiuscoletto tracciato, mono,
+   come le altre etichette di dato. */
+.filter-field,
+label.select-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.filter-label {
+  font-family: 'Data', monospace;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+}
+
+/* Il toggle Tutti / Prenotabili: due pastiglie, una sempre accesa. Spenta
+   è cartoncino col bordo; accesa prende il feltro, lo stesso verde della
+   chrome: "questo è il tavolo che stai guardando". Il rosso seme resta
+   alle azioni. 44px d'altezza per il dito. */
+.filter-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.filter-toggle button {
+  min-height: 44px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.9rem;
+  color: var(--ink);
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+}
+
+.filter-toggle button:hover {
+  background: var(--card-alt);
+}
+
+.filter-toggle button[aria-pressed='true'] {
+  color: var(--felt-text);
+  background: var(--felt);
+  border-color: var(--felt);
+}
+
+.filter-toggle button[aria-pressed='true']:hover {
+  background: var(--felt-deep);
+}
+
+/* La tendina: select nativa alta 44px e larga quanto le sue voci (la
+   regola globale la stirerebbe a tutta riga). Con un filtro attivo il
+   bordo passa al feltro, così a colpo d'occhio si vede che la lista è
+   ristretta. */
+.select-filter select {
+  width: auto;
+  min-width: 10rem;
+  min-height: 44px;
+  font-size: 0.95rem;
+}
+
+.select-filter select.is-active {
+  border-color: var(--felt);
+  box-shadow: inset 0 0 0 1px var(--felt);
+  font-weight: 600;
+}
+
+/* Nessun risultato: la frase e "Azzera filtri" sulla stessa riga. */
+.filter-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.filter-empty .empty-note {
+  margin: 0;
+}
+
+/* ---------- Catalogo pubblico ---------- */
+
+.catalog-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem 1.5rem;
+  margin: 0 0 1.5rem;
+}
+
+.catalog-search {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.catalog-search input {
+  min-height: 44px;
+}
+
+/* Colonne elastiche invece del tetto di 230px dello scaffale admin: le
+   card arrivano allo stesso bordo destro della barra dei filtri. `auto-fill`
+   tiene le colonne vuote quando i filtri lasciano pochi giochi, e le card
+   non si gonfiano a tutta riga. Sul telefono vale la regola di `.game-grid`. */
+.catalog-grid {
+  --grid-fill: auto-fill;
+  --grid-max: 1fr;
+}
+
+/* Ogni dato della riga non si spezza a metà ("45 / min"); il separatore
+   lo mette il CSS, così il template non costruisce punteggiatura. */
+.catalog-facts span {
+  white-space: nowrap;
+}
+
+.catalog-facts span + span::before {
+  content: ' · ';
+}
+
+.catalog-grid .game-difficulty {
+  margin: 0.35rem 0.9rem 0;
+}
+
+/* I filtri della pagina evento: stessa fila del catalogo, senza ricerca —
+   i tavoli di una serata si scorrono a occhio. */
+.event-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem 1.5rem;
+  margin: 1rem 0 0;
 }

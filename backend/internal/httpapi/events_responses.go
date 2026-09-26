@@ -36,6 +36,7 @@ func toEventGameSummary(eventGameID int64, g games.Game, copyIndex, seats, remai
 	return map[string]any{
 		"eventGameId": eventGameID, "gameId": g.ID, "name": g.Name, "coverPath": g.CoverPath,
 		"copyIndex": copyIndex, "seats": seats, "remaining": remaining, "weight": g.Weight,
+		"minPlayers": g.MinPlayers, "maxPlayers": g.MaxPlayers,
 		"bookable": bookable,
 		// chat dice se il link "Chiedi al Mentore" ha una chat dietro, e
 		// quali agenti: compare se almeno uno dei due è vero. Senza questo

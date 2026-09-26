@@ -23,7 +23,13 @@ esterno obbligatorio.
   — se il gioco ha un manuale indicizzato e un provider AI configurato —
   si propone leggendola dalla sezione del manuale che elenca i componenti,
   restando comunque una proposta da confermare e salvare, mai un salvataggio
-  automatico.
+  automatico. Sulla scheda pubblica del gioco il contenuto diventa una
+  checklist, "Controllo componenti prima della riconsegna", che chi ha
+  giocato spunta dal telefono prima di restituire la scatola (le spunte
+  restano solo sul suo browser).
+- **Catalogo pubblico** (`/giochi`, voce "Giochi" nel menu): chiunque può
+  sfogliare i giochi dell'associazione, cercarli per nome e filtrarli per
+  numero di giocatori e difficoltà.
   Ogni gioco ha anche un numero di **posti prenotabili per copia**: `1`
   per un gioco da tavolo normale, dove chi prenota si prende la copia e
   si porta i suoi; più di 1 per un tavolo aperto — una partita a D&D, un
@@ -34,7 +40,9 @@ esterno obbligatorio.
   propri posti prenotabili presi dal catalogo al momento in cui la copia
   entra nell'evento. Nella pagina pubblica le copie compaiono numerate
   (`Carcassonne #1`, `Carcassonne #2`) quando sono più d'una, e si
-  prenotano separatamente.
+  prenotano separatamente. Un gioco può restare "Senza prenotazione"
+  (disponibile solo dal vivo); la pagina pubblica filtra tra "Tutti" e
+  "Prenotabili" e per numero di giocatori.
 - **Luogo dell'evento**: l'indirizzo si cerca su OpenStreetMap mentre lo
   si scrive e la pagina pubblica dell'evento mostra la mappa del posto.
   Non serve nessuna chiave né registrazione: la ricerca passa dal server
