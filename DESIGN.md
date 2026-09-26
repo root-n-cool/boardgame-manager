@@ -410,10 +410,13 @@ BGG) e `GameMediaList` (la griglia media, con prop `editable`).
   stringa dell'API (`game not found`) e mai una pagina bianca, che è quel
   che faceva prima con `v-if="game"` e il messaggio d'errore dentro.
 
-#### Chiedi al manuale (`ManualChat.vue`, `ManualChatPanel.vue`)
+#### Il Mentore (`ManualChat.vue`, `ManualChatPanel.vue`)
 
-Sulla scheda pubblica di un gioco con manuale indicizzato compare una chat
-che risponde a domande sul regolamento a parole proprie, citando la pagina.
+Sulla scheda pubblica di un gioco con almeno un agente disponibile
+compare una chat: il **Manuale** risponde a domande sul regolamento a
+parole proprie, citando la pagina del documento (o il forum *Rules* di
+BGG, se il gioco non ha un manuale indicizzato ma ha una chiave Tavily);
+la **Strategia** dà consigli presi dal forum *Strategy* di BGG.
 `ManualChat.vue` decide **dove** vive, `ManualChatPanel.vue` **cosa** ci
 sta dentro — la stessa divisione di `GameFacts`/`GameMediaList` altrove in
 questa scheda.
@@ -544,28 +547,59 @@ questa scheda.
   Entrando il fuoco va sul campo, uscendo torna sul bottone.
 - **La chat ha un nome e una testata** (`.manual-chat-head`, dentro
   `ManualChatPanel.vue`, quindi la stessa in barra e in dialog): fondo
-  feltro, **"L'Arbitro"** in Display — chi risolve le dispute al tavolo —
-  con sotto `risposte dal manuale` in `--felt-text-muted`, e a destra il
-  ＋ di "Nuova conversazione" più, **solo nel dialog** (prop `closable`,
-  evento `close`), la ×. Prima la testata era markup del dialog e la barra
-  desktop era una colonna di bolle senza nome, che non diceva nemmeno di
-  essere una chat (segnalato dall'utente). Il ＋ compare **solo a
-  conversazione avviata**: nello stato di riposo non c'è niente da
-  azzerare, e un ＋ che non fa nulla è peggio di un ＋ che manca. Quando
+  feltro, **"Il Mentore"** in Display — non più "L'Arbitro" (chi risolve
+  le dispute al tavolo): da quando esiste anche la Strategia il nome deve
+  coprire entrambi i mestieri, spiegare le regole e insegnare a giocare
+  meglio, e un arbitro non dà consigli di gioco. Sotto, il sottotitolo
+  cambia con l'agente scelto nel selettore (`risposte dal manuale`, o
+  `risposte dal forum di BGG` per il Manuale su un gioco senza manuale
+  indicizzato, `consigli dal forum di BGG` per la Strategia) in
+  `--felt-text-muted`, e a destra il ＋ di "Nuova conversazione" più,
+  **solo nel dialog** (prop `closable`, evento `close`), la ×. Prima la
+  testata era markup del dialog e la barra desktop era una colonna di
+  bolle senza nome, che non diceva nemmeno di essere una chat (segnalato
+  dall'utente). Il ＋ compare **solo a conversazione avviata** e azzera
+  solo quella dell'agente corrente: nello stato di riposo non c'è niente
+  da azzerare, e un ＋ che non fa nulla è peggio di un ＋ che manca. Quando
   spariscono il ＋ e la conversazione, il fuoco va sul campo
   (`nextTick`), non sul body.
+- **Il selettore dell'agente** (`ChatComposer.vue`, bottone "Manuale ▾" —
+  o "Strategia ▾" col nome dell'agente attivo) sta a sinistra nella riga
+  dei controlli sotto il testo, spinto lì da un `margin-right: auto` che
+  lascia dettatura e invio a destra. Sotto le due voci minime (un solo
+  agente disponibile) resta nascosto: non c'è niente da scegliere. Il
+  menu **sale dal bordo alto del composer** (`bottom: calc(100% + …)`,
+  `transform-origin: bottom left`) perché il campo sta in fondo al
+  pannello della chat e sotto non c'è spazio per aprirlo. Le voci sono
+  sempre due — Manuale (tag "regole"), Strategia (tag "consigli") — e
+  quella che il gioco non ha resta **disabilitata** con la tag sostituita
+  da "non disponibile per questo gioco" e opacità ridotta, mai nascosta:
+  vedere che esiste ma non si può usare spiega di più di una voce
+  mancante. L'evidenziazione **scivola** da una voce all'altra con
+  frecce, hover ed Esc — solo un cambio di `background-color` in 0.15s,
+  niente pillola che si sposta né altri effetti decorativi: la stessa
+  economia di mezzi del resto della chat. Tastiera: ↑/↓ muove
+  l'evidenziazione (con wrap), Invio/Spazio sceglie, Esc chiude e
+  riporta il fuoco al bottone, Tab chiude senza riportarlo. Un clic fuori
+  dal menu lo chiude senza spostare il fuoco.
 - **Lo storico vive in `localStorage`, non nel database.** Una chiave per
-  gioco (`bgm-chat-<gameId>`), gestita da `browserStorage` di deep-chat —
+  gioco **e per agente** (`bgm-chat-<gameId>-rules`,
+  `bgm-chat-<gameId>-strategy`), gestita da `browserStorage` di deep-chat —
   che scrive a ogni messaggio e rilegge al render, purché non gli si passi
   anche `history` — con lo stesso tetto di `requestBodyLimits`
-  (40 messaggi). Nessuna tabella e nessun identificativo da inventare per
-  chi non ha un account: la conversazione resta sul telefono di chi l'ha
-  fatta. Il ＋ toglie la chiave e smonta il componente; l'unico punto in
-  cui la chiave la leggiamo noi è al mount, per decidere se **montare
-  deep-chat subito** (c'è una conversazione da riaprire, e quei 457 KB chi
-  la ha fatta li ha già scaricati) o restare nello stato di riposo. Ogni
-  accesso è in `try/catch`: in navigazione privata su Safari il solo
-  toccare `localStorage` lancia, e lì la chat funziona senza storico.
+  (40 messaggi). Chi passa dal Manuale alla Strategia e torna ritrova il
+  proprio filo su ciascuno: due conversazioni distinte sullo stesso gioco,
+  non una che si sovrascrive. La vecchia chiave unica per gioco
+  (`bgm-chat-<gameId>`, da prima che esistesse la Strategia) si migra da
+  sé, una volta sola, in quella del Manuale. Nessuna tabella e nessun
+  identificativo da inventare per chi non ha un account: la conversazione
+  resta sul telefono di chi l'ha fatta. Il ＋ toglie solo la chiave
+  dell'agente aperto; l'unico punto in cui la chiave la leggiamo noi è al
+  mount, per decidere se **montare deep-chat subito** (c'è una
+  conversazione da riaprire, e quei 457 KB chi la ha fatta li ha già
+  scaricati) o restare nello stato di riposo. Ogni accesso è in
+  `try/catch`: in navigazione privata su Safari il solo toccare
+  `localStorage` lancia, e lì la chat funziona senza storico.
 - **Il campo deve dichiarare la sua altezza, non ereditarla.** `flex: 1`
   stira l'elemento `<deep-chat>` ma il suo `#container` interno resta al
   default di 350px e si incolla in cima: il campo di testo finisce a metà
