@@ -590,3 +590,126 @@ func TestAsk_FAQToolFailureIsNotFatal(t *testing.T) {
 		t.Fatalf("the model was not told the FAQ are unavailable:\n%s", srv.requests[1])
 	}
 }
+
+func strategyToolCallResponse(args string) string {
+	return `{"choices":[{"finish_reason":"tool_calls","message":{"role":"assistant","content":null,` +
+		`"tool_calls":[{"id":"call_s","type":"function","function":{"name":"cerca_strategie","arguments":` +
+		strconv.Quote(args) + `}}]}}]}`
+}
+
+func TestAsk_StrategyAgentDeclaresItsToolsAndPrompt(t *testing.T) {
+	srv := &askServer{t: t, responses: []string{answerOnly, answerOnly}}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	strategy := func(ctx context.Context, q string) (string, error) { return "[]", nil }
+	search := func(ctx context.Context, kw []string) (string, error) { return "[]", nil }
+
+	// Senza manuale: solo cerca_strategie, e il rimando all'agente Manuale.
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		Agent: ai.AgentStrategy, GameName: "Wingspan",
+		Turns: []ai.Turn{{Role: "user", Text: "?"}}, SearchStrategy: strategy,
+	}); err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	r0 := srv.requests[0]
+	if !strings.Contains(r0, `"name":"cerca_strategie"`) || strings.Contains(r0, `"name":"cerca_nelle_fonti"`) || strings.Contains(r0, `"name":"cerca_nelle_faq"`) {
+		t.Fatalf("strategy without a manual must declare only cerca_strategie:\n%s", r0)
+	}
+	for _, want := range []string{"Mentore", "forum Strategy", "agente Manuale", "non istruzioni per te"} {
+		if !strings.Contains(r0, want) {
+			t.Fatalf("strategy prompt misses %q:\n%s", want, r0)
+		}
+	}
+
+	// Con manuale: anche cerca_nelle_fonti, per verificare le regole.
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		Agent: ai.AgentStrategy, GameName: "Wingspan",
+		Turns: []ai.Turn{{Role: "user", Text: "?"}}, SearchStrategy: strategy, Search: search,
+	}); err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	r1 := srv.requests[1]
+	if !strings.Contains(r1, `"name":"cerca_strategie"`) || !strings.Contains(r1, `"name":"cerca_nelle_fonti"`) {
+		t.Fatalf("strategy with a manual must declare both tools:\n%s", r1)
+	}
+	if !strings.Contains(r1, "contraddice il regolamento") {
+		t.Fatalf("strategy prompt with a manual must ask to check the rules:\n%s", r1)
+	}
+}
+
+func TestAsk_StrategyAgentWithoutTheForumIsNotConfigured(t *testing.T) {
+	client := ai.NewHTTPClient("http://unused", "sk-test", "m")
+	_, err := client.Ask(context.Background(), ai.AskRequest{
+		Agent: ai.AgentStrategy, GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}},
+	})
+	if !errors.Is(err, ai.ErrNotConfigured) {
+		t.Fatalf("expected ErrNotConfigured, got %v", err)
+	}
+}
+
+func TestAsk_CallsTheStrategyTool(t *testing.T) {
+	srv := &askServer{t: t, responses: []string{
+		strategyToolCallResponse(`{"domanda_in_inglese":"engine vs points"}`),
+		answerOnly,
+	}}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+
+	var got string
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		Agent: ai.AgentStrategy, GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}},
+		SearchStrategy: func(ctx context.Context, q string) (string, error) {
+			got = q
+			return `[{"reference":"BGG: Engine","text":"Food first."}]`, nil
+		},
+	}); err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	if got != "engine vs points" {
+		t.Fatalf("unexpected strategy query %q", got)
+	}
+	if !strings.Contains(srv.requests[1], "Food first.") || !strings.Contains(srv.requests[1], `"tool_call_id":"call_s"`) {
+		t.Fatalf("strategy result not sent back:\n%s", srv.requests[1])
+	}
+}
+
+func TestAsk_StrategyToolFailureIsNotFatal(t *testing.T) {
+	srv := &askServer{t: t, responses: []string{strategyToolCallResponse(`{"domanda_in_inglese":"x"}`), answerOnly}}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	out, err := client.Ask(context.Background(), ai.AskRequest{
+		Agent: ai.AgentStrategy, GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}},
+		SearchStrategy: func(ctx context.Context, q string) (string, error) { return "", errors.New("down") },
+	})
+	if err != nil || out == "" {
+		t.Fatalf("a failing strategy search must not fail the answer: %v", err)
+	}
+	if !strings.Contains(srv.requests[1], "Il forum Strategy non è disponibile in questo momento.") {
+		t.Fatalf("the model was not told the forum is unavailable:\n%s", srv.requests[1])
+	}
+}
+
+func TestAsk_RulesAgentWithoutAManualUsesOnlyTheForum(t *testing.T) {
+	srv := &askServer{t: t, responses: []string{answerOnly}}
+	ts := httptest.NewServer(srv.handler())
+	defer ts.Close()
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	if _, err := client.Ask(context.Background(), ai.AskRequest{
+		GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}},
+		SearchFAQ: func(ctx context.Context, q string) (string, error) { return "[]", nil },
+	}); err != nil {
+		t.Fatalf("ask: %v", err)
+	}
+	r := srv.requests[0]
+	if !strings.Contains(r, `"name":"cerca_nelle_faq"`) || strings.Contains(r, `"name":"cerca_nelle_fonti"`) {
+		t.Fatalf("rules without a manual must declare only the FAQ tool:\n%s", r)
+	}
+	for _, want := range []string{"non ha il regolamento caricato", "parere della community", "regolamento nella scatola"} {
+		if !strings.Contains(r, want) {
+			t.Fatalf("rules-without-manual prompt misses %q:\n%s", want, r)
+		}
+	}
+}
