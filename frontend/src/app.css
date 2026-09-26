@@ -5203,10 +5203,122 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 .chat-composer-actions {
+  position: relative;
   display: flex;
   gap: 0.5rem;
   align-items: center;
   justify-content: flex-end;
+}
+
+/* Il selettore dell'agente: a sinistra nella riga dei controlli (il
+   `margin-right: auto` lo scosta dal microfono e dall'invio, che restano a
+   destra), il menu sale dal bordo alto del composer perché il campo sta in
+   fondo al pannello della chat e sotto non c'è spazio. */
+.chat-composer-agent {
+  position: relative;
+  margin-right: auto;
+}
+
+.chat-composer-agent-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-height: 2rem;
+  padding: 0 0.5rem;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.chat-composer-agent-trigger:hover,
+.chat-composer-agent-trigger[aria-expanded='true'] {
+  background: var(--card-alt);
+  color: var(--ink);
+}
+
+.chat-composer-agent-trigger svg {
+  width: 0.8rem;
+  height: 0.8rem;
+}
+
+.chat-composer-agent-menu {
+  position: absolute;
+  bottom: calc(100% + 0.5rem);
+  left: 0;
+  z-index: 5;
+  min-width: 15rem;
+  margin: 0;
+  padding: 0.25rem;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lift);
+  transform-origin: bottom left;
+  animation: chat-agent-pop 180ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.chat-composer-agent-menu:focus {
+  outline: none;
+}
+
+.chat-composer-agent-menu:focus-visible {
+  outline: 2px solid var(--felt);
+  outline-offset: 2px;
+}
+
+.chat-composer-agent-menu li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 2.5rem;
+  padding: 0 0.6rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.chat-composer-agent-menu li.is-highlighted:not(.is-disabled) {
+  background: var(--card-alt);
+}
+
+.chat-composer-agent-menu li.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chat-composer-agent-name {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.chat-composer-agent-tag {
+  flex: 1;
+  font-size: 0.8rem;
+  color: var(--ink-muted);
+}
+
+.chat-composer-agent-menu li svg {
+  width: 0.85rem;
+  height: 0.85rem;
+  color: var(--ink);
+}
+
+@keyframes chat-agent-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-composer-agent-menu {
+    animation: none;
+  }
 }
 
 /* Quadrati da 36px a vista, bersagli da 44 (`::after` che sborda di 4px
