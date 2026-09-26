@@ -71,11 +71,13 @@ func (p *pageTranscriber) Transcribe(ctx context.Context, jpeg []byte, page int)
 // chiamate (serve al test che verifica che NON venga chiamato) e cattura i
 // titoli ricevuti.
 type fakeSuggester struct {
-	calls       atomic.Int64
-	lastGame    string
-	lastHeading []string
-	out         []string
-	err         error
+	calls           atomic.Int64
+	lastGame        string
+	lastHeading     []string
+	out             []string
+	err             error
+	strategyCalls   atomic.Int64
+	lastDescription string
 }
 
 func (f *fakeSuggester) SuggestQuestions(ctx context.Context, gameName string, headings []string) ([]string, error) {
@@ -89,6 +91,16 @@ func (f *fakeSuggester) SuggestQuestions(ctx context.Context, gameName string, h
 		return f.out, nil
 	}
 	return []string{"Generata 1?", "Generata 2?", "Generata 3?"}, nil
+}
+
+func (f *fakeSuggester) SuggestStrategyQuestions(ctx context.Context, gameName, bggDescription string) ([]string, error) {
+	f.strategyCalls.Add(1)
+	f.lastGame = gameName
+	f.lastDescription = bggDescription
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []string{"Strategia 1?", "Strategia 2?", "Strategia 3?"}, nil
 }
 
 // loginAsAdmin esegue il bootstrap del primo admin e restituisce il
@@ -340,7 +352,7 @@ func TestIndexMedia_DocxWithoutTextIsAClearError(t *testing.T) {
 // errore generico.
 func TestIndexMedia_ScannedPDFWithoutVisionModelNamesTheSetting(t *testing.T) {
 	server, _ := newTestServerWithDB(t)
-	server.Segmenter = &fakeSegmenter{} // il provider di testo è configurato...
+	server.Segmenter = &fakeSegmenter{}                            // il provider di testo è configurato...
 	server.Vision = &erroringTranscriber{err: ai.ErrNotConfigured} // ...ma non quello vision
 	router := httpapi.NewRouter(server)
 	cookie := loginAsAdmin(t, router)
@@ -823,8 +835,8 @@ func newTwoPageTextPDF(page1, page2 string) []byte {
 		return fmt.Sprintf("<< /Length %d >>\nstream\n%s\nendstream", len(s), s)
 	}
 	return manuals.BuildTestPDF([]string{
-		"<< /Type /Catalog /Pages 2 0 R >>",                     // 1
-		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>",       // 2
+		"<< /Type /Catalog /Pages 2 0 R >>",               // 1
+		"<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>", // 2
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " + // 3
 			"/Resources << /Font << /F1 7 0 R >> >> /Contents 5 0 R >>",
 		"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 260] " + // 4

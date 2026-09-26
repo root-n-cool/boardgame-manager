@@ -34,6 +34,7 @@ var ErrSuggestionsRejected = errors.New("ai suggestions rejected: response is no
 // Stesso schema di Segmenter e Transcriber.
 type QuestionSuggester interface {
 	SuggestQuestions(ctx context.Context, gameName string, headings []string) ([]string, error)
+	SuggestStrategyQuestions(ctx context.Context, gameName, bggDescription string) ([]string, error)
 }
 
 // suggestSystemPrompt chiede tre domande e vieta tutto il resto. Non è una
@@ -128,4 +129,47 @@ func parseSuggestions(raw string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+// strategySuggestSystemPrompt è il gemello di suggestSystemPrompt per
+// l'agente Strategia: stesse regole di forma (è lo stesso validatore),
+// cambia di cosa si chiede.
+var strategySuggestSystemPrompt = "Ricevi il nome di un gioco da tavolo e, se c'è, la sua descrizione da BoardGameGeek (in inglese). " +
+	"Scrivi TRE domande che un giocatore farebbe per giocare meglio a quel gioco, in italiano.\n" +
+	"Regole assolute:\n" +
+	"1. Esattamente tre domande, una per riga. Nessuna numerazione, nessun elenco puntato, nessun preambolo, nessun commento.\n" +
+	"2. Ogni riga deve finire con un punto di domanda.\n" +
+	fmt.Sprintf("3. Ogni domanda sta sotto i %d caratteri: sono tre bottoni su uno schermo di telefono.\n", MaxSuggestionChars) +
+	"4. Sono domande di strategia (\"Conviene puntare subito sul cibo?\"), MAI domande sulle regole (\"Come si pesca una carta?\").\n" +
+	"5. Usa i termini del gioco quando la descrizione li nomina; altrimenti resta generico ma concreto."
+
+// SuggestStrategyQuestions genera le tre domande dell'agente Strategia dal
+// nome del gioco e dalla descrizione BGG. Non usa Tavily: le domande devono
+// essere pronte anche prima che arrivi la chiave. Stessi confini di
+// SuggestQuestions (modello di testo, nessun retry, stesso validatore).
+func (c *HTTPClient) SuggestStrategyQuestions(ctx context.Context, gameName, bggDescription string) ([]string, error) {
+	if !c.configured() {
+		return nil, ErrNotConfigured
+	}
+	user := "Gioco: " + gameName
+	if d := strings.TrimSpace(bggDescription); d != "" {
+		user += "\n\nDescrizione BGG:\n" + d
+	}
+	payload, err := json.Marshal(chatRequest{
+		Model:           c.Model,
+		Temperature:     0,
+		ReasoningEffort: reasoningEffortNone,
+		Messages: []chatMessage{
+			{Role: "system", Content: strategySuggestSystemPrompt},
+			{Role: "user", Content: user},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	out, err := c.postChat(ctx, payload, suggestTimeout)
+	if err != nil {
+		return nil, err
+	}
+	return parseSuggestions(out)
 }

@@ -96,3 +96,55 @@ func TestSuggestQuestions_WithoutProviderIsNotConfigured(t *testing.T) {
 		t.Fatalf("atteso ErrNotConfigured, ottenuto %v", err)
 	}
 }
+
+func TestSuggestStrategyQuestions_SendsNameAndDescription(t *testing.T) {
+	var body string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		io.WriteString(w, `{"choices":[{"message":{"content":"Conviene puntare sul cibo?\nQuali carte bonus tenere?\nQuando fare le uova?"}}]}`)
+	}))
+	defer ts.Close()
+
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	got, err := client.SuggestStrategyQuestions(context.Background(), "Wingspan", "Attract birds to your wildlife preserves.")
+	if err != nil {
+		t.Fatalf("suggest: %v", err)
+	}
+	if len(got) != 3 || got[0] != "Conviene puntare sul cibo?" {
+		t.Fatalf("unexpected questions %v", got)
+	}
+	for _, want := range []string{"Wingspan", "Attract birds", "giocare meglio"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("request misses %q:\n%s", want, body)
+		}
+	}
+}
+
+func TestSuggestStrategyQuestions_WorksWithoutADescription(t *testing.T) {
+	var body string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		body = string(b)
+		io.WriteString(w, `{"choices":[{"message":{"content":"A?\nB?\nC?"}}]}`)
+	}))
+	defer ts.Close()
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	if _, err := client.SuggestStrategyQuestions(context.Background(), "Azul", ""); err != nil {
+		t.Fatalf("suggest: %v", err)
+	}
+	if strings.Contains(body, "Descrizione BGG") {
+		t.Fatalf("an empty description must not be sent:\n%s", body)
+	}
+}
+
+func TestSuggestStrategyQuestions_RejectsAnInvalidAnswer(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, `{"choices":[{"message":{"content":"Ecco tre domande:\nA?\nB?\nC?"}}]}`)
+	}))
+	defer ts.Close()
+	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
+	if _, err := client.SuggestStrategyQuestions(context.Background(), "Azul", ""); !errors.Is(err, ai.ErrSuggestionsRejected) {
+		t.Fatalf("expected ErrSuggestionsRejected, got %v", err)
+	}
+}
