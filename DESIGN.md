@@ -1085,6 +1085,50 @@ del gioco con manuali e video. Una card, una sola azione primaria: il
 nome non è più un link, perché due bersagli allo stesso peso su una
 tessera da 150px si sbagliano col pollice.
 
+### Toggle a due voci (`.filter-toggle`, pagina evento)
+"Tutti / Prenotabili": due bottoni con `aria-pressed` in un `role="group"`
+etichettato, uno sempre acceso (stato booleano, niente componente
+generico). Spento è cartoncino con bordo; acceso prende il **feltro**
+(`--felt`, testo `--felt-text`), mai il rosso seme, che resta alle azioni.
+44px d'altezza, raggio `999px`. L'etichetta sopra (`.filter-label`: mono,
+maiuscoletto tracciato, `--ink-muted`) è la stessa delle tendine.
+
+### Filtri a tendina (`SelectFilter.vue`)
+Oltre le due voci il filtro diventa una `<select>` nativa (sul telefono
+apre il selettore di sistema), con la stessa etichetta (`.filter-label`)
+sopra e prima voce "Tutti"/"Tutte" = nessun filtro. Alta 44px, larga
+quanto le sue voci (min 10rem). Con un filtro attivo il bordo passa al
+feltro (1px + inset 1px) e il testo a 600: si vede a colpo d'occhio che la
+lista è ristretta. Scelta fatta con l'utente: 9 pastiglie occupavano due o
+tre righe su telefono, due tendine ne occupano una.
+
+- **Catalogo pubblico (`/giochi`)**: ricerca per nome (ignora maiuscole e
+  accenti) più le tendine **Giocatori** (2…6+) e **Difficoltà** con le
+  stesse fasce del badge (`utils/difficulty.ts`, una sola fonte). Un gioco
+  senza il dato esce appena il filtro relativo si accende. Nessun
+  risultato: frase più **Azzera filtri** (`.filter-empty`, `.btn-secondary.is-compact`).
+  Il proprietario non compare: è il nome di una persona. La griglia è
+  `.game-grid` con `--grid-fill: auto-fill; --grid-max: 1fr` al posto del
+  tetto di 230px dello scaffale admin: le card arrivano allo stesso bordo
+  destro della barra dei filtri, e la regola telefono resta una sola.
+- **Scheda evento pubblica**: sotto `Al tavolo`, le pastiglie **Mostra**
+  (Tutti / Prenotabili, solo se la serata mescola i due tipi) e la tendina
+  **Giocatori**, entrambe nascoste con un solo tavolo. Si parte sempre da
+  "Tutti": un gioco senza prenotazione è comunque in sala.
+
+### Controllo componenti (`GameMaterialsChecklist.vue`)
+Sulla scheda pubblica, dopo i media, se il gioco ha componenti. Titolo
+"Controllo componenti prima della riconsegna", conteggio "N di M
+controllate" nella testata come `.lang-chip` senza maiuscoletto (verde `--success` su
+`--success-bg` quando la scatola è completa). Ogni riga è un unico
+`<label class="checkbox-label">` da 44px (lista e nome condivisi con
+`.material-check-*` del banco prestiti) — casella, quantità mono tabulare, nome — così il tocco
+va a segno ovunque sulla voce; la voce spuntata passa a `--ink-muted`
+barrata. Le spunte restano solo nel browser (`localStorage`, chiave per
+gioco, per nome della voce): non è il controllo ufficiale, che resta
+all'admin al banco prestiti. **Azzera** compare solo con almeno una
+spunta.
+
 ### Difficoltà (`GameDifficulty.vue`)
 Il peso BGG diventa cinque pip da dado (`.difficulty-pips`, 6px, bordo
 oro, riempiti fino a `round(weight)`) più la parola: `<2` Facile, `<3`
