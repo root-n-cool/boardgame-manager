@@ -83,7 +83,7 @@ func TestSearch_BuildsTheQueryAndReturnsCitableHits(t *testing.T) {
 		"100": rulesThread("100", "Refreshing the birdfeeder", "What happens?", "You reroll."),
 	}}
 
-	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "refresh birdfeeder")
+	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "refresh birdfeeder")
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestSearch_KeepsOnlyRulesThreadsOfTheGame(t *testing.T) {
 		"400": rulesThread("400", "Birdfeeder with one die", "ok"),
 	}}
 
-	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -138,7 +138,7 @@ func TestSearch_StopsAtMaxThreadsAndDeduplicates(t *testing.T) {
 		"1": rulesThread("1", "A", "a"), "2": rulesThread("2", "B", "b"), "3": rulesThread("3", "C", "c"),
 	}}
 
-	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 	if strings.Join(f.infoFetched, ",") != "1,2" {
 		t.Fatalf("expected threads 1 and 2 fetched once each, got %v", f.infoFetched)
 	}
@@ -157,7 +157,7 @@ func TestSearch_SkipsArticlesCallForAThreadFilteredOutByForum(t *testing.T) {
 	s := &fakeSearcher{results: []websearch.Result{threadURL("300")}}
 	f := &fakeFetcher{threads: map[string]bgg.Thread{"300": variants}}
 
-	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}
@@ -176,7 +176,7 @@ func TestSearch_RespectsTheCharBudgetPerThread(t *testing.T) {
 		"1": rulesThread("1", "A", long, "questo non ci sta più", "neanche questo"),
 	}}
 
-	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 	if len(hits) != 1 {
 		t.Fatalf("expected only the first comment within budget, got %d hits", len(hits))
 	}
@@ -188,7 +188,7 @@ func TestSearch_TruncatesAFirstPostLongerThanTheBudget(t *testing.T) {
 		"1": rulesThread("1", "A", strings.Repeat("y", faq.ThreadCharBudget*2)),
 	}}
 
-	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	hits, _ := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 	if len(hits) != 1 || len(hits[0].Text) > faq.ThreadCharBudget {
 		t.Fatalf("the first post must survive, truncated to the budget: %d hits", len(hits))
 	}
@@ -198,7 +198,7 @@ func TestSearch_SkipsAThreadThatFailsToLoad(t *testing.T) {
 	s := &fakeSearcher{results: []websearch.Result{threadURL("404"), threadURL("1")}}
 	f := &fakeFetcher{threads: map[string]bgg.Thread{"1": rulesThread("1", "A", "a")}}
 
-	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 	if err != nil {
 		t.Fatalf("a single failing thread must not fail the search: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestSearch_SkipsAThreadThatFailsToLoad(t *testing.T) {
 
 func TestSearch_WebSearchErrorIsReturned(t *testing.T) {
 	s := &fakeSearcher{err: errors.New("boom")}
-	if _, err := faq.Search(context.Background(), s, &fakeFetcher{}, "Wingspan", "266192", "q"); err == nil {
+	if _, err := faq.Search(context.Background(), s, &fakeFetcher{}, "Wingspan", "266192", faq.ForumRules, "q"); err == nil {
 		t.Fatal("expected the web search error")
 	}
 }
@@ -223,7 +223,7 @@ func TestSearch_AllThreadsFailingIsAnError(t *testing.T) {
 	s := &fakeSearcher{results: []websearch.Result{threadURL("1"), threadURL("2")}}
 	f := &fakeFetcher{threads: map[string]bgg.Thread{}} // ogni Thread() fallisce con "not found"
 
-	_, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+	_, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 	if err == nil {
 		t.Fatal("quando tutte le letture falliscono Search deve restituire un errore")
 	}
@@ -252,7 +252,7 @@ func TestSearch_RespectsTheOverallDeadline(t *testing.T) {
 	defer cancel()
 
 	start := time.Now()
-	_, err := faq.Search(ctx, s, blockingFetcher{}, "Wingspan", "266192", "q")
+	_, err := faq.Search(ctx, s, blockingFetcher{}, "Wingspan", "266192", faq.ForumRules, "q")
 	elapsed := time.Since(start)
 
 	if elapsed > time.Second {
@@ -270,12 +270,52 @@ func TestSearch_RejectsUnsafeCommentLinks(t *testing.T) {
 		s := &fakeSearcher{results: []websearch.Result{threadURL("1")}}
 		f := &fakeFetcher{threads: map[string]bgg.Thread{"1": th}}
 
-		hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", "q")
+		hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
 		if err != nil {
 			t.Fatalf("search: %v", err)
 		}
 		if len(hits) != 1 || hits[0].CommentURL != "" {
 			t.Fatalf("link %q: atteso CommentURL vuoto, ottenuto %+v", link, hits)
 		}
+	}
+}
+
+func TestSearch_StrategyForumKeepsOnlyStrategyThreads(t *testing.T) {
+	rules := rulesThread("100", "Birdfeeder rule", "x")
+	strategy := rulesThread("200", "Engine or points early?", "Go for food engine first.")
+	strategy.Forum = "Strategy"
+	s := &fakeSearcher{results: []websearch.Result{threadURL("100"), threadURL("200")}}
+	f := &fakeFetcher{threads: map[string]bgg.Thread{"100": rules, "200": strategy}}
+
+	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumStrategy, "engine vs points")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Reference != "BGG: Engine or points early?" {
+		t.Fatalf("expected only the Strategy thread, got %+v", hits)
+	}
+	if !strings.HasSuffix(s.query, " strategy") {
+		t.Fatalf("the Strategy query must end with \"strategy\", got %q", s.query)
+	}
+	if s.max != faq.StrategySearchResults {
+		t.Fatalf("expected %d results for Strategy, got %d", faq.StrategySearchResults, s.max)
+	}
+}
+
+func TestSearch_RulesForumDropsStrategyThreads(t *testing.T) {
+	strategy := rulesThread("200", "Engine or points early?", "x")
+	strategy.Forum = "Strategy"
+	s := &fakeSearcher{results: []websearch.Result{threadURL("200")}}
+	f := &fakeFetcher{threads: map[string]bgg.Thread{"200": strategy}}
+
+	hits, err := faq.Search(context.Background(), s, f, "Wingspan", "266192", faq.ForumRules, "q")
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(hits) != 0 {
+		t.Fatalf("a Strategy thread is not a rules FAQ, got %+v", hits)
+	}
+	if !strings.HasSuffix(s.query, " rules") {
+		t.Fatalf("the Rules query must end with \"rules\", got %q", s.query)
 	}
 }

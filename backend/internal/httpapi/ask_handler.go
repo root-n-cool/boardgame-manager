@@ -238,7 +238,7 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 				// quel che ha invece di vedere un guasto che non c'è.
 				return "Hai già cercato nel forum abbastanza per questa domanda: rispondi con quello che hai.", nil
 			}
-			hits, err := faq.Search(ctx, searcher, s.BGG, game.Name, bggID, query)
+			hits, err := faq.Search(ctx, searcher, s.BGG, game.Name, bggID, faq.ForumRules, query)
 			if err != nil {
 				return "", err
 			}
