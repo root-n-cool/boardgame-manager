@@ -256,3 +256,65 @@ func TestSuggestMaterialsTellsWhenTheModelIsUseless(t *testing.T) {
 		t.Fatalf("volevo 422, ho %d: %s", rec.Code, rec.Body)
 	}
 }
+
+// La scheda pubblica porta il contenuto della scatola: chi gioca lo usa per
+// ricontrollare i pezzi prima di riconsegnare. Solo nome e quantità — gli id
+// servono solo all'editor dell'admin.
+func TestPublicGameDetailIncludesMaterials(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+
+	payload := `{"materials":[{"name":"tessere","quantity":72},{"name":"meeple","quantity":40}]}`
+	put := httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/games/%d/materials", gameID), strings.NewReader(payload))
+	put.AddCookie(cookie)
+	putRec := httptest.NewRecorder()
+	router.ServeHTTP(putRec, put)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("PUT: volevo 200, ho %d: %s", putRec.Code, putRec.Body)
+	}
+
+	// Nessun cookie: è la pagina che apre il partecipante.
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d", gameID), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("volevo 200, ho %d: %s", rec.Code, rec.Body)
+	}
+	var body struct {
+		Materials []map[string]any `json:"materials"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Materials) != 2 {
+		t.Fatalf("volevo due voci, ho %+v", body.Materials)
+	}
+	if body.Materials[0]["name"] != "tessere" || body.Materials[1]["quantity"] != float64(40) {
+		t.Fatalf("ordine o valori inattesi: %+v", body.Materials)
+	}
+	if _, ok := body.Materials[0]["id"]; ok {
+		t.Error("la scheda pubblica non deve esporre gli id delle voci")
+	}
+}
+
+func TestPublicGameDetailMaterialsEmptyIsArray(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	gameID := createTestGameForEvent(t, server.Games, "Carcassonne")
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d", gameID), nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("volevo 200, ho %d: %s", rec.Code, rec.Body)
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if string(body["materials"]) != "[]" {
+		t.Fatalf("volevo materials: [], ho %s", body["materials"])
+	}
+}
