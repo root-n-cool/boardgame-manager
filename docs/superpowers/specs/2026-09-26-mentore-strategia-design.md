@@ -362,12 +362,16 @@ chiave Tavily, la chat senza manuale), `PRODUCT.md` se ne parla.
 
 ## 9. Rischi aperti
 
-- **Qualità dei risultati Tavily sul forum Strategy: non misurata.** Le
-  misure del 25/09 riguardano Rules. Il forum Strategy di molti giochi è
-  meno frequentato, e i filtri del §2.1 possono lasciare zero thread più
-  spesso. Da misurare all'inizio dell'implementazione su 4-5 giochi (fra
-  cui Wingspan e Carcassonne) prima di fissare `SearchResults` per
-  Strategy. Se serve, lo si alza solo per quel forum.
+- **Qualità dei risultati Tavily sul forum Strategy: misura non
+  effettuata il 26/09 (nessuna chiave Tavily disponibile nel DB in quel
+  momento).** Le misure del 25/09 riguardano Rules. Il forum Strategy di
+  molti giochi è meno frequentato, e i filtri del §2.1 possono lasciare
+  zero thread più spesso. Per non bloccare l'implementazione si parte con
+  `faq.StrategySearchResults = 8` (stesso valore di Rules, invariato); la
+  misura va rifatta appena è disponibile una chiave, sui 4-5 giochi
+  indicati nel task 1 (fra cui Wingspan e Carcassonne), prima di
+  considerare definitivo il valore. Se emergesse che 8 è insufficiente, lo
+  si alza solo per quel forum.
 - **Manuale senza manuale.** Il forum Rules senza il regolamento come base
   può dare risposte contraddittorie; la mitigazione è solo nel prompt.
 - **`api.geekdo.com` non è un'API ufficiale** (vedi spec FAQ): se cambia,
