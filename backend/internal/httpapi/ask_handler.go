@@ -61,9 +61,31 @@ func (s *Server) webSearcher(ctx context.Context) websearch.Searcher {
 	return websearch.NewTavily(cfg.TavilyAPIKey)
 }
 
+// tavilyConfigured dice se la ricerca nel forum è possibile, senza fare
+// richieste. Con hasBGGID è la metà "forum" della disponibilità.
+func (s *Server) tavilyConfigured(ctx context.Context) bool {
+	return s.webSearcher(ctx) != nil
+}
+
+func hasBGGID(g games.Game) bool {
+	return g.BGGID != nil && *g.BGGID != ""
+}
+
+// chatAvailability è la SOLA regola che decide quali agenti ha un gioco:
+// la usano l'handler (404 per un agente assente) e le schede pubbliche
+// (chat.rules / chat.strategy), così la chat non può promettere un agente
+// che poi risponde 404. forumOK = chiave Tavily e bggId.
+func chatAvailability(aiOK, hasChunks, forumOK bool) (rules, strategy bool) {
+	if !aiOK {
+		return false, false
+	}
+	return hasChunks || forumOK, forumOK
+}
+
 // askHTTPRequest è la forma che manda deep-chat: la conversazione intera,
 // tagliata dal componente a requestBodyLimits.maxMessages.
 type askHTTPRequest struct {
+	Agent    string `json:"agent"`
 	Messages []struct {
 		Role string `json:"role"`
 		Text string `json:"text"`
@@ -170,10 +192,18 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not load the manual")
 		return
 	}
-	// Nessuna fonte indicizzata: la rotta si comporta come inesistente,
-	// esattamente come senza provider AI. Non c'è nulla da spiegare a un
-	// partecipante — la chat, in quel caso, non è nemmeno comparsa.
-	if !summary.HasChunks {
+	// Un agente sconosciuto o assente è il Manuale: una scheda rimasta
+	// aperta durante un aggiornamento manda ancora il body di prima.
+	agent := ai.AgentRules
+	if body.Agent == string(ai.AgentStrategy) {
+		agent = ai.AgentStrategy
+	}
+	searcher := s.webSearcher(r.Context())
+	forumOK := searcher != nil && hasBGGID(game)
+	// aiOK = true: senza provider è l'asker a rispondere ErrNotConfigured,
+	// che diventa lo stesso 404 più sotto.
+	rulesOK, strategyOK := chatAvailability(true, summary.HasChunks, forumOK)
+	if (agent == ai.AgentRules && !rulesOK) || (agent == ai.AgentStrategy && !strategyOK) {
 		writeError(w, http.StatusNotFound, "not found")
 		return
 	}
@@ -220,25 +250,26 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		return manuals.MarshalHits(hits, missing)
 	}
 
-	// La closure FAQ è legata al gioco come search: né il nome né il bggId
-	// sono parametri del tool. Si dichiara solo con una chiave di ricerca
-	// e un bggId; la chat resta comunque legata al manuale indicizzato.
-	var searchFAQ ai.FAQSearchFunc
 	// faqRefs tiene, in ordine d'arrivo, le reference dei thread restituiti:
 	// servono ad appendForumSources quando il modello non li cita alla lettera.
 	var faqRefs []string
-	if searcher := s.webSearcher(r.Context()); searcher != nil && game.BGGID != nil && *game.BGGID != "" {
+
+	// forumSearch costruisce la closure di ricerca nel forum, legata al
+	// gioco come search: né il nome né il bggId sono parametri del tool. Un
+	// solo contatore per richiesta, qualunque forum si interroghi: il tetto
+	// di askMaxFAQSearches vale per la domanda, non per il forum.
+	forumSearches := 0
+	forumSearch := func(forum faq.Forum) ai.FAQSearchFunc {
 		bggID := *game.BGGID
-		faqSearches := 0
-		searchFAQ = func(ctx context.Context, query string) (string, error) {
-			faqSearches++
-			if faqSearches > askMaxFAQSearches {
+		return func(ctx context.Context, query string) (string, error) {
+			forumSearches++
+			if forumSearches > askMaxFAQSearches {
 				// Nessuna chiamata a Tavily oltre il tetto: un risultato
 				// normale (non un errore), così il modello risponde con
 				// quel che ha invece di vedere un guasto che non c'è.
 				return "Hai già cercato nel forum abbastanza per questa domanda: rispondi con quello che hai.", nil
 			}
-			hits, err := faq.Search(ctx, searcher, s.BGG, game.Name, bggID, faq.ForumRules, query)
+			hits, err := faq.Search(ctx, searcher, s.BGG, game.Name, bggID, forum, query)
 			if err != nil {
 				return "", err
 			}
@@ -283,13 +314,23 @@ func (s *Server) askHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	answer, err := s.asker(r.Context()).Ask(r.Context(), ai.AskRequest{
+	req := ai.AskRequest{
+		Agent:       agent,
 		GameName:    game.Name,
 		Turns:       turns,
 		CorpusIndex: formatCorpusIndex(summary.Sources),
-		Search:      search,
-		SearchFAQ:   searchFAQ,
-	})
+	}
+	if summary.HasChunks {
+		req.Search = search
+	}
+	if forumOK {
+		if agent == ai.AgentStrategy {
+			req.SearchStrategy = forumSearch(faq.ForumStrategy)
+		} else {
+			req.SearchFAQ = forumSearch(faq.ForumRules)
+		}
+	}
+	answer, err := s.asker(r.Context()).Ask(r.Context(), req)
 	if errors.Is(err, ai.ErrNotConfigured) {
 		writeError(w, http.StatusNotFound, "not found")
 		return

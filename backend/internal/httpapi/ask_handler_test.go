@@ -515,6 +515,7 @@ func TestAskHandler_WithoutAProviderIs404(t *testing.T) {
 }
 
 func TestAskHandler_WithoutAPreparedManualIs404(t *testing.T) {
+	// Senza manuale e senza forum: nessun agente è disponibile.
 	server, conn := newTestServerWithDB(t)
 	server.Asker = &fakeAsker{answer: "ok"}
 	router := httpapi.NewRouter(server)
@@ -526,6 +527,108 @@ func TestAskHandler_WithoutAPreparedManualIs404(t *testing.T) {
 	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("atteso 404, ottenuto %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// TestAskHandler_AvailabilityPerAgent verifica chatAvailability a livello di
+// handler: manuale e forum sono le due fonti indipendenti, ciascuna basta a
+// sbloccare l'agente Manuale, ma solo il forum sblocca l'agente Strategia
+// (che non ha un equivalente "manuale-only", vedi la spec §1.1).
+func TestAskHandler_AvailabilityPerAgent(t *testing.T) {
+	cases := []struct {
+		name                string
+		manual, forum       bool
+		rulesOK, strategyOK bool
+	}{
+		{"niente", false, false, false, false},
+		{"solo manuale", true, false, true, false},
+		{"solo forum", false, true, true, true},
+		{"manuale e forum", true, true, true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			server, conn := newTestServerWithDB(t)
+			server.Asker = &fakeAsker{answer: "ok"}
+			var gameID int64
+			if c.manual {
+				gameID = seedGameWithPreparedManual(t, conn)
+			} else {
+				gameID = seedBareGame(t, server)
+			}
+			if c.forum {
+				server.WebSearch = &fakeWebSearch{}
+				setBGGID(t, conn, gameID, "266192")
+			}
+			router := httpapi.NewRouter(server)
+
+			for agent, want := range map[string]bool{"rules": c.rulesOK, "strategy": c.strategyOK} {
+				rec := postAsk(t, router, gameID, `{"agent":"`+agent+`","messages":[{"role":"user","text":"?"}]}`)
+				if want && rec.Code != http.StatusOK {
+					t.Fatalf("%s: expected 200, got %d %s", agent, rec.Code, rec.Body.String())
+				}
+				if !want && rec.Code != http.StatusNotFound {
+					t.Fatalf("%s: expected 404, got %d %s", agent, rec.Code, rec.Body.String())
+				}
+			}
+		})
+	}
+}
+
+func TestAskHandler_AgentDefaultsToRules(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+
+	for _, body := range []string{
+		`{"messages":[{"role":"user","text":"?"}]}`,
+		`{"agent":"boh","messages":[{"role":"user","text":"?"}]}`,
+	} {
+		rec := postAsk(t, router, gameID, body)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: expected 200, got %d", body, rec.Code)
+		}
+		if asker.got.Agent != ai.AgentRules {
+			t.Fatalf("%s: expected the rules agent, got %q", body, asker.got.Agent)
+		}
+	}
+}
+
+func TestAskHandler_StrategyAgentGetsTheStrategyForumAndTheManual(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	ws := &fakeWebSearch{}
+	server.WebSearch = ws
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedGameWithPreparedManual(t, conn)
+	setBGGID(t, conn, gameID, "266192")
+
+	postAsk(t, router, gameID, `{"agent":"strategy","messages":[{"role":"user","text":"?"}]}`)
+	if asker.got.Agent != ai.AgentStrategy || asker.got.SearchStrategy == nil || asker.got.Search == nil {
+		t.Fatalf("strategy needs its forum and the manual, got %+v", asker.got)
+	}
+	if asker.got.SearchFAQ != nil {
+		t.Fatal("the strategy agent must not get the Rules forum")
+	}
+}
+
+func TestAskHandler_RulesAgentWithoutAManualGetsOnlyTheForum(t *testing.T) {
+	server, conn := newTestServerWithDB(t)
+	server.WebSearch = &fakeWebSearch{}
+	asker := &fakeAsker{answer: "ok"}
+	server.Asker = asker
+	router := httpapi.NewRouter(server)
+	gameID := seedBareGame(t, server)
+	setBGGID(t, conn, gameID, "266192")
+
+	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d %s", rec.Code, rec.Body.String())
+	}
+	if asker.got.Search != nil || asker.got.SearchFAQ == nil {
+		t.Fatalf("rules without a manual: no manual search, only the forum; got %+v", asker.got)
 	}
 }
 
