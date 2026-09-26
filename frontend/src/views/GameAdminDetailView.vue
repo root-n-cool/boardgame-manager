@@ -748,8 +748,18 @@ onMounted(async () => {
         -->
         <section class="panel-card">
           <SuggestedQuestionsPanel
-            :key="suggestedQuestionsKey"
+            :key="`rules-${suggestedQuestionsKey}`"
             :game-id="game.id"
+            agent="rules"
+            :ai-configured="aiConfigured"
+          />
+          <!-- Solo su un gioco collegato a BGG: la Strategia legge lì, senza
+               `bggId` non ha nulla da proporre e "Rigenera" fallirebbe (422). -->
+          <SuggestedQuestionsPanel
+            v-if="game.bggId"
+            :key="`strategy-${suggestedQuestionsKey}`"
+            :game-id="game.id"
+            agent="strategy"
             :ai-configured="aiConfigured"
           />
         </section>

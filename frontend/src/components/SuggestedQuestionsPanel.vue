@@ -24,6 +24,8 @@ import { api } from '../api/client'
 
 const props = defineProps<{
   gameId: number
+  /** Quale dei due agenti: la Strategia legge da BGG, il Manuale dai documenti indicizzati. */
+  agent: 'rules' | 'strategy'
   /** Senza provider AI la rigenerazione non è possibile: il pulsante si spegne. */
   aiConfigured: boolean
 }>()
@@ -74,7 +76,20 @@ const status = computed(() => {
   return ''
 })
 
-const path = computed(() => `/games/${props.gameId}/suggested-questions`)
+const title = computed(() => (props.agent === 'strategy' ? 'Domande per la Strategia' : 'Domande suggerite'))
+const hint = computed(() =>
+  props.agent === 'strategy'
+    ? 'Le tre domande che la Strategia propone prima che qualcuno scriva. Si generano da sé quando importi il gioco da BGG, tranne quelle che riscrivi qui.'
+    : 'Le tre domande che il Manuale propone prima che qualcuno scriva. A ogni indicizzazione si rigenerano da sé, tranne quelle che riscrivi qui.',
+)
+
+// La query string va sul path di lettura/scrittura, ma il segmento
+// `/regenerate` si costruisce a parte: appenderlo dopo `?agent=...` lo
+// metterebbe dentro la query string invece che nel path.
+const path = computed(() => `/games/${props.gameId}/suggested-questions?agent=${props.agent}`)
+const regeneratePath = computed(
+  () => `/games/${props.gameId}/suggested-questions/regenerate?agent=${props.agent}`,
+)
 
 async function load() {
   loading.value = true
@@ -113,7 +128,7 @@ async function regenerate() {
   error.value = ''
   savedTexts.value = null
   try {
-    const res = await api.post<{ questions: Question[] }>(`${path.value}/regenerate`)
+    const res = await api.post<{ questions: Question[] }>(regeneratePath.value)
     questions.value = res.questions
   } catch (e) {
     error.value = e instanceof Error ? e.message : 'Impossibile rigenerare le domande.'
@@ -129,12 +144,12 @@ onMounted(load)
   <form class="suggested-questions" @submit.prevent="save">
     <div class="suggested-questions-head">
       <div class="section-head suggested-questions-head-row">
-        <h3>Domande suggerite</h3>
+        <h3>{{ title }}</h3>
         <button
           type="button"
           class="btn-secondary is-compact"
           :disabled="busy || !props.aiConfigured"
-          :aria-describedby="props.aiConfigured ? 'sq-note' : 'sq-note sq-no-ai'"
+          :aria-describedby="props.aiConfigured ? `sq-note-${agent}` : `sq-note-${agent} sq-no-ai-${agent}`"
           @click="regenerate"
         >
           {{ regenerating ? 'Rigenerazione…' : 'Rigenera' }}
@@ -142,16 +157,15 @@ onMounted(load)
       </div>
 
       <p class="field-hint">
-        Le tre domande che la chat propone prima che qualcuno scriva. A ogni indicizzazione si
-        rigenerano da sé, tranne quelle che riscrivi qui.
+        {{ hint }}
       </p>
-      <p id="sq-note" class="field-hint">
+      <p :id="`sq-note-${agent}`" class="field-hint">
         Rigenera invece le riscrive tutte e tre, comprese quelle scritte a mano.
       </p>
       <!-- Il bottone spento diceva da solo di essere spento e niente più: il
            motivo va detto qui, perché è l'unico posto in cui compare a
            prescindere da quanti documenti ha il gioco. -->
-      <p v-if="!props.aiConfigured" id="sq-no-ai" class="empty-note">
+      <p v-if="!props.aiConfigured" :id="`sq-no-ai-${agent}`" class="empty-note">
         Rigenera è spento: serve un provider AI configurato nelle
         <router-link :to="{ name: 'admin-settings' }">impostazioni</router-link>. Senza provider la
         chat non compare sulla scheda pubblica, quindi per ora queste domande non le legge nessuno.
@@ -163,19 +177,21 @@ onMounted(load)
     <template v-else>
       <ol class="suggested-questions-list" role="list" :aria-busy="regenerating">
         <li v-for="(q, i) in questions" :key="i">
-          <label :for="`suggested-question-${i}`" class="visually-hidden">Domanda {{ i + 1 }}</label>
+          <label :for="`suggested-question-${agent}-${i}`" class="visually-hidden"
+            >Domanda {{ i + 1 }}</label
+          >
           <input
-            :id="`suggested-question-${i}`"
+            :id="`suggested-question-${agent}-${i}`"
             v-model="q.text"
             type="text"
             :maxlength="120"
             :disabled="busy"
-            :aria-describedby="q.edited ? `suggested-question-badge-${i}` : undefined"
+            :aria-describedby="q.edited ? `suggested-question-badge-${agent}-${i}` : undefined"
             placeholder="Scrivi una domanda"
           />
           <span
             v-if="q.edited"
-            :id="`suggested-question-badge-${i}`"
+            :id="`suggested-question-badge-${agent}-${i}`"
             class="suggested-questions-badge"
             >scritta a mano</span
           >
@@ -196,7 +212,7 @@ onMounted(load)
         intanto mostra le sue tre domande fisse. Lo diceva il placeholder, che
         sparisce alla prima lettera ed è il testo meno leggibile del campo.
       -->
-      <p v-if="incomplete" id="sq-save-note" class="empty-note">
+      <p v-if="incomplete" :id="`sq-save-note-${agent}`" class="empty-note">
         <template v-if="allEmpty">
           Nessuna domanda ancora: rigenerale da un manuale indicizzato, oppure scrivile a mano qui e
           salvale. Finché sono vuote la chat propone tre domande generiche.
@@ -208,7 +224,7 @@ onMounted(load)
         <button
           type="submit"
           :disabled="busy || incomplete"
-          :aria-describedby="incomplete ? 'sq-save-note' : undefined"
+          :aria-describedby="incomplete ? `sq-save-note-${agent}` : undefined"
         >
           {{ saving ? 'Salvataggio…' : 'Salva' }}
         </button>
