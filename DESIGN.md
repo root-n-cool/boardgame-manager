@@ -570,7 +570,15 @@ questa scheda.
   agente disponibile) resta nascosto: non c'è niente da scegliere. Il
   menu **sale dal bordo alto del composer** (`bottom: calc(100% + …)`,
   `transform-origin: bottom left`) perché il campo sta in fondo al
-  pannello della chat e sotto non c'è spazio per aprirlo. Le voci sono
+  pannello della chat e sotto non c'è spazio per aprirlo. L'ancora è
+  `.chat-composer` (`position: relative`), non il bottone: ancorato al
+  bottone il menu saliva di mezza riga e scavalcava il bordo del campo,
+  coprendo il testo. Il bottone è 32px a vista e 44 di bersaglio col
+  solito `::after`, e il suo nome accessibile comincia dall'etichetta a
+  vista ("Manuale: scegli con chi parlare"). **Si spegne mentre arriva una
+  risposta** (`busy`): cambiare agente smonta la conversazione e la
+  risposta in volo andrebbe persa; un menu già aperto si chiude. Il motivo
+  a vista è la bolla di attesa nel filo, la stessa che spegne l'invio. Le voci sono
   sempre due — Manuale (tag "regole"), Strategia (tag "consigli") — e
   quella che il gioco non ha resta **disabilitata** con la tag sostituita
   da "non disponibile per questo gioco" e opacità ridotta, mai nascosta:
@@ -579,7 +587,9 @@ questa scheda.
   frecce, hover ed Esc — solo un cambio di `background-color` in 0.15s,
   niente pillola che si sposta né altri effetti decorativi: la stessa
   economia di mezzi del resto della chat. Tastiera: ↑/↓ muove
-  l'evidenziazione (con wrap), Invio/Spazio sceglie, Esc chiude e
+  l'evidenziazione (con wrap) **saltando le voci disabilitate in entrambi
+  i versi**, come il passaggio del mouse, e all'apertura non parte mai da
+  una voce spenta; Invio/Spazio sceglie, Esc chiude e
   riporta il fuoco al bottone, Tab chiude senza riportarlo. Un clic fuori
   dal menu lo chiude senza spostare il fuoco.
 - **Lo storico vive in `localStorage`, non nel database.** Una chiave per
@@ -888,8 +898,13 @@ testo estratto non si conserva da nessuna parte, per scelta.
   titoli.
 
 #### Domande suggerite (`SuggestedQuestionsPanel.vue`)
-La seconda card del gruppo «Chatbot», sorella di "Knowledge base" e non un
-blocco dentro: le tre domande si devono poter scrivere a mano anche su un
+Una card per agente nel gruppo «Chatbot»: "Domande suggerite" (Manuale) e, solo su un gioco con `bggId`,
+"Domande per la Strategia". **Mai due pannelli nello stesso foglio**: messi
+uno sotto l'altro in una `.panel-card` si toccavano senza respiro né filo, e il
+"Salva" del primo si leggeva come l'intestazione del secondo; da card sorelle
+prendono il filo di feltro del gruppo. I testi che dicono da dove legge il
+modello cambiano per agente (manuale indicizzato / descrizione su BGG). Sono
+sorelle di "Knowledge base" e non un blocco dentro: le tre domande si devono poter scrivere a mano anche su un
 gioco senza documenti indicizzati, ed è il motivo per cui il PUT è un upsert.
 Il `.panel-card` sta nella vista, quindi il form non porta bordo né ombra
 suoi — raddoppiarli sarebbe la `.panel-card` dentro `.panel-card` che il

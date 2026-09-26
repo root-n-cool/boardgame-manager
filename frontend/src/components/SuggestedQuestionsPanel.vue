@@ -82,6 +82,18 @@ const hint = computed(() =>
     ? 'Le tre domande che la Strategia propone prima che qualcuno scriva. Si generano da sé quando importi il gioco da BGG, tranne quelle che riscrivi qui.'
     : 'Le tre domande che il Manuale propone prima che qualcuno scriva. A ogni indicizzazione si rigenerano da sé, tranne quelle che riscrivi qui.',
 )
+// Da dove legge il modello quando rigenera: la Strategia dalla descrizione
+// del gioco su BGG, il Manuale dai documenti indicizzati. Prima il pannello
+// della Strategia parlava di "manuale" anche lui, e mandava l'admin a
+// cercare un documento che per quell'agente non serve.
+const source = computed(() =>
+  props.agent === 'strategy' ? 'dalla descrizione del gioco su BGG' : 'da un manuale indicizzato',
+)
+const regeneratingNote = computed(() =>
+  props.agent === 'strategy'
+    ? 'Il modello sta rileggendo la descrizione del gioco su BGG: ci vuole qualche secondo.'
+    : 'Il modello sta rileggendo i titoli del manuale: ci vuole qualche secondo.',
+)
 
 // La query string va sul path di lettura/scrittura, ma il segmento
 // `/regenerate` si costruisce a parte: appenderlo dopo `?agent=...` lo
@@ -200,9 +212,7 @@ onMounted(load)
 
       <!-- Sta qui e non in fondo al pannello: la rigenerazione dura secondi
            e quel che cambia sono i tre campi appena sopra. -->
-      <p v-if="regenerating" class="empty-note">
-        Il modello sta rileggendo i titoli del manuale: ci vuole qualche secondo.
-      </p>
+      <p v-if="regenerating" class="empty-note">{{ regeneratingNote }}</p>
 
       <!--
         Un solo messaggio per lo stato dei tre campi, ed è anche il motivo
@@ -214,8 +224,7 @@ onMounted(load)
       -->
       <p v-if="incomplete" :id="`sq-save-note-${agent}`" class="empty-note">
         <template v-if="allEmpty">
-          Nessuna domanda ancora: rigenerale da un manuale indicizzato, oppure scrivile a mano qui e
-          salvale. Finché sono vuote la chat propone tre domande generiche.
+          Nessuna domanda ancora: rigenerale {{ source }}, oppure scrivile a mano qui e salvale. Finché sono vuote la chat propone tre domande generiche.
         </template>
         <template v-else>Servono tutte e tre le domande: una casella vuota non si salva.</template>
       </p>

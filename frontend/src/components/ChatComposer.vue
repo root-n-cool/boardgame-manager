@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, useId, watch } from 'vue'
 
 /**
  * Il campo con cui si scrive al Mentore: testo sopra, dettatura e invio
@@ -167,14 +167,31 @@ defineExpose({ focus })
 const menuOpen = ref(false)
 const menu = ref<HTMLElement | null>(null)
 const trigger = ref<HTMLButtonElement | null>(null)
+// Id delle voci unici per istanza: `aria-activedescendant` punta a un id
+// del documento, e due composer montati insieme non devono condividerlo.
+const uid = useId()
 // La voce sotto il cursore o sotto le frecce: l'evidenziazione scivola lì.
 const highlighted = ref(0)
 const showPicker = computed(() => (props.agents?.length ?? 0) >= 2)
 const current = computed(() => props.agents?.find((a) => a.key === agent.value))
 
+// La prossima voce sceglibile nella direzione `dir` (+1 giù, -1 su), con
+// wrap: le voci disabilitate si saltano in entrambi i versi — prima ↓ le
+// saltava e ↑ no, e l'evidenziazione finiva su una voce che non si sceglie.
+function nextEnabled(from: number, dir: 1 | -1): number {
+  const list = props.agents ?? []
+  for (let step = 1; step <= list.length; step++) {
+    const i = (from + dir * step + list.length) % list.length
+    if (!list[i].disabled) return i
+  }
+  return from
+}
+
 function openMenu() {
-  const i = props.agents?.findIndex((a) => a.key === agent.value) ?? 0
-  highlighted.value = Math.max(0, i)
+  if (props.busy) return
+  const list = props.agents ?? []
+  const i = list.findIndex((a) => a.key === agent.value)
+  highlighted.value = i >= 0 && !list[i].disabled ? i : nextEnabled(-1, 1)
   menuOpen.value = true
   nextTick(() => menu.value?.focus())
 }
@@ -192,8 +209,7 @@ function onMenuKeydown(e: KeyboardEvent) {
   const list = props.agents ?? []
   if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
     e.preventDefault()
-    const step = e.key === 'ArrowDown' ? 1 : list.length - 1
-    highlighted.value = (highlighted.value + step) % list.length
+    highlighted.value = nextEnabled(highlighted.value, e.key === 'ArrowDown' ? 1 : -1)
   } else if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault()
     pick(list[highlighted.value])
@@ -201,6 +217,15 @@ function onMenuKeydown(e: KeyboardEvent) {
     closeMenu(e.key === 'Escape')
   }
 }
+// Cambiare agente smonta la conversazione in corso: con una risposta in
+// arrivo la si perderebbe. Il bottone si spegne finché `busy`, e un menu
+// già aperto si chiude.
+watch(
+  () => props.busy,
+  (b) => {
+    if (b && menuOpen.value) closeMenu(false)
+  },
+)
 // Clic fuori chiude: pointerdown e non click, così il menu non si
 // riapre sotto il dito quando si tocca di nuovo il bottone.
 function onDocPointerDown(e: PointerEvent) {
@@ -239,7 +264,9 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
             class="chat-composer-agent-trigger"
             aria-haspopup="listbox"
             :aria-expanded="menuOpen"
-            aria-label="Scegli con chi parlare"
+            :aria-label="`${current?.label}: scegli con chi parlare`"
+            :disabled="busy"
+            :title="busy ? 'Aspetta la risposta per cambiare' : undefined"
             @click="menuOpen ? closeMenu() : openMenu()"
           >
             {{ current?.label }}
@@ -253,18 +280,18 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocPointerDo
             class="chat-composer-agent-menu"
             role="listbox"
             tabindex="-1"
-            :aria-activedescendant="`agent-opt-${highlighted}`"
+            :aria-activedescendant="`${uid}-opt-${highlighted}`"
             @keydown="onMenuKeydown"
           >
             <li
               v-for="(a, i) in agents"
-              :id="`agent-opt-${i}`"
+              :id="`${uid}-opt-${i}`"
               :key="a.key"
               role="option"
               :aria-selected="a.key === agent"
               :aria-disabled="a.disabled"
               :class="{ 'is-highlighted': i === highlighted, 'is-disabled': a.disabled }"
-              @pointerenter="highlighted = i"
+              @pointerenter="!a.disabled && (highlighted = i)"
               @click="pick(a)"
             >
               <span class="chat-composer-agent-name">{{ a.label }}</span>

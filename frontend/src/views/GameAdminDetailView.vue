@@ -753,10 +753,15 @@ onMounted(async () => {
             agent="rules"
             :ai-configured="aiConfigured"
           />
-          <!-- Solo su un gioco collegato a BGG: la Strategia legge lì, senza
-               `bggId` non ha nulla da proporre e "Rigenera" fallirebbe (422). -->
+        </section>
+        <!-- Solo su un gioco collegato a BGG: la Strategia legge lì, senza
+             `bggId` non ha nulla da proporre e "Rigenera" fallirebbe (422).
+             Una card sua e non un secondo form nella card del Manuale: due
+             pannelli nello stesso foglio si toccavano senza respiro né filo,
+             e il "Salva" del primo si leggeva come l'intestazione del secondo.
+             Da sorella nel gruppo prende il filo di feltro come le altre. -->
+        <section v-if="game.bggId" class="panel-card">
           <SuggestedQuestionsPanel
-            v-if="game.bggId"
             :key="`strategy-${suggestedQuestionsKey}`"
             :game-id="game.id"
             agent="strategy"

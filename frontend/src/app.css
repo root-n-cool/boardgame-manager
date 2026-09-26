@@ -5153,7 +5153,12 @@ tbody tr:nth-child(3) .rank-medal {
   padding: 0.5rem 0.85rem 0.85rem;
 }
 
+/* `position: relative` qui e non sul selettore: il menu dell'agente si
+   ancora al bordo alto di tutto il riquadro, non al bottone — ancorato al
+   bottone saliva di mezzo campo e scavalcava il bordo del composer,
+   coprendo il testo a metà riga. */
 .chat-composer {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
@@ -5203,7 +5208,6 @@ tbody tr:nth-child(3) .rank-medal {
 }
 
 .chat-composer-actions {
-  position: relative;
   display: flex;
   gap: 0.5rem;
   align-items: center;
@@ -5215,11 +5219,13 @@ tbody tr:nth-child(3) .rank-medal {
    destra), il menu sale dal bordo alto del composer perché il campo sta in
    fondo al pannello della chat e sotto non c'è spazio. */
 .chat-composer-agent {
-  position: relative;
   margin-right: auto;
 }
 
+/* 32px a vista, 44 di bersaglio col solito `::after` che sborda, come
+   microfono e invio accanto. */
 .chat-composer-agent-trigger {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 0.25rem;
@@ -5234,10 +5240,24 @@ tbody tr:nth-child(3) .rank-medal {
   font-weight: 600;
 }
 
-.chat-composer-agent-trigger:hover,
+.chat-composer-agent-trigger::after {
+  position: absolute;
+  inset: -6px -2px;
+  content: '';
+}
+
+.chat-composer-agent-trigger:hover:not(:disabled),
 .chat-composer-agent-trigger[aria-expanded='true'] {
   background: var(--card-alt);
   color: var(--ink);
+}
+
+/* Spento mentre arriva una risposta (cambiare agente la butterebbe): il
+   motivo a vista è la bolla di attesa nel filo sopra, lo stesso che spegne
+   l'invio. Il fondo va ridichiarato: senza, `button:hover` globale lo
+   tingerebbe di rosso al passaggio. */
+.chat-composer-agent-trigger:disabled {
+  background: transparent;
 }
 
 .chat-composer-agent-trigger svg {
@@ -5247,7 +5267,7 @@ tbody tr:nth-child(3) .rank-medal {
 
 .chat-composer-agent-menu {
   position: absolute;
-  bottom: calc(100% + 0.5rem);
+  bottom: calc(100% + 0.4rem);
   left: 0;
   z-index: 5;
   min-width: 15rem;

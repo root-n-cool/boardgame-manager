@@ -517,9 +517,11 @@ const auxiliaryStyle = `
         </div>
       </div>
 
+      <!-- Il ripiego del manuale vale solo per il Manuale: la Strategia
+           non ha un documento da aprire al posto della risposta. -->
       <p v-else-if="failed" class="error">
-        La chat non si è caricata. Ricarica la pagina, oppure apri il manuale
-        dalla scheda del gioco.
+        La chat non si è caricata. Ricarica la pagina<template v-if="agent === 'rules'">, oppure apri il manuale
+        dalla scheda del gioco</template>.
       </p>
 
       <deep-chat
