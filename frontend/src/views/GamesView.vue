@@ -46,7 +46,7 @@ onMounted(loadGames)
         <QrPrintLink
           v-if="games.length"
           :to="{ name: 'admin-games-qr' }"
-          label="Stampa i QR di tutti i giochi, sei per foglio"
+          label="Stampa i QR di tutti i giochi, nove per foglio"
         />
         <router-link :to="{ name: 'admin-game-new' }" class="action-link is-compact">
           <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">

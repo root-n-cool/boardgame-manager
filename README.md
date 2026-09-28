@@ -59,7 +59,7 @@ esterno obbligatorio.
   pubblico delle impostazioni: senza, la pagina avvisa prima di stampare.
   Dallo stesso cartellino "Scarica JPG" dà il solo codice, senza scritte.
   Dal catalogo admin, "Stampa QR" mette i cartellini di tutti i giochi
-  visibili su fogli A4, sei per foglio (per un PDF: "Salva come PDF" nella
+  visibili su fogli A4, nove per foglio (per un PDF: "Salva come PDF" nella
   stampa del browser).
 - **Aggiungi al calendario**: la pagina pubblica di un evento non ancora
   iniziato offre un file `.ics` (`/api/events/{id}/calendar.ics`) con

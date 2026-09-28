@@ -6045,9 +6045,9 @@ form.game-materials {
 }
 
 /* Il foglio di tutto il catalogo (/admin/games/qr): barra e testi si
-   allargano quanto due cartellini affiancati. */
+   allargano quanto tre cartellini affiancati. */
 .qr-page .is-wide {
-  max-width: calc(140mm + 2px);
+  max-width: 189mm;
 }
 
 .qr-sheet-intro {
@@ -6062,27 +6062,31 @@ form.game-materials {
   margin: 0;
 }
 
-/* Due colonne da 70 mm e tre righe da 95 mm: sei cartellini in un A4 con i
-   margini di `@page qr-sheet`. Accostati, il tratteggio fa da linea di
+/* Tre colonne da 63 mm e tre righe da 95 mm: nove cartellini in un A4 con
+   i margini di `@page qr-sheet`. Più stretti del cartellino singolo (70 mm)
+   perché ne stia un terzo per riga; il codice scende a 45 mm, sempre
+   ampio da leggere. Accostati, il tratteggio fa da linea di
    taglio comune. Su un telefono scende a una colonna. */
 .qr-sheet {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 70mm);
+  grid-template-columns: repeat(auto-fill, 63mm);
   justify-content: center;
   gap: 0;
   width: 100%;
-  max-width: calc(140mm + 2px);
+  max-width: 189mm;
 }
 
 .qr-sheet .qr-card {
+  width: 63mm;
   height: 95mm;
+  padding-inline: 4mm;
   overflow: hidden;
   border-radius: 0;
   box-shadow: none;
   break-inside: avoid;
 }
 
-/* L'altezza è fissa perché sei stiano in un foglio: un titolo lunghissimo
+/* L'altezza è fissa perché nove stiano in un foglio: un titolo lunghissimo
    si ferma alla terza riga invece di spingere il codice sul vicino. */
 .qr-sheet .qr-card-title {
   display: -webkit-box;
@@ -6091,6 +6095,11 @@ form.game-materials {
   line-clamp: 3;
   overflow: hidden;
   flex: none;
+}
+
+.qr-sheet .qr-card-code {
+  width: 45mm;
+  height: 45mm;
 }
 
 .qr-warning,
@@ -6167,7 +6176,7 @@ form.game-materials {
 
 @page qr-sheet {
   size: A4;
-  margin: 5mm 10mm;
+  margin: 5mm 8mm;
 }
 
 @media print {

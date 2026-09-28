@@ -370,8 +370,9 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
 - "Stampa QR" nella testa di `GamesView` apre `QrSheetView`: i cartellini
   di tutti i giochi non nascosti, in ordine di nome, da una sola richiesta
   (`GET /api/games/qr`). Il PDF è quello della stampa del browser.
-- Griglia di 70×95 mm accostati, **sei per A4** (2×3) con la pagina
-  nominata `@page qr-sheet` (margini 5×10 mm): il tratteggio fa da taglio
+- Griglia di 63×95 mm accostati (più stretti del singolo, QR da 45 mm),
+  **nove per A4** (3×3) con la pagina nominata `@page qr-sheet` (margini
+  5×8 mm): il tratteggio fa da taglio
   comune. Altezza fissa, titolo tagliato alla terza riga. Il nome di pagina
   sta sull'intera vista, non sulla griglia, o Chrome apre con un foglio
   bianco.

@@ -57,7 +57,7 @@ const print = () => window.print()
     <div class="qr-sheet-intro is-wide">
       <h1>QR di tutti i giochi</h1>
       <p v-if="loaded && !error" class="page-meta">
-        {{ cards.length === 1 ? '1 cartellino' : `${cards.length} cartellini` }}, sei per foglio A4.
+        {{ cards.length === 1 ? '1 cartellino' : `${cards.length} cartellini` }}, nove per foglio A4.
         Per un PDF scegli «Salva come PDF» nella stampa. I giochi nascosti dal catalogo restano fuori.
       </p>
     </div>
