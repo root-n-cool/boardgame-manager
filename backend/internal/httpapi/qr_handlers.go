@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"sort"
 	"strings"
 
 	"rsc.io/qr"
@@ -67,18 +68,59 @@ func (s *Server) eventQRHandler(w http.ResponseWriter, r *http.Request) {
 // l'indirizzo codificato (quello che la pagina stampa in chiaro sotto il
 // codice, lo stesso e non ricalcolato), se è l'indirizzo pubblico
 // configurato o il ripiego sull'host della richiesta, e il codice come SVG.
-// Livello Q (circa un quarto del codice recuperabile) perché una scatola si
-// graffia.
 func (s *Server) writeQR(w http.ResponseWriter, target string, configured bool, card map[string]any) {
-	code, err := qr.Encode(target, qr.Q)
-	if err != nil {
+	if err := fillQRCard(card, target); err != nil {
 		writeError(w, http.StatusInternalServerError, "could not encode the QR code")
 		return
 	}
-	card["url"] = target
 	card["publicAddressConfigured"] = configured
-	card["svg"] = qrSVG(code, target)
 	writeJSON(w, http.StatusOK, card)
+}
+
+// fillQRCard aggiunge al cartellino l'indirizzo e il codice che lo porta.
+// Livello Q (circa un quarto del codice recuperabile) perché una scatola si
+// graffia.
+func fillQRCard(card map[string]any, target string) error {
+	code, err := qr.Encode(target, qr.Q)
+	if err != nil {
+		return err
+	}
+	card["url"] = target
+	card["svg"] = qrSVG(code, target)
+	return nil
+}
+
+// gamesQRHandler serve i cartellini di tutto il catalogo, da stampare in
+// un colpo e ritagliare. I nascosti restano fuori: se non stanno nel
+// catalogo pubblico, non c'è motivo di metterne il QR nella scatola.
+// Ordine per nome, come chi li infila nelle scatole sullo scaffale.
+func (s *Server) gamesQRHandler(w http.ResponseWriter, r *http.Request) {
+	list, err := s.Games.ListGames(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not list games")
+		return
+	}
+	visible := make([]games.Game, 0, len(list))
+	for _, g := range list {
+		if !g.HiddenFromCatalog {
+			visible = append(visible, g)
+		}
+	}
+	sort.SliceStable(visible, func(i, j int) bool {
+		return strings.ToLower(visible[i].Name) < strings.ToLower(visible[j].Name)
+	})
+
+	base, configured := s.publicAddress(r)
+	cards := make([]map[string]any, 0, len(visible))
+	for _, g := range visible {
+		card := map[string]any{"id": g.ID, "title": g.Name}
+		if err := fillQRCard(card, gamePageURL(base, g.ID)); err != nil {
+			writeError(w, http.StatusInternalServerError, "could not encode the QR code")
+			return
+		}
+		cards = append(cards, card)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"publicAddressConfigured": configured, "cards": cards})
 }
 
 // qrSVG disegna il codice come un solo path, un rettangolo per ogni tratto

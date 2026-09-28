@@ -2,8 +2,9 @@
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
-import { useSiteStore } from '../stores/site'
+import QrCard from '../components/QrCard.vue'
 import { formatEventDateTime, type EventWhen } from '../utils/dates'
+import { GAME_QR_INVITE, downloadQrJpg, printableUrl, qrDataUrl } from '../utils/qr'
 
 /**
  * Il cartellino da stampare: per un gioco va nella scatola, per una serata
@@ -25,35 +26,34 @@ const KINDS = {
     segment: 'games',
     back: 'admin-game-detail',
     backLabel: 'Scheda gioco',
-    invite: 'Inquadra per regole, tutorial e classifica',
+    invite: GAME_QR_INVITE,
   },
   event: {
     segment: 'events',
     back: 'admin-event-detail',
     backLabel: 'Evento',
-    invite: 'Inquadra per prenotare il tuo tavolo',
+    invite: 'Inquadra per info e prenotazioni',
   },
 } as const
 
 const route = useRoute()
-const site = useSiteStore()
 const id = route.params.id as string
 const cfg = KINDS[props.kind]
 
 const card = ref<QrCard | null>(null)
 const subtitle = ref('')
 const qrSrc = ref('')
-/** L'indirizzo in chiaro sotto il codice, senza schema: è il ripiego per
- *  chi il QR non lo legge, e "https://" non si scrive a mano. */
 const printedUrl = ref('')
 const error = ref('')
+/** A parte: un JPG non riuscito non deve togliere il cartellino dallo schermo. */
+const jpgError = ref('')
 
 onMounted(async () => {
   try {
     const c = await api.get<QrCard>(`/${cfg.segment}/${id}/qr`)
     card.value = c
-    qrSrc.value = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(c.svg)}`
-    printedUrl.value = c.url.replace(/^https?:\/\//, '')
+    qrSrc.value = qrDataUrl(c.svg)
+    printedUrl.value = printableUrl(c.url)
     if (c.eventDate && c.startTime) {
       subtitle.value = formatEventDateTime({
         eventDate: c.eventDate,
@@ -67,6 +67,16 @@ onMounted(async () => {
 })
 
 const print = () => window.print()
+
+const downloadJpg = async () => {
+  if (!card.value) return
+  jpgError.value = ''
+  try {
+    await downloadQrJpg(card.value.svg, card.value.title)
+  } catch (e) {
+    jpgError.value = (e as Error).message
+  }
+}
 </script>
 
 <template>
@@ -75,17 +85,31 @@ const print = () => window.print()
       <router-link :to="{ name: cfg.back, params: { id } }" class="back-link">
         &larr; {{ cfg.backLabel }}
       </router-link>
-      <button type="button" class="is-compact" :disabled="!card" @click="print">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path
-            d="M7 9V4h10v5M7 17H5.5A1.5 1.5 0 0 1 4 15.5v-5A1.5 1.5 0 0 1 5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H17M7 14h10v6H7z"
-            stroke="currentColor"
-            stroke-width="1.7"
-            stroke-linejoin="round"
-          />
-        </svg>
-        Stampa
-      </button>
+      <div class="qr-toolbar-actions">
+        <button type="button" class="is-compact btn-secondary" :disabled="!card" @click="downloadJpg">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Scarica JPG
+        </button>
+        <button type="button" class="is-compact" :disabled="!card" @click="print">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path
+              d="M7 9V4h10v5M7 17H5.5A1.5 1.5 0 0 1 4 15.5v-5A1.5 1.5 0 0 1 5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H17M7 14h10v6H7z"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linejoin="round"
+            />
+          </svg>
+          Stampa
+        </button>
+      </div>
     </div>
 
     <!-- Senza indirizzo pubblico il QR punta all'host del browser dell'admin:
@@ -96,16 +120,16 @@ const print = () => window.print()
       Impostalo in <router-link :to="{ name: 'admin-settings' }">Impostazioni</router-link>
       prima di stampare.
     </p>
+    <p v-if="jpgError" class="error qr-error" role="alert">{{ jpgError }}</p>
     <p v-if="error" class="error qr-error">{{ error }}</p>
 
-    <article v-else class="qr-card" aria-label="Cartellino da stampare">
-      <p class="qr-card-site">{{ site.siteTitle }}</p>
-      <h1 class="qr-card-title">{{ card?.title ?? '…' }}</h1>
-      <p v-if="subtitle" class="qr-card-subtitle">{{ subtitle }}</p>
-      <img v-if="qrSrc" :src="qrSrc" alt="" class="qr-card-code" width="200" height="200" />
-      <div v-else class="qr-card-code" aria-hidden="true"></div>
-      <p class="qr-card-invite">{{ cfg.invite }}</p>
-      <p class="qr-card-url">{{ printedUrl }}</p>
-    </article>
+    <QrCard
+      v-else
+      :title="card?.title ?? '…'"
+      :subtitle="subtitle"
+      :src="qrSrc"
+      :invite="cfg.invite"
+      :url="printedUrl"
+    />
   </div>
 </template>

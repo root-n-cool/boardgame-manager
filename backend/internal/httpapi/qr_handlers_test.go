@@ -83,3 +83,50 @@ func TestQR_UnknownTargetIs404AndAnonymousIs401(t *testing.T) {
 		}
 	}
 }
+
+func TestGamesQR_ListsEveryVisibleGameByNameWithItsCard(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "password123")
+	putSettings(t, router, cookie, map[string]string{
+		"defaultLanguage": "it", "publicBaseUrl": "https://giochi.example.org",
+	})
+	catanID := createTestGameForEvent(t, server.Games, "Catan")
+	azulID := createTestGameForEvent(t, server.Games, "azul")
+	hiddenID := createTestGameForEvent(t, server.Games, "Segreto")
+	if rec := patchGame(t, router, cookie, hiddenID, map[string]any{"hiddenFromCatalog": true}); rec.Code != http.StatusOK {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
+	}
+
+	rec := doLoanRequest(router, http.MethodGet, "/api/games/qr", cookie, "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		PublicAddressConfigured bool         `json:"publicAddressConfigured"`
+		Cards                   []qrCardBody `json:"cards"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !body.PublicAddressConfigured {
+		t.Fatal("expected the public address to be reported as configured")
+	}
+	if len(body.Cards) != 2 {
+		t.Fatalf("expected the two visible games, got %+v", body.Cards)
+	}
+	for i, want := range []struct {
+		title string
+		id    int64
+	}{{"azul", azulID}, {"Catan", catanID}} {
+		url := fmt.Sprintf("https://giochi.example.org/games/%d", want.id)
+		c := body.Cards[i]
+		if c.Title != want.title || c.URL != url || !strings.Contains(c.SVG, url) {
+			t.Errorf("card %d: expected %q at %q, got %q at %q", i, want.title, url, c.Title, c.URL)
+		}
+	}
+
+	if rec := doLoanRequest(router, http.MethodGet, "/api/games/qr", nil, ""); rec.Code != http.StatusUnauthorized {
+		t.Errorf("anonymous: expected 401, got %d", rec.Code)
+	}
+}

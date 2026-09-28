@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api/client'
+import QrPrintLink from '../components/QrPrintLink.vue'
 
 interface GameSummary {
   id: number
@@ -41,12 +42,19 @@ onMounted(loadGames)
           {{ games.length === 0 ? 'Nessun gioco in catalogo' : games.length === 1 ? '1 gioco' : `${games.length} giochi` }}
         </p>
       </div>
-      <router-link :to="{ name: 'admin-game-new' }" class="action-link is-compact">
-        <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-        </svg>
-        Aggiungi gioco
-      </router-link>
+      <div class="page-head-actions">
+        <QrPrintLink
+          v-if="games.length"
+          :to="{ name: 'admin-games-qr' }"
+          label="Stampa i QR di tutti i giochi, sei per foglio"
+        />
+        <router-link :to="{ name: 'admin-game-new' }" class="action-link is-compact">
+          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+          Aggiungi gioco
+        </router-link>
+      </div>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
     <div class="game-grid">

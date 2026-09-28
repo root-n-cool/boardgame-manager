@@ -57,6 +57,10 @@ esterno obbligatorio.
   "Stampa QR" apre un cartellino 70×95 mm con il QR della pagina pubblica,
   da mettere nella scatola del gioco o sul tavolo. Il QR usa l'indirizzo
   pubblico delle impostazioni: senza, la pagina avvisa prima di stampare.
+  Dallo stesso cartellino "Scarica JPG" dà il solo codice, senza scritte.
+  Dal catalogo admin, "Stampa QR" mette i cartellini di tutti i giochi
+  visibili su fogli A4, sei per foglio (per un PDF: "Salva come PDF" nella
+  stampa del browser).
 - **Aggiungi al calendario**: la pagina pubblica di un evento non ancora
   iniziato offre un file `.ics` (`/api/events/{id}/calendar.ics`) con
   titolo, luogo e link alla serata. L'orario è quello locale della

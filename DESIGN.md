@@ -348,7 +348,7 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
 - Pagina senza shell (`meta.bare`), una vista sola (`QrPrintView`) per gioco
   ed evento. Il cartellino è **70×95 mm**, bianco e inchiostro pieno perché
   va in stampante, con il tratteggio come linea di taglio: nome del sito,
-  titolo (+ data per l'evento), QR da 50 mm, invito ("Inquadra per…") e
+  titolo (+ data per l'evento), QR da 50 mm, invito ("Inquadra per…": regole, tutorial e classifica per il gioco; info e prenotazioni per l'evento) e
   l'indirizzo in chiaro senza schema, come ripiego.
 - Una sola richiesta (`GET /api/{games|events}/:id/qr`) porta titolo,
   l'indirizzo codificato, se è l'**indirizzo pubblico** delle impostazioni
@@ -361,6 +361,20 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   testa della scheda: `.action-link.is-secondary` condivide la regola di
   `button.btn-secondary` (bordo carta, nessun riempimento) — accanto a
   un'azione primaria rossa non ne serve una seconda.
+- **"Scarica JPG"** (secondaria, accanto a "Stampa") scarica il solo codice,
+  senza scritte, per volantini e social: generato nel browser dallo stesso
+  SVG, lato multiplo esatto dei moduli (≥1024 px) perché resti netto.
+- Il cartellino è un componente (`QrCard`), uguale da solo e nel foglio.
+
+### Foglio QR del catalogo (`/admin/games/qr`)
+- "Stampa QR" nella testa di `GamesView` apre `QrSheetView`: i cartellini
+  di tutti i giochi non nascosti, in ordine di nome, da una sola richiesta
+  (`GET /api/games/qr`). Il PDF è quello della stampa del browser.
+- Griglia di 70×95 mm accostati, **sei per A4** (2×3) con la pagina
+  nominata `@page qr-sheet` (margini 5×10 mm): il tratteggio fa da taglio
+  comune. Altezza fissa, titolo tagliato alla terza riga. Il nome di pagina
+  sta sull'intera vista, non sulla griglia, o Chrome apre con un foglio
+  bianco.
 
 ### Aggiungi al calendario (`.event-calendar-link`)
 - Link testuale accanto alla data nella pagina pubblica dell'evento, solo

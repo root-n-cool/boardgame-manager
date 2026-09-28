@@ -143,6 +143,7 @@ func NewRouter(s *Server) http.Handler {
 		protected.Post("/api/settings/logo", s.uploadLogoHandler)
 		protected.Post("/api/settings/favicon", s.uploadFaviconHandler)
 		protected.Get("/api/games/search", s.searchGamesHandler)
+		protected.Get("/api/games/qr", s.gamesQRHandler)
 		protected.With(geocodeLimiter.middleware).Get("/api/geocode/search", s.searchPlacesHandler)
 		protected.Post("/api/games", s.createGameHandler)
 		protected.Patch("/api/games/{id}", s.updateGameHandler)

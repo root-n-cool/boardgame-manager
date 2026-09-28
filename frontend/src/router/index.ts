@@ -20,6 +20,7 @@ import EventNewView from '../views/EventNewView.vue'
 import EventAdminDetailView from '../views/EventAdminDetailView.vue'
 import LoanDeskView from '../views/LoanDeskView.vue'
 import QrPrintView from '../views/QrPrintView.vue'
+import QrSheetView from '../views/QrSheetView.vue'
 import LegalPageView from '../views/LegalPageView.vue'
 
 declare module 'vue-router' {
@@ -96,6 +97,7 @@ const router = createRouter({
     },
     { path: '/admin/games', name: 'admin-games', component: GamesView },
     { path: '/admin/games/new', name: 'admin-game-new', component: GameNewView },
+    { path: '/admin/games/qr', name: 'admin-games-qr', component: QrSheetView, meta: { bare: true } },
     { path: '/admin/games/:id', name: 'admin-game-detail', component: GameAdminDetailView },
     { path: '/admin/games/:id/prestiti', name: 'admin-game-loans', component: GameLoansView },
     {

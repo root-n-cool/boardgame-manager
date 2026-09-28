@@ -6027,6 +6027,7 @@ form.game-materials {
   width: 100%;
   max-width: 24rem;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
@@ -6034,6 +6035,62 @@ form.game-materials {
 
 .qr-toolbar .back-link {
   margin-bottom: 0;
+}
+
+.qr-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+/* Il foglio di tutto il catalogo (/admin/games/qr): barra e testi si
+   allargano quanto due cartellini affiancati. */
+.qr-page .is-wide {
+  max-width: calc(140mm + 2px);
+}
+
+.qr-sheet-intro {
+  width: 100%;
+}
+
+.qr-sheet-intro h1 {
+  margin: 0 0 0.25rem;
+}
+
+.qr-sheet-intro .page-meta {
+  margin: 0;
+}
+
+/* Due colonne da 70 mm e tre righe da 95 mm: sei cartellini in un A4 con i
+   margini di `@page qr-sheet`. Accostati, il tratteggio fa da linea di
+   taglio comune. Su un telefono scende a una colonna. */
+.qr-sheet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 70mm);
+  justify-content: center;
+  gap: 0;
+  width: 100%;
+  max-width: calc(140mm + 2px);
+}
+
+.qr-sheet .qr-card {
+  height: 95mm;
+  overflow: hidden;
+  border-radius: 0;
+  box-shadow: none;
+  break-inside: avoid;
+}
+
+/* L'altezza è fissa perché sei stiano in un foglio: un titolo lunghissimo
+   si ferma alla terza riga invece di spingere il codice sul vicino. */
+.qr-sheet .qr-card-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+  flex: none;
 }
 
 .qr-warning,
@@ -6108,9 +6165,29 @@ form.game-materials {
   overflow-wrap: anywhere;
 }
 
+@page qr-sheet {
+  size: A4;
+  margin: 5mm 10mm;
+}
+
 @media print {
   @page {
     margin: 12mm;
+  }
+
+  /* Il nome di pagina sta sull'intera vista e non sulla sola griglia: un
+     cambio di pagina nominata forza un salto, e in testa lascerebbe un
+     foglio bianco. */
+  .qr-page.is-sheet {
+    page: qr-sheet;
+  }
+
+  .qr-sheet {
+    max-width: none;
+  }
+
+  .qr-sheet-intro {
+    display: none;
   }
 
   .qr-page {
