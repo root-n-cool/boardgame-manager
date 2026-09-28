@@ -2619,6 +2619,13 @@ ul.game-grid {
   color: var(--ink-muted);
 }
 
+/* Il secondo gruppo del tavolo, i giochi senza prenotazione: un gradino
+   sotto "Al tavolo", con aria sopra per staccarlo dalla griglia di prima. */
+.table-subheading {
+  margin: 2rem 0 0;
+  font-size: 1rem;
+}
+
 /* Il riepilogo del codice dopo la chiusura della modale: non è un blocco di
    testo qualsiasi, è la cosa da non perdere, quindi prende il bordo oro e
    sta sopra al tavolo. */
@@ -6319,40 +6326,6 @@ label.select-filter {
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--ink-muted);
-}
-
-/* Il toggle Tutti / Prenotabili: due pastiglie, una sempre accesa. Spenta
-   è cartoncino col bordo; accesa prende il feltro, lo stesso verde della
-   chrome: "questo è il tavolo che stai guardando". Il rosso seme resta
-   alle azioni. 44px d'altezza per il dito. */
-.filter-toggle {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-}
-
-.filter-toggle button {
-  min-height: 44px;
-  padding: 0.4rem 0.85rem;
-  font-size: 0.9rem;
-  color: var(--ink);
-  background: var(--card);
-  border: 1px solid var(--card-line);
-  border-radius: 999px;
-}
-
-.filter-toggle button:hover {
-  background: var(--card-alt);
-}
-
-.filter-toggle button[aria-pressed='true'] {
-  color: var(--felt-text);
-  background: var(--felt);
-  border-color: var(--felt);
-}
-
-.filter-toggle button[aria-pressed='true']:hover {
-  background: var(--felt-deep);
 }
 
 /* La tendina: select nativa alta 44px e larga quanto le sue voci (la

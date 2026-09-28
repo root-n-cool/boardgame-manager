@@ -93,10 +93,8 @@ const bookingError = ref('')
 const bookingResult = ref<BookingResult | null>(null)
 const chipActionError = ref('')
 
-// I filtri sopra "Al tavolo". Si parte sempre da "Tutti": un gioco senza
-// prenotazione è comunque in sala, e nasconderlo di default farebbe
-// credere che la serata ne porti meno di quanti ce ne sono.
-const onlyBookable = ref(false)
+// I filtri sopra "Al tavolo". Prenotabili e non prenotabili non si
+// filtrano: stanno in due gruppi separati, uno sotto l'altro.
 const players = ref<number | null>(null)
 const kind = ref<GameKind | null>(null)
 
@@ -143,13 +141,7 @@ const venueLines = computed(() => {
   return { title: venue.name || venue.address, detail: venue.name ? venue.address : '' }
 })
 
-// Il toggle ha senso solo se la serata mescola i due tipi: con tutti i
-// giochi prenotabili (o nessuno) le due viste sarebbero identiche.
-const hasBookMix = computed(
-  () => !!event.value && event.value.games.some((g) => g.bookable) && event.value.games.some((g) => !g.bookable),
-)
-
-// Come per il toggle: il filtro "Tipo" serve solo se la serata mescola
+// Il filtro "Tipo" serve solo se la serata mescola
 // tavoli da gioco e tavoli di ruolo.
 const hasKinds = computed(() => !!event.value && hasKindMix(event.value.games))
 
@@ -159,14 +151,28 @@ const showFilters = computed(() => !!event.value && event.value.games.length > 1
 const visibleGames = computed(() =>
   (event.value?.games ?? []).filter(
     (g) =>
-      (!onlyBookable.value || g.bookable) &&
       (players.value === null || fitsPlayers(g, players.value)) &&
       (kind.value === null || gameKindInfo(g.kind).value === kind.value),
   ),
 )
 
+/**
+ * Prima i tavoli da prenotare, poi quelli che la serata porta senza
+ * prenotazione: la separazione la fa l'ordine, con un titolo in mezzo,
+ * invece di una pastiglia su ogni card che ne sballava l'altezza.
+ */
+const gameSections = computed(() =>
+  [
+    { key: 'bookable', title: '', games: visibleGames.value.filter((g) => !tableOnly(g)) },
+    {
+      key: 'table-only',
+      title: 'Inoltre, a disposizione durante la serata',
+      games: visibleGames.value.filter(tableOnly),
+    },
+  ].filter((s) => s.games.length > 0),
+)
+
 function resetFilters() {
-  onlyBookable.value = false
   players.value = null
   kind.value = null
 }
@@ -227,7 +233,7 @@ function copyLabel(g: EventGameInfo) {
 }
 
 function isFull(g: EventGameInfo) {
-  return g.remaining <= 0
+  return !tableOnly(g) && g.remaining <= 0
 }
 
 /**
@@ -238,7 +244,7 @@ function isFull(g: EventGameInfo) {
  * pastiglia "Al completo" per capirlo.
  */
 function seatsLabel(g: EventGameInfo) {
-  if (g.seats <= 1 || isFull(g)) {
+  if (tableOnly(g) || g.seats <= 1 || isFull(g)) {
     return ''
   }
   return g.remaining === 1
@@ -406,21 +412,17 @@ onMounted(async () => {
     <p v-if="chipActionError" class="error">{{ chipActionError }}</p>
 
     <div v-if="showFilters" class="event-filters">
-      <!-- Due voci, una sempre accesa: un toggle da un tocco, non una
-           tendina. Bottoni con aria-pressed dentro un gruppo etichettato. -->
-      <div v-if="hasBookMix" class="filter-field" role="group" aria-labelledby="filter-show-label">
-        <span id="filter-show-label" class="filter-label">Mostra</span>
-        <div class="filter-toggle">
-          <button type="button" :aria-pressed="!onlyBookable" @click="onlyBookable = false">Tutti</button>
-          <button type="button" :aria-pressed="onlyBookable" @click="onlyBookable = true">Prenotabili</button>
-        </div>
-      </div>
       <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
       <SelectFilter v-if="hasKinds" v-model="kind" label="Tipo" :options="KIND_FILTER_OPTIONS" />
     </div>
 
-    <ul v-if="visibleGames.length > 0" class="event-games">
-      <li v-for="g in visibleGames" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
+    <template v-for="section in gameSections" :key="section.key">
+      <template v-if="section.title">
+        <h3 class="table-subheading">{{ section.title }}</h3>
+        <p class="table-note">Non si prenotano: chiedili all'organizzatore quando arrivi.</p>
+      </template>
+    <ul class="event-games">
+      <li v-for="g in section.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
         <img
           v-if="g.coverPath"
           :src="`/api/uploads/${g.coverPath}`"
@@ -450,8 +452,7 @@ onMounted(async () => {
         <div class="event-game-body">
           <h3>{{ copyLabel(g) }}</h3>
           <GameDifficulty :weight="g.weight" />
-          <p v-if="tableOnly(g)" class="seat-state">Senza prenotazione</p>
-          <p v-else-if="isFull(g)" class="seat-state">Al completo</p>
+          <p v-if="isFull(g)" class="seat-state">Al completo</p>
           <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
           <!-- I rimandi alla scheda stanno QUI e non fra le azioni in fondo
                alla card: le azioni sono ancorate al fondo (`margin-top: auto`)
@@ -496,14 +497,11 @@ onMounted(async () => {
         </div>
       </li>
     </ul>
-    <div v-else-if="event.games.length > 0" class="filter-empty">
+    </template>
+    <div v-if="visibleGames.length === 0 && event.games.length > 0" class="filter-empty">
       <p class="empty-note">Nessun gioco della serata corrisponde a questi filtri.</p>
       <button type="button" class="btn-secondary is-compact" @click="resetFilters">Azzera filtri</button>
     </div>
-    <p v-if="visibleGames.some(tableOnly)" class="table-note">
-      I giochi segnati "Senza prenotazione" sono a disposizione al tavolo:
-      chiedili all'organizzatore quando arrivi.
-    </p>
     <p v-if="event.games.length === 0" class="empty-note">
       Per questa serata non è ancora stato messo in tavola nessun gioco.
     </p>

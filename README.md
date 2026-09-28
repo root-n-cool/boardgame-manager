@@ -44,8 +44,8 @@ esterno obbligatorio.
   entra nell'evento. Nella pagina pubblica le copie compaiono numerate
   (`Carcassonne #1`, `Carcassonne #2`) quando sono più d'una, e si
   prenotano separatamente. Un gioco può restare "Senza prenotazione"
-  (disponibile solo dal vivo); la pagina pubblica filtra tra "Tutti" e
-  "Prenotabili" e per numero di giocatori.
+  (disponibile solo dal vivo): nella pagina pubblica compare in un gruppo a
+  parte, sotto i giochi prenotabili, e si filtra per numero di giocatori.
 - **Luogo dell'evento**: l'indirizzo si cerca su OpenStreetMap mentre lo
   si scrive e la pagina pubblica dell'evento mostra la mappa del posto.
   Non serve nessuna chiave né registrazione: la ricerca passa dal server

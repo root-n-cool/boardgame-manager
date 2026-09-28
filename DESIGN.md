@@ -1153,17 +1153,20 @@ pollice.
   a capo una sotto l'altra: accettato, la fila dei "Prenota" resta
   allineata.
 
-### Toggle a due voci (`.filter-toggle`, pagina evento)
-"Tutti / Prenotabili": due bottoni con `aria-pressed` in un `role="group"`
-etichettato, uno sempre acceso (stato booleano, niente componente
-generico). Spento è cartoncino con bordo; acceso prende il **feltro**
-(`--felt`, testo `--felt-text`), mai il rosso seme, che resta alle azioni.
-44px d'altezza, raggio `999px`. L'etichetta sopra (`.filter-label`: mono,
-maiuscoletto tracciato, `--ink-muted`) è la stessa delle tendine.
+### Due gruppi al tavolo (pagina evento)
+Prenotabili e non prenotabili non si filtrano e non si marcano con una
+pastiglia: stanno in **due feltri separati**, prima quello dei giochi da
+prenotare, poi il sottotitolo `.table-subheading` "Inoltre, a
+disposizione durante la serata" con la nota "Non si prenotano: chiedili
+all'organizzatore quando arrivi." e il secondo feltro. Scelta fatta con
+l'utente: la pastiglia "Senza prenotazione" sballava l'altezza delle card
+e il toggle Tutti / Prenotabili era una separazione fatta a mano che
+l'ordine fa da solo.
 
 ### Filtri a tendina (`SelectFilter.vue`)
-Oltre le due voci il filtro diventa una `<select>` nativa (sul telefono
-apre il selettore di sistema), con la stessa etichetta (`.filter-label`)
+Il filtro è una `<select>` nativa (sul telefono
+apre il selettore di sistema), con un'etichetta (`.filter-label`: mono,
+maiuscoletto tracciato, `--ink-muted`)
 sopra e prima voce "Tutti"/"Tutte" = nessun filtro. Alta 44px, larga
 quanto le sue voci (min 10rem). Con un filtro attivo il bordo passa al
 feltro (1px + inset 1px) e il testo a 600: si vede a colpo d'occhio che la
@@ -1183,12 +1186,11 @@ tre righe su telefono, due tendine ne occupano una.
   `.game-grid` con `--grid-fill: auto-fill; --grid-max: 1fr` al posto del
   tetto di 230px dello scaffale admin: le card arrivano allo stesso bordo
   destro della barra dei filtri, e la regola telefono resta una sola.
-- **Scheda evento pubblica**: sotto `Al tavolo`, le pastiglie **Mostra**
-  (Tutti / Prenotabili, solo se la serata mescola i due tipi), la tendina
+- **Scheda evento pubblica**: sotto `Al tavolo`, la tendina
   **Giocatori** e la tendina **Tipo** (Giochi da tavolo (GDT) / Giochi di
   ruolo (GDR), solo se la serata mescola le tipologie), tutte nascoste con
-  un solo tavolo. Si parte sempre da
-  "Tutti": un gioco senza prenotazione è comunque in sala.
+  un solo tavolo. I filtri valgono per entrambi i gruppi (prenotabili e
+  "a disposizione durante la serata").
 
 ### Controllo componenti (`GameMaterialsChecklist.vue`)
 Sulla scheda pubblica, dopo i media, se il gioco ha componenti. Titolo
@@ -1341,14 +1343,11 @@ l'azione sta in basso a destra, dove il pollice la trova.
   anche nell'hover: `li button:hover` lo tingeva di `--danger-bg`, il
   colore di "Rimuovi", su un bottone che consegna — la stessa eredità
   che `.loan-booking-picks` doveva già rifiutare.
-- **Pastiglia di stato** (`.loan-tag`, gemella di `.seat-state`): un
-  gioco senza prenotazione porta la stessa pastiglia quieta, con la
-  stessa scritta — "Senza prenotazione" — sia qui sia sulla scheda
-  pubblica dell'evento, a dire "questo si gioca ma non si prenota". È la
-  stessa informazione letta da due persone diverse — l'organizzatore al
-  banco, chi guarda il tavolo — e due forme diverse per lo stesso dato
-  l'avrebbero fatto sembrare due fatti distinti. La nota sotto il tavolo
-  pubblico ne cita la scritta parola per parola.
+- **Pastiglia di stato** (`.loan-tag`, gemella di `.seat-state`): al
+  banco un gioco senza prenotazione porta la pastiglia quieta "Senza
+  prenotazione", a dire "questo si gioca ma non si prenota". Sulla scheda
+  pubblica dell'evento la pastiglia non c'è più: lì lo dice il gruppo in
+  cui sta la card ("Inoltre, a disposizione durante la serata").
 - **L'avviso della consegna fuori prenotazione è oro, non rosso**
   (`.loan-warning`): fondo `--gold-bg` e bordo `--gold`, la famiglia dei
   distintivi, con il testo in `--ink` pieno. Consegnare una copia
