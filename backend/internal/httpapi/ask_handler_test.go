@@ -531,9 +531,8 @@ func TestAskHandler_WithoutAPreparedManualIs404(t *testing.T) {
 }
 
 // TestAskHandler_AvailabilityPerAgent verifica chatAvailability a livello di
-// handler: manuale e forum sono le due fonti indipendenti, ciascuna basta a
-// sbloccare l'agente Manuale, ma solo il forum sblocca l'agente Strategia
-// (che non ha un equivalente "manuale-only", vedi la spec §1.1).
+// handler: il manuale sblocca il Regolamento (il forum da solo no: supporta
+// le regole, non le sostituisce), il forum sblocca la Strategia.
 func TestAskHandler_AvailabilityPerAgent(t *testing.T) {
 	cases := []struct {
 		name                string
@@ -542,7 +541,7 @@ func TestAskHandler_AvailabilityPerAgent(t *testing.T) {
 	}{
 		{"niente", false, false, false, false},
 		{"solo manuale", true, false, true, false},
-		{"solo forum", false, true, true, true},
+		{"solo forum", false, true, false, true},
 		{"manuale e forum", true, true, true, true},
 	}
 	for _, c := range cases {
@@ -614,21 +613,23 @@ func TestAskHandler_StrategyAgentGetsTheStrategyForumAndTheManual(t *testing.T) 
 	}
 }
 
-func TestAskHandler_RulesAgentWithoutAManualGetsOnlyTheForum(t *testing.T) {
+// Il forum supporta le regole, non le sostituisce: senza manuale il
+// Regolamento non c'è, anche con bggId e Tavily (che accendono la Strategia).
+func TestAskHandler_RulesAgentWithoutAManualIsNotFound(t *testing.T) {
 	server, conn := newTestServerWithDB(t)
 	server.WebSearch = &fakeWebSearch{}
-	asker := &fakeAsker{answer: "ok"}
-	server.Asker = asker
+	server.Asker = &fakeAsker{answer: "ok"}
 	router := httpapi.NewRouter(server)
 	gameID := seedBareGame(t, server)
 	setBGGID(t, conn, gameID, "266192")
 
 	rec := postAsk(t, router, gameID, `{"messages":[{"role":"user","text":"?"}]}`)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d %s", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d %s", rec.Code, rec.Body.String())
 	}
-	if asker.got.Search != nil || asker.got.SearchFAQ == nil {
-		t.Fatalf("rules without a manual: no manual search, only the forum; got %+v", asker.got)
+	rec = postAsk(t, router, gameID, `{"agent":"strategy","messages":[{"role":"user","text":"?"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("strategy: expected 200, got %d %s", rec.Code, rec.Body.String())
 	}
 }
 
@@ -821,8 +822,8 @@ func TestGameDetail_ExposesChatPerAgent(t *testing.T) {
 	}
 	server.WebSearch = &fakeWebSearch{}
 	setBGGID(t, conn, bare, "266192")
-	if c := gameChat(t, router, bare); !c.Rules || !c.Strategy {
-		t.Fatalf("forum only: both agents; got %+v", c)
+	if c := gameChat(t, router, bare); c.Rules || !c.Strategy {
+		t.Fatalf("forum only: strategy only; got %+v", c)
 	}
 }
 
@@ -869,8 +870,8 @@ func TestEventDetail_ExposesChatPerGame(t *testing.T) {
 	if byGame[senzaManuale].Rules || byGame[senzaManuale].Strategy {
 		t.Fatal("il gioco senza manuale e senza forum deve avere chat falso: il link non ha nulla dietro")
 	}
-	if !byGame[soloForum].Rules || !byGame[soloForum].Strategy {
-		t.Fatal("il gioco senza manuale ma con bggId e Tavily deve avere entrambi gli agenti")
+	if byGame[soloForum].Rules || !byGame[soloForum].Strategy {
+		t.Fatal("il gioco senza manuale ma con bggId e Tavily deve avere solo la Strategia")
 	}
 }
 

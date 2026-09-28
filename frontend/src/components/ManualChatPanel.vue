@@ -33,8 +33,6 @@ const props = defineProps<{
   chat: ChatAvailability
   /** Le tre domande suggerite per agente, già formulate dal modello. Vuota = si usano le fisse. */
   suggestedQuestions: Record<ChatAgent, string[]>
-  /** Il gioco ha un manuale indicizzato: cambia il sottotitolo del Manuale. */
-  hasManual: boolean
   /** Nel dialog mobile la testata porta anche la ×; nella sidebar no. */
   closable?: boolean
   /** Nella barra desktop la testata porta il bottone per ingrandire in modale. */
@@ -199,13 +197,12 @@ const suggestions = computed<string[]>(() => {
   return qs.length >= 3 ? qs.slice(0, 3) : fallbackQuestions[agent.value]
 })
 
-// Il sottotitolo dice da dove arrivano le risposte: dal manuale se il gioco
-// ne ha uno indicizzato, altrimenti dal forum di BGG (la Strategia parla
-// sempre e solo col forum, non ha un manuale da leggere).
-const subtitle = computed(() => {
-  if (agent.value === 'strategy') return 'consigli dal forum di BGG'
-  return props.hasManual ? 'risposte dal manuale' : 'risposte dal forum di BGG'
-})
+// Il sottotitolo dice da dove arrivano le risposte. Il Regolamento esiste
+// solo con un manuale indicizzato: il forum lo affianca ma non sostituisce
+// le regole scritte, quindi senza manuale resta solo la Strategia.
+const subtitle = computed(() =>
+  agent.value === 'strategy' ? 'consigli dal forum di BGG' : 'risposte dal manuale',
+)
 const placeholder = computed(() =>
   agent.value === 'strategy' ? 'Chiedi un consiglio…' : 'Chiedi una regola…',
 )

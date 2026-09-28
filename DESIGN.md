@@ -556,9 +556,9 @@ questa scheda.
   le dispute al tavolo): da quando esiste anche la Strategia il nome deve
   coprire entrambi i mestieri, spiegare le regole e insegnare a giocare
   meglio, e un arbitro non dà consigli di gioco. Sotto, il sottotitolo
-  cambia con l'agente scelto nel selettore (`risposte dal manuale`, o
-  `risposte dal forum di BGG` per il Regolamento su un gioco senza manuale
-  indicizzato, `consigli dal forum di BGG` per la Strategia) in
+  cambia con l'agente scelto nel selettore (`risposte dal manuale` per il
+  Regolamento, che esiste solo con un manuale indicizzato, `consigli dal
+  forum di BGG` per la Strategia) in
   `--felt-text-muted`, e a destra il ＋ di "Nuova conversazione" più,
   **solo nel dialog** (prop `closable`, evento `close`), la ×. Prima la
   testata era markup del dialog e la barra desktop era una colonna di

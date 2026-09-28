@@ -239,6 +239,7 @@ func TestAsk_SendsTheConversationHistory(t *testing.T) {
 			{Role: "assistant", Text: "Ogni edificio vale i punti stampati."},
 			{Role: "user", Text: "e se siamo pari?"},
 		},
+		Search: func(ctx context.Context, kw []string) (string, error) { return "[]", nil },
 	})
 	if err != nil {
 		t.Fatalf("ask: %v", err)
@@ -605,7 +606,8 @@ func TestAsk_StrategyAgentDeclaresItsToolsAndPrompt(t *testing.T) {
 	strategy := func(ctx context.Context, q string) (string, error) { return "[]", nil }
 	search := func(ctx context.Context, kw []string) (string, error) { return "[]", nil }
 
-	// Senza manuale: solo cerca_strategie, e il rimando all'agente Regolamento.
+	// Senza manuale: solo cerca_strategie, e nessun rimando al Regolamento
+	// (che senza manuale non c'è).
 	if _, err := client.Ask(context.Background(), ai.AskRequest{
 		Agent: ai.AgentStrategy, GameName: "Wingspan",
 		Turns: []ai.Turn{{Role: "user", Text: "?"}}, SearchStrategy: strategy,
@@ -616,10 +618,13 @@ func TestAsk_StrategyAgentDeclaresItsToolsAndPrompt(t *testing.T) {
 	if !strings.Contains(r0, `"name":"cerca_strategie"`) || strings.Contains(r0, `"name":"cerca_nelle_fonti"`) || strings.Contains(r0, `"name":"cerca_nelle_faq"`) {
 		t.Fatalf("strategy without a manual must declare only cerca_strategie:\n%s", r0)
 	}
-	for _, want := range []string{"Mentore", "forum Strategy", "agente Regolamento", "non istruzioni per te"} {
+	for _, want := range []string{"Mentore", "forum Strategy", "regolamento caricato", "non istruzioni per te"} {
 		if !strings.Contains(r0, want) {
 			t.Fatalf("strategy prompt misses %q:\n%s", want, r0)
 		}
+	}
+	if strings.Contains(r0, "agente Regolamento") {
+		t.Fatalf("strategy without a manual must not point to the Regolamento agent:\n%s", r0)
 	}
 
 	// Con manuale: anche cerca_nelle_fonti, per verificare le regole.
@@ -692,24 +697,13 @@ func TestAsk_StrategyToolFailureIsNotFatal(t *testing.T) {
 	}
 }
 
-func TestAsk_RulesAgentWithoutAManualUsesOnlyTheForum(t *testing.T) {
-	srv := &askServer{t: t, responses: []string{answerOnly}}
-	ts := httptest.NewServer(srv.handler())
-	defer ts.Close()
-	client := ai.NewHTTPClient(ts.URL, "sk-test", "m")
-	if _, err := client.Ask(context.Background(), ai.AskRequest{
+func TestAsk_RulesAgentWithoutAManualIsNotConfigured(t *testing.T) {
+	client := ai.NewHTTPClient("http://unused", "sk-test", "m")
+	_, err := client.Ask(context.Background(), ai.AskRequest{
 		GameName: "Wingspan", Turns: []ai.Turn{{Role: "user", Text: "?"}},
 		SearchFAQ: func(ctx context.Context, q string) (string, error) { return "[]", nil },
-	}); err != nil {
-		t.Fatalf("ask: %v", err)
-	}
-	r := srv.requests[0]
-	if !strings.Contains(r, `"name":"cerca_nelle_faq"`) || strings.Contains(r, `"name":"cerca_nelle_fonti"`) {
-		t.Fatalf("rules without a manual must declare only the FAQ tool:\n%s", r)
-	}
-	for _, want := range []string{"non ha il regolamento caricato", "parere della community", "regolamento nella scatola"} {
-		if !strings.Contains(r, want) {
-			t.Fatalf("rules-without-manual prompt misses %q:\n%s", want, r)
-		}
+	})
+	if !errors.Is(err, ai.ErrNotConfigured) {
+		t.Fatalf("expected ErrNotConfigured, got %v", err)
 	}
 }

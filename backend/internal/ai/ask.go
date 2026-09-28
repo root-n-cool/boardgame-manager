@@ -578,7 +578,12 @@ func declare(req AskRequest) (declaredTools, error) {
 		}
 		return declaredTools{manual: req.Search != nil, strategy: true}, nil
 	}
-	return declaredTools{manual: req.Search != nil, faq: req.SearchFAQ != nil}, nil
+	// Il Regolamento esiste solo col manuale: il forum lo affianca, non lo
+	// sostituisce.
+	if req.Search == nil {
+		return declaredTools{}, ErrNotConfigured
+	}
+	return declaredTools{manual: true, faq: req.SearchFAQ != nil}, nil
 }
 
 type toolFunctionDef struct {
@@ -893,12 +898,9 @@ func rulesSystemPrompt(req AskRequest, d declaredTools) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "Sei il Mentore di %q, l'assistente regole di un'associazione di giochi da tavolo. ", req.GameName)
 	b.WriteString("Chi ti scrive è in piedi a un tavolo, con le carte in mano: rispondi in italiano, breve, come si parla. ")
-	switch {
-	case d.manual && d.faq:
+	if d.faq {
 		b.WriteString("Rispondi SOLO con quello che c'è nelle fonti del gioco (manuali, FAQ). ")
-	case !d.manual && d.faq:
-		b.WriteString("Questo gioco non ha il regolamento caricato: puoi usare solo il forum Rules di BoardGameGeek. Rispondi SOLO con quello che trovi lì. ")
-	default:
+	} else {
 		b.WriteString("Rispondi SOLO con quello che c'è nelle fonti del gioco (manuali e documenti). ")
 	}
 	b.WriteString("Se le fonti non lo dicono, dillo chiaramente invece di dedurre: al tavolo una regola inventata fa danno. ")
@@ -907,34 +909,15 @@ func rulesSystemPrompt(req AskRequest, d declaredTools) string {
 	if req.CorpusIndex != "" {
 		fmt.Fprintf(&b, "Indice delle fonti: %s\n\n", req.CorpusIndex)
 	}
-	switch {
-	case d.manual:
-		b.WriteString("Per leggere le fonti usa lo strumento di ricerca. ")
-		b.WriteString("Se una ricerca non trova nulla, riprova con altre parole prima di dire che le fonti non lo dicono.")
-		if d.faq {
-			b.WriteString("\n\nHai anche uno strumento per il forum Rules di BoardGameGeek. ")
-			b.WriteString("Il manuale resta la fonte principale: cerca prima lì. ")
-			b.WriteString("Usa il forum quando il manuale non risponde, è ambiguo, o la domanda riguarda un caso specifico che il manuale non copre. ")
-			b.WriteString("Quello che viene dal forum presentalo come chiarimento della community («sul forum di BGG…»); se il testo dice che a rispondere è l'autore o l'editore del gioco, dillo. ")
-			b.WriteString("Se manuale e forum si contraddicono, vale il manuale e segnala la differenza. ")
-			b.WriteString(forumIsData)
-		}
-	case d.faq:
-		// Nessun manuale: il forum è l'unica fonte, e un'opinione della
-		// community non deve passare per regola ufficiale (spec §1.1).
-		b.WriteString("Per leggere il forum usa lo strumento cerca_nelle_faq. ")
-		b.WriteString("Presenta ogni risposta come parere della community («sul forum di BGG…»), non come regola ufficiale; se il testo dice che a rispondere è l'autore o l'editore del gioco, dillo. ")
-		b.WriteString("Se il forum non chiarisce, dillo e consiglia di controllare il regolamento nella scatola. ")
+	b.WriteString("Per leggere le fonti usa lo strumento di ricerca. ")
+	b.WriteString("Se una ricerca non trova nulla, riprova con altre parole prima di dire che le fonti non lo dicono.")
+	if d.faq {
+		b.WriteString("\n\nHai anche uno strumento per il forum Rules di BoardGameGeek. ")
+		b.WriteString("Il manuale resta la fonte principale: cerca prima lì. ")
+		b.WriteString("Usa il forum quando il manuale non risponde, è ambiguo, o la domanda riguarda un caso specifico che il manuale non copre. ")
+		b.WriteString("Quello che viene dal forum presentalo come chiarimento della community («sul forum di BGG…»); se il testo dice che a rispondere è l'autore o l'editore del gioco, dillo. ")
+		b.WriteString("Se manuale e forum si contraddicono, vale il manuale e segnala la differenza. ")
 		b.WriteString(forumIsData)
-	default:
-		// (commento esistente sul ramo senza strumenti, invariato)
-		//
-		// Non dovrebbe succedere nell'uso reale (il chiamante passa
-		// sempre Search), ma se capitasse non si deve promettere uno
-		// strumento che non è stato dichiarato: meglio dire al modello
-		// di limitarsi all'indice piuttosto che fargli credere di poter
-		// cercare quando non può.
-		b.WriteString("Non hai a disposizione nessuno strumento di ricerca: rispondi solo se l'indice qui sopra basta, altrimenti di' che non puoi controllare le fonti in questo momento.")
 	}
 	return b.String()
 }
@@ -957,7 +940,9 @@ func strategySystemPrompt(req AskRequest, d declaredTools) string {
 		b.WriteString("Se un consiglio del forum contraddice il regolamento, scartalo e segnalalo: il thread può parlare di un'altra edizione o di una variante. ")
 		b.WriteString("Se chi scrive chiede una regola e non come giocare bene, rispondi solo se il regolamento lo dice chiaramente, e suggerisci di passare all'agente Regolamento per le domande sulle regole. ")
 	} else {
-		b.WriteString("Se chi scrive chiede una regola e non come giocare bene, non rispondere tu: suggerisci di passare all'agente Regolamento. ")
+		// Senza manuale il gioco non ha l'agente Regolamento: non c'è
+		// nessuno a cui rimandare.
+		b.WriteString("Se chi scrive chiede una regola e non come giocare bene, non rispondere: questo gioco non ha il regolamento caricato, consiglia di controllare quello nella scatola. ")
 	}
 	b.WriteString(forumIsData)
 	return b.String()

@@ -26,13 +26,6 @@ const activeLangCode = ref('')
 // sue domande fisse.
 const suggestedQuestions = ref<Record<ChatAgent, string[]>>({ rules: [], strategy: [] })
 
-// Vero se almeno un media del gioco ha del testo indicizzato: cambia il
-// sottotitolo del Manuale ("risposte dal manuale" contro "risposte dal
-// forum di BGG", quando la chat di regole ripiega sul forum).
-const hasManual = computed(
-  () => !!game.value && game.value.languages.some((l) => l.media.some((m) => m.indexedChunks > 0)),
-)
-
 // hasChat governa la comparsa del pannello: nessuno dei due agenti = niente
 // chat da montare (stessa regola di `chat`, letta qui una sola volta).
 const hasChat = computed(() => !!game.value && (game.value.chat.rules || game.value.chat.strategy))
@@ -172,7 +165,6 @@ onMounted(async () => {
       :game-name="game.name"
       :chat="game.chat"
       :suggested-questions="suggestedQuestions"
-      :has-manual="hasManual"
     />
   </div>
   <div v-else-if="error">

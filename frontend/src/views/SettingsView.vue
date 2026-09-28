@@ -413,9 +413,9 @@ onMounted(async () => {
           />
         </label>
         <p class="field-hint">
-          Con questa chiave sblocchi le FAQ sulle regole quando il manuale non basta,
-          l'agente Strategia e la chat sui giochi senza manuale: cercano nel forum del
-          gioco su BoardGameGeek e citano il commento. Serve un gioco collegato a BGG.
+          Con questa chiave sblocchi le FAQ sulle regole quando il manuale non basta e
+          l'agente Strategia: cercano nel forum del gioco su BoardGameGeek e citano il
+          commento. Serve un gioco collegato a BGG.
           Il piano gratuito di
           <a href="https://tavily.com" target="_blank" rel="noopener">Tavily</a>
           dà 1.000 ricerche al mese, senza carta di credito.

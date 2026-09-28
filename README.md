@@ -366,8 +366,8 @@ perché l'app non lo conserva: solo le sezioni cercabili restano. Un
 la sola libreria standard, un `.txt` o un PDF con testo selezionabile
 passano dal modello che vi inserisce i titoli, uno scan passa per l'OCR
 di un modello multimodale una pagina alla volta. Senza una fonte
-preparata il gioco perde l'agente Regolamento — a meno che non risponda già
-dal forum di BGG, vedi la chiave Tavily più sotto — ma non
+preparata il gioco perde l'agente Regolamento — il forum di BGG lo
+affianca ma non sostituisce le regole scritte — ma non
 necessariamente l'intera chat: se il gioco ha anche la Strategia, quella
 resta. Senza nessuno dei due agenti disponibili la scheda pubblica non
 mostra nessuna chat: nessun errore, solo l'assenza del comando.
@@ -421,7 +421,7 @@ mostra nessuna chat: nessun errore, solo l'assenza del comando.
   ed è vero: la dettatura è un optional del browser, non dell'app, ma vale
   la pena saperlo prima di attivarla, non scoprirlo dopo.
 
-**Una chiave Tavily sblocca tre cose (facoltativo).** Con una chiave
+**Una chiave Tavily sblocca due cose (facoltativo).** Con una chiave
 [Tavily](https://tavily.com) nelle impostazioni (piano gratuito: 1.000
 ricerche al mese, senza carta) e un gioco collegato a BGG:
 
@@ -431,11 +431,8 @@ ricerche al mese, senza carta) e un gioco collegato a BGG:
 - compare l'agente **Strategia**, che pesca consigli dal forum
   *Strategy* dello stesso gioco e, se il gioco ha anche un manuale
   indicizzato, controlla che la mossa suggerita sia permessa prima di
-  proporla;
-- un gioco **senza un manuale indicizzato** ottiene comunque l'agente
-  Regolamento, che in quel caso risponde solo dal forum *Rules* — presentata
-  come opinione della community, non come citazione di un documento
-  ufficiale.
+  proporla. Un gioco **senza un manuale indicizzato** ha solo questo
+  agente: il Regolamento non risponde dal solo forum.
 
 La domanda, tradotta in inglese, viene mandata a Tavily per trovare i
 thread (al massimo due ricerche per domanda, per tenere basso il

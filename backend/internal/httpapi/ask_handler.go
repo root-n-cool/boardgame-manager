@@ -80,11 +80,15 @@ func hasBGGID(g games.Game) bool {
 // la usano l'handler (404 per un agente assente) e le schede pubbliche
 // (chat.rules / chat.strategy), così la chat non può promettere un agente
 // che poi risponde 404. forumOK = chiave Tavily e bggId.
+//
+// Il Regolamento esiste solo con un manuale indicizzato: il forum lo
+// affianca (FAQ, chiarimenti) ma non sostituisce le regole scritte, quindi
+// un gioco senza manuale ha al massimo la Strategia.
 func chatAvailability(aiOK, hasChunks, forumOK bool) (rules, strategy bool) {
 	if !aiOK {
 		return false, false
 	}
-	return hasChunks || forumOK, forumOK
+	return hasChunks, forumOK
 }
 
 // askHTTPRequest è la forma che manda deep-chat: la conversazione intera,

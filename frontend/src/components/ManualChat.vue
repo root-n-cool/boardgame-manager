@@ -38,7 +38,6 @@ const props = defineProps<{
   gameName: string
   chat: ChatAvailability
   suggestedQuestions: Record<ChatAgent, string[]>
-  hasManual: boolean
 }>()
 
 const SIDEBAR_MIN_WIDTH = '(min-width: 1100px)'
@@ -187,7 +186,6 @@ function closeDialog() {
         :game-name="gameName"
         :chat="chat"
         :suggested-questions="suggestedQuestions"
-        :has-manual="hasManual"
         expandable
         :expanded="expanded"
         @toggle-expand="setExpanded(!expanded)"
@@ -240,7 +238,6 @@ function closeDialog() {
         :game-name="gameName"
         :chat="chat"
         :suggested-questions="suggestedQuestions"
-        :has-manual="hasManual"
         closable
         @close="closeDialog"
       />
