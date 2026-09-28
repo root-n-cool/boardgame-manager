@@ -8,6 +8,7 @@ import MarkdownEditor from '../components/MarkdownEditor.vue'
 import VenueSearchSelect, { type Venue } from '../components/VenueSearchSelect.vue'
 import QrPrintLink from '../components/QrPrintLink.vue'
 import { formatEventDateTime } from '../utils/dates'
+import { seatsLabel as formatSeats } from '../utils/seats'
 
 interface EventGameInfo {
   eventGameId: number
@@ -39,6 +40,8 @@ interface BookingAdminInfo {
   copyIndex: number
   seats: number
   participantName: string
+  /** Quanti posti occupa: chi prenota per il gruppo ne prende più d'uno. */
+  seatsReserved: number
   createdAt: string
 }
 
@@ -107,7 +110,14 @@ function copyLabel(gameId: number, gameName: string, copyIndex: number) {
 
 /** Prenotazioni raggruppate per copia, nell'ordine in cui arrivano. */
 const bookingsByCopy = computed(() => {
-  const groups: { eventGameId: number; label: string; seats: number; rows: BookingAdminInfo[] }[] = []
+  const groups: {
+    eventGameId: number
+    label: string
+    seats: number
+    /** Posti occupati, non righe: una prenotazione può valerne più d'uno. */
+    taken: number
+    rows: BookingAdminInfo[]
+  }[] = []
   for (const b of bookings.value) {
     let group = groups.find((g) => g.eventGameId === b.eventGameId)
     if (!group) {
@@ -115,11 +125,13 @@ const bookingsByCopy = computed(() => {
         eventGameId: b.eventGameId,
         label: copyLabel(b.gameId, b.gameName, b.copyIndex),
         seats: b.seats,
+        taken: 0,
         rows: [],
       }
       groups.push(group)
     }
     group.rows.push(b)
+    group.taken += b.seatsReserved
   }
   return groups
 })
@@ -400,7 +412,7 @@ onMounted(async () => {
           <h3 class="booking-copy-head">
             {{ group.label }}
             <span v-if="group.seats > 1" class="row-meta"
-              >· {{ group.rows.length }} di {{ group.seats }} posti prenotabili</span
+              >· {{ group.taken }} di {{ group.seats }} posti prenotabili occupati</span
             >
           </h3>
           <ul role="list" class="admin-list">
@@ -408,6 +420,7 @@ onMounted(async () => {
               <div class="admin-row">
                 <span class="admin-pawn" aria-hidden="true">{{ initial(b.participantName) }}</span>
                 <span class="admin-email booking-who">{{ b.participantName }}</span>
+                <span v-if="b.seatsReserved > 1" class="seats-chip">{{ formatSeats(b.seatsReserved) }}</span>
                 <div class="admin-row-actions">
                   <button type="button" @click="cancelBooking(b)">Annulla</button>
                 </div>

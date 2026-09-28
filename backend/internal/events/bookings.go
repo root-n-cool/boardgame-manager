@@ -17,7 +17,11 @@ type Booking struct {
 	ParticipantName string
 	BookingCode     string
 	Status          string
-	CreatedAt       time.Time
+	// SeatsReserved è quanti posti prenotabili occupa la prenotazione: 1 di
+	// norma, di più su un tavolo aperto quando una persona prenota anche per
+	// chi arriva con lei. Si disdicono tutti insieme.
+	SeatsReserved int
+	CreatedAt     time.Time
 }
 
 const (
@@ -30,6 +34,7 @@ var (
 	ErrGameSoldOut               = errors.New("game sold out")
 	ErrInvalidBookingCredentials = errors.New("invalid email or booking code")
 	ErrGameNotBookable           = errors.New("game is not bookable at this event")
+	ErrInvalidSeats              = errors.New("seats reserved must be at least 1")
 )
 
 // bookingCodeAlphabet excludes visually ambiguous characters (0/O, 1/I).
@@ -50,7 +55,18 @@ func generateBookingCode() (string, error) {
 	return string(code), nil
 }
 
+// CreateBooking prenota un posto. È CreateBookingSeats con un posto solo.
 func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, name string, now time.Time) (Booking, error) {
+	return s.CreateBookingSeats(ctx, eventID, eventGameID, name, 1, now)
+}
+
+// CreateBookingSeats prenota `seats` posti della stessa copia con un codice
+// solo. Se non ci sono abbastanza posti liberi non prenota niente: meglio un
+// "non ci stai" che metà gruppo seduto.
+func (s *Store) CreateBookingSeats(ctx context.Context, eventID, eventGameID int64, name string, seats int, now time.Time) (Booking, error) {
+	if seats < 1 {
+		return Booking{}, ErrInvalidSeats
+	}
 	event, err := s.GetEvent(ctx, eventID)
 	if err != nil {
 		return Booking{}, err
@@ -96,11 +112,11 @@ func (s *Store) CreateBooking(ctx context.Context, eventID, eventGameID int64, n
 	// instant doubles as the consent instant: the row is only ever written
 	// after the handler has checked termsAccepted.
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO bookings (event_id, event_game_id, participant_name, booking_code, status, terms_accepted_at)
-		 SELECT ?, ?, ?, ?, 'active', datetime('now')
-		 WHERE (SELECT COUNT(*) FROM bookings WHERE event_game_id = ? AND status = 'active') <
+		`INSERT INTO bookings (event_id, event_game_id, participant_name, booking_code, status, terms_accepted_at, seats_reserved)
+		 SELECT ?, ?, ?, ?, 'active', datetime('now'), ?
+		 WHERE (SELECT COALESCE(SUM(seats_reserved), 0) FROM bookings WHERE event_game_id = ? AND status = 'active') + ? <=
 		       (SELECT seats FROM event_games WHERE id = ?)`,
-		eventID, eventGameID, name, code, eventGameID, eventGameID,
+		eventID, eventGameID, name, code, seats, eventGameID, seats, eventGameID,
 	)
 	if err != nil {
 		return Booking{}, err
@@ -124,9 +140,9 @@ func (s *Store) getBookingByID(ctx context.Context, id int64) (Booking, error) {
 	var b Booking
 	var createdAt string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, event_id, event_game_id, participant_name, booking_code, status, created_at
+		`SELECT id, event_id, event_game_id, participant_name, booking_code, status, seats_reserved, created_at
 		 FROM bookings WHERE id = ?`, id,
-	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.BookingCode, &b.Status, &createdAt)
+	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.BookingCode, &b.Status, &b.SeatsReserved, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Booking{}, ErrNotFound
 	}
@@ -142,9 +158,9 @@ func (s *Store) LookupBooking(ctx context.Context, code string) (Booking, error)
 	var b Booking
 	var createdAt string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, event_id, event_game_id, participant_name, booking_code, status, created_at
+		`SELECT id, event_id, event_game_id, participant_name, booking_code, status, seats_reserved, created_at
 		 FROM bookings WHERE booking_code = ? AND status = 'active'`, code,
-	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.BookingCode, &b.Status, &createdAt)
+	).Scan(&b.ID, &b.EventID, &b.EventGameID, &b.ParticipantName, &b.BookingCode, &b.Status, &b.SeatsReserved, &createdAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Booking{}, ErrInvalidBookingCredentials
 	}
@@ -232,7 +248,7 @@ type BookingWithGame struct {
 func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]BookingWithGame, error) {
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT b.id, b.event_id, b.event_game_id, b.participant_name,
-		        b.booking_code, b.status, b.created_at, g.id, g.name, eg.copy_index, eg.seats
+		        b.booking_code, b.status, b.seats_reserved, b.created_at, g.id, g.name, eg.copy_index, eg.seats
 		 FROM bookings b
 		 JOIN event_games eg ON b.event_game_id = eg.id
 		 JOIN games g ON eg.game_id = g.id
@@ -248,7 +264,7 @@ func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]Book
 		var bg BookingWithGame
 		var createdAt string
 		if err := rows.Scan(&bg.ID, &bg.EventID, &bg.EventGameID, &bg.ParticipantName,
-			&bg.BookingCode, &bg.Status, &createdAt, &bg.GameID, &bg.GameName,
+			&bg.BookingCode, &bg.Status, &bg.SeatsReserved, &createdAt, &bg.GameID, &bg.GameName,
 			&bg.CopyIndex, &bg.Seats); err != nil {
 			return nil, err
 		}
@@ -258,12 +274,13 @@ func (s *Store) ListBookingsForEvent(ctx context.Context, eventID int64) ([]Book
 	return out, rows.Err()
 }
 
-// CountActiveBookingsForEventGame dice quante persone siedono a un tavolo.
+// CountActiveBookingsForEventGame dice quante persone siedono a un tavolo:
+// i posti occupati, non le righe — chi ha prenotato per tre conta tre.
 // La pagina pubblica se ne serve per spiegare che il punteggio è condiviso.
 func (s *Store) CountActiveBookingsForEventGame(ctx context.Context, eventGameID int64) (int, error) {
 	var count int
 	err := s.db.QueryRowContext(ctx,
-		`SELECT COUNT(*) FROM bookings WHERE event_game_id = ? AND status = 'active'`, eventGameID,
+		`SELECT COALESCE(SUM(seats_reserved), 0) FROM bookings WHERE event_game_id = ? AND status = 'active'`, eventGameID,
 	).Scan(&count)
 	return count, err
 }

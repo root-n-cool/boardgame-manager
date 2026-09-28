@@ -45,6 +45,9 @@ type bookingMailData struct {
 	Hours       string
 	EventID     int64
 	SharedTable bool
+	// SeatsReserved > 1 aggiunge la riga "Posti riservati": la mail deve dire per
+	// quante persone vale il codice.
+	SeatsReserved int
 }
 
 // mailShell avvolge il corpo nella cornice comune: intestazione in feltro
@@ -129,7 +132,7 @@ func inviteMail(siteName, to, invitedBy, inviteURL string) mailer.Message {
 }
 
 func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mailer.Message {
-	sharedNote := "Questo tavolo ha più posti prenotabili, uno a testa: il punteggio finale è uno per tavolo, e chiunque sieda qui può inserirlo o correggerlo col proprio codice."
+	sharedNote := "Questo tavolo ha più posti prenotabili: il punteggio finale è uno per tavolo, e chiunque sieda qui può inserirlo o correggerlo col proprio codice."
 
 	lines := []string{
 		fmt.Sprintf("Ciao %s,", d.ParticipantName),
@@ -140,7 +143,12 @@ func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mail
 		"Data:     " + d.EventDate,
 		"Ora:      " + d.Hours,
 		"Gioco:    " + d.GameLabel,
-		"Codice:   " + d.BookingCode,
+	}
+	if d.SeatsReserved > 1 {
+		lines = append(lines, fmt.Sprintf("Posti riservati: %d", d.SeatsReserved))
+	}
+	lines = append(lines,
+		"Codice:   "+d.BookingCode,
 		"",
 		"Gestisci o annulla la prenotazione:",
 		manageURL,
@@ -149,16 +157,21 @@ func bookingConfirmationMail(d bookingMailData, manageURL, scoreURL string) mail
 		scoreURL,
 		"",
 		"Conserva il codice: da solo basta a fare entrambe le cose.",
-	}
+	)
 	if d.SharedTable {
 		lines = append(lines, "", sharedNote)
 	}
 
+	seatsRow := ""
+	if d.SeatsReserved > 1 {
+		seatsRow = mailFactRow("Posti riservati", fmt.Sprintf("%d", d.SeatsReserved))
+	}
 	facts := `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 18px;border-collapse:collapse;">` +
 		mailFactRow("Evento", d.EventTitle) +
 		mailFactRow("Data", d.EventDate) +
 		mailFactRow("Ora", d.Hours) +
 		mailFactRow("Gioco", d.GameLabel) +
+		seatsRow +
 		`</table>`
 
 	body := mailParagraph(fmt.Sprintf("Ciao %s,", d.ParticipantName)) +

@@ -14,6 +14,8 @@ type createBookingRequest struct {
 	Name          string `json:"participantName"`
 	Email         string `json:"participantEmail"`
 	TermsAccepted bool   `json:"termsAccepted"`
+	// Seats sono i posti da riservare con questo codice: assente vale 1.
+	Seats *int `json:"seats"`
 }
 
 func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
@@ -28,14 +30,27 @@ func (s *Server) createBookingHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	booking, err := s.Events.CreateBooking(r.Context(), eventID, req.EventGameID, req.Name, time.Now())
+	seats := 1
+	if req.Seats != nil {
+		seats = *req.Seats
+	}
+	if seats < 1 {
+		writeError(w, http.StatusBadRequest, "i posti da riservare devono essere almeno 1")
+		return
+	}
+
+	booking, err := s.Events.CreateBookingSeats(r.Context(), eventID, req.EventGameID, req.Name, seats, time.Now())
 	switch {
 	case errors.Is(err, events.ErrNotFound):
 		writeError(w, http.StatusNotFound, "event or game not found")
 	case errors.Is(err, events.ErrEventAlreadyStarted):
 		writeError(w, http.StatusConflict, "l'evento è già iniziato")
 	case errors.Is(err, events.ErrGameSoldOut):
-		writeError(w, http.StatusConflict, "non ci sono più posti prenotabili su questa copia")
+		if seats > 1 {
+			writeError(w, http.StatusConflict, "non ci sono abbastanza posti prenotabili liberi su questa copia")
+		} else {
+			writeError(w, http.StatusConflict, "non ci sono più posti prenotabili su questa copia")
+		}
 	case errors.Is(err, events.ErrGameNotBookable):
 		writeError(w, http.StatusConflict, "questo gioco non è prenotabile: è a disposizione al tavolo")
 	case err != nil:

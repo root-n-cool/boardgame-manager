@@ -58,6 +58,7 @@ interface BookingResult {
   id: number
   bookingCode: string
   mailQueued: boolean
+  seatsReserved: number
 }
 
 /** Una prenotazione andata a buon fine in questa visita alla pagina. */
@@ -67,6 +68,7 @@ interface ConfirmedBooking {
   multiSeat: boolean
   /** Se per questa prenotazione è partita davvero una mail. */
   mailed: boolean
+  seatsReserved: number
 }
 
 // Leaflet pesa quanto tutto il resto dell'app: si scarica solo quando un
@@ -84,6 +86,9 @@ const bookingOpen = ref(false)
 const participantName = ref('')
 const participantEmail = ref('')
 const termsAccepted = ref(false)
+// Quanti posti prende questa prenotazione: su un tavolo aperto chi arriva in
+// gruppo li prenota tutti con un codice solo, invece di passarsi il telefono.
+const seatsWanted = ref(1)
 const bookingError = ref('')
 const bookingResult = ref<BookingResult | null>(null)
 const chipActionError = ref('')
@@ -184,6 +189,7 @@ function startBooking(eventGameId: number) {
   participantName.value = ''
   participantEmail.value = ''
   termsAccepted.value = false
+  seatsWanted.value = 1
   bookingError.value = ''
   bookingResult.value = null
   bookingOpen.value = true
@@ -192,6 +198,13 @@ function startBooking(eventGameId: number) {
 const selectedGame = computed(
   () => event.value?.games.find((g) => g.eventGameId === selectedEventGameId.value) ?? null,
 )
+
+/** Il massimo della modale: i posti ancora liberi della copia scelta. */
+const maxSeats = computed(() => Math.max(1, selectedGame.value?.remaining ?? 1))
+
+function stepSeats(delta: number) {
+  seatsWanted.value = Math.min(maxSeats.value, Math.max(1, seatsWanted.value + delta))
+}
 
 const selectedLabel = computed(() => (selectedGame.value ? copyLabel(selectedGame.value) : ''))
 
@@ -254,6 +267,7 @@ async function submitBooking() {
       participantName: participantName.value,
       participantEmail: participantEmail.value,
       termsAccepted: termsAccepted.value,
+      seats: seatsWanted.value,
     })
     bookingResult.value = result
     const multiSeat = !!selectedGame.value && selectedGame.value.seats > 1
@@ -262,6 +276,7 @@ async function submitBooking() {
       label: selectedLabel.value,
       multiSeat,
       mailed: result.mailQueued,
+      seatsReserved: result.seatsReserved,
     })
     saveMyBooking({
       id: result.id,
@@ -376,6 +391,7 @@ onMounted(async () => {
         :multi-seat="b.multiSeat"
         :hint="false"
         :mailed="b.mailed"
+        :seats-reserved="b.seatsReserved"
       />
       <p class="recap-hint">
         {{ confirmed.length > 1 ? 'Conservali' : 'Conservalo' }} per gestire la prenotazione o
@@ -509,6 +525,7 @@ onMounted(async () => {
         :code="bookingResult.bookingCode"
         :multi-seat="!!selectedGame && selectedGame.seats > 1"
         :mailed="bookingResult.mailQueued"
+        :seats-reserved="bookingResult.seatsReserved"
       />
       <div class="form-actions">
         <button type="button" @click="bookingOpen = false">Ho segnato il codice</button>
@@ -528,6 +545,44 @@ onMounted(async () => {
       <p class="field-hint">
         Facoltativa: verrà usata solo per inviarti la conferma della prenotazione.
       </p>
+      <!-- Solo dove c'è una scelta da fare: con un posto libero (o una copia
+           da un posto) il numero è 1 e basta. -->
+      <div v-if="maxSeats > 1" class="field-block seats-field" role="group" aria-labelledby="seats-label">
+        <span id="seats-label" class="field-label">Posti da riservare</span>
+        <div class="seats-stepper">
+          <button
+            type="button"
+            class="btn-secondary"
+            aria-label="Un posto in meno"
+            :disabled="seatsWanted <= 1"
+            @click="stepSeats(-1)"
+          >
+            &minus;
+          </button>
+          <input
+            v-model.number="seatsWanted"
+            type="number"
+            inputmode="numeric"
+            min="1"
+            :max="maxSeats"
+            aria-labelledby="seats-label"
+            @change="stepSeats(0)"
+          />
+          <button
+            type="button"
+            class="btn-secondary"
+            aria-label="Un posto in più"
+            :disabled="seatsWanted >= maxSeats"
+            @click="stepSeats(1)"
+          >
+            +
+          </button>
+        </div>
+        <p class="field-hint">
+          Per te e per chi arriva con te, fino a {{ maxSeats }} posti prenotabili liberi. Un codice solo per
+          tutti: annullando si liberano tutti insieme.
+        </p>
+      </div>
       <label class="checkbox-label booking-consent">
         <input v-model="termsAccepted" type="checkbox" required />
         Accetto i

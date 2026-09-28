@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/client'
 import BggSearchSelect, { type BggResult } from '../components/BggSearchSelect.vue'
-import { DEFAULT_GAME_KIND, GAME_KINDS, type GameKind } from '../utils/gameKinds'
+import { DEFAULT_GAME_KIND, GAME_KINDS, gameKindInfo, type GameKind } from '../utils/gameKinds'
 
 const router = useRouter()
 
@@ -26,9 +26,12 @@ const manualWeight = ref<number | null>(null)
 // entrambe le vie di creazione (BGG e manuale), quindi vive nei "Dettagli"
 // condivisi invece che duplicato nei due blocchi sopra.
 const seats = ref(1)
-// La tipologia, anche lei per entrambe le vie: BGG non la distingue in modo
-// affidabile, la sceglie l'admin.
+// La tipologia la sceglie l'admin, per prima: decide anche la strada. Una
+// tipologia che su BoardGameGeek non c'è (i giochi di ruolo) va dritta
+// all'inserimento a mano — chiedere di cercarla lì sarebbe un passo a vuoto.
 const kind = ref<GameKind>(DEFAULT_GAME_KIND)
+const kindOnBgg = computed(() => gameKindInfo(kind.value).onBgg)
+const isManual = computed(() => manual.value || !kindOnBgg.value)
 
 const error = ref('')
 const saving = ref(false)
@@ -38,7 +41,7 @@ const saving = ref(false)
 // blocco.
 const aiConfigured = ref(false)
 
-const ready = computed(() => (manual.value ? manualName.value.trim() !== '' : selected.value !== null))
+const ready = computed(() => (isManual.value ? manualName.value.trim() !== '' : selected.value !== null))
 
 function startManual() {
   manual.value = true
@@ -58,7 +61,7 @@ async function createGame() {
   error.value = ''
   saving.value = true
   try {
-    const payload = manual.value
+    const payload = isManual.value
       ? {
           name: manualName.value,
           year: manualYear.value,
@@ -105,7 +108,9 @@ onMounted(async () => {
     <div class="page-head">
       <div class="page-head-text">
         <h1>Aggiungi gioco</h1>
-        <p class="page-meta">Cercalo su BoardGameGeek, o inseriscilo a mano se non c'è.</p>
+        <p class="page-meta">
+          {{ kindOnBgg ? "Cercalo su BoardGameGeek, o inseriscilo a mano se non c'è." : 'I giochi di ruolo si inseriscono a mano.' }}
+        </p>
       </div>
     </div>
 
@@ -115,7 +120,14 @@ onMounted(async () => {
           <h2>Gioco</h2>
         </div>
 
-        <template v-if="!manual">
+        <label>
+          Tipologia
+          <select v-model="kind">
+            <option v-for="k in GAME_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
+          </select>
+        </label>
+
+        <template v-if="!isManual">
           <BggSearchSelect v-model="selected" />
           <p class="field-hint">
             Non lo trovi?
@@ -151,7 +163,7 @@ onMounted(async () => {
             <input v-model.number="manualWeight" type="number" min="1" max="5" step="0.1" />
           </label>
           <p class="field-hint">Da 1 (leggero) a 5 (pesante), come il peso di BoardGameGeek.</p>
-          <p class="field-hint">
+          <p v-if="kindOnBgg" class="field-hint">
             <button type="button" class="link-button" @click="backToSearch">
               Torna alla ricerca su BoardGameGeek
             </button>
@@ -163,12 +175,6 @@ onMounted(async () => {
         <div class="section-head">
           <h2>Dettagli</h2>
         </div>
-        <label>
-          Tipologia
-          <select v-model="kind">
-            <option v-for="k in GAME_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
-          </select>
-        </label>
         <label>
           Lingua base
           <select v-model="languageCode">
@@ -193,7 +199,7 @@ onMounted(async () => {
 
       <div class="form-actions">
         <button type="submit" :disabled="!ready || saving">
-          {{ saving && aiConfigured && !manual ? 'Traduzione in corso…' : saving ? 'Aggiunta…' : 'Aggiungi gioco' }}
+          {{ saving && aiConfigured && !isManual ? 'Traduzione in corso…' : saving ? 'Aggiunta…' : 'Aggiungi gioco' }}
         </button>
       </div>
       <p v-if="error" class="error">{{ error }}</p>

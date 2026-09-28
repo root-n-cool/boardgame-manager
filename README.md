@@ -35,7 +35,10 @@ esterno obbligatorio.
   si porta i suoi; più di 1 per un tavolo aperto — una partita a D&D, un
   gioco di ruolo, un torneo — dove ci si iscrive uno alla volta, ognuno
   con il proprio codice, e ognuno può disdire senza far saltare la
-  serata agli altri.
+  serata agli altri. Chi arriva in gruppo può riservare più posti con un
+  codice solo ("Posti da riservare" nella prenotazione, fino ai posti
+  liberi): si disdicono tutti insieme, e l'admin vede quanti posti tiene
+  ogni prenotazione.
 - **Eventi**: un evento porta più copie dello stesso gioco, ognuna con i
   propri posti prenotabili presi dal catalogo al momento in cui la copia
   entra nell'evento. Nella pagina pubblica le copie compaiono numerate
@@ -97,6 +100,8 @@ esterno obbligatorio.
   e il dettaglio di cosa mancava.
 - **Tipologia e visibilità**: ogni gioco è un gioco da tavolo (GDT, il
   default, anche per quelli inseriti prima) o un gioco di ruolo (GDR).
+  I giochi di ruolo non esistono su BoardGameGeek: scegliendo "Gioco di
+  ruolo" in creazione si passa direttamente all'inserimento a mano.
   La pagina evento lo segna su ogni scatola e, come il catalogo pubblico,
   permette di filtrare per tipo. Un gioco segnato "Non visibile nel
   catalogo pubblico" sparisce solo dal catalogo: resta aggiungibile agli

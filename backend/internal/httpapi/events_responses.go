@@ -109,6 +109,7 @@ func toBookingResponse(b events.Booking) map[string]any {
 	return map[string]any{
 		"id": b.ID, "eventId": b.EventID, "eventGameId": b.EventGameID,
 		"participantName": b.ParticipantName, "bookingCode": b.BookingCode, "status": b.Status,
+		"seatsReserved": b.SeatsReserved,
 	}
 }
 
@@ -177,8 +178,8 @@ func toBookingAdminResponse(b events.BookingWithGame) map[string]any {
 	return map[string]any{
 		"id": b.ID, "eventGameId": b.EventGameID, "gameId": b.GameID, "gameName": b.GameName,
 		"copyIndex": b.CopyIndex, "seats": b.Seats,
-		"participantName": b.ParticipantName,
-		"createdAt":       b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		"participantName": b.ParticipantName, "seatsReserved": b.SeatsReserved,
+		"createdAt": b.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
 	}
 }
 

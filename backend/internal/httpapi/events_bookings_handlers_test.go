@@ -680,3 +680,98 @@ func TestAdminCancelBooking_SendsNoMailEvenWithSMTPConfigured(t *testing.T) {
 	}
 	mail.expectNoMail(t)
 }
+
+func postBookingSeats(t *testing.T, router http.Handler, eventID, eventGameID int64, seats any) *httptest.ResponseRecorder {
+	t.Helper()
+	body := map[string]any{
+		"eventGameId": eventGameID, "participantName": "Mario Rossi", "termsAccepted": true,
+	}
+	if seats != nil {
+		body["seats"] = seats
+	}
+	payload, _ := json.Marshal(body)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, fmt.Sprintf("/api/events/%d/bookings", eventID), bytes.NewReader(payload)))
+	return rec
+}
+
+func TestCreateBooking_ReservesSeveralSeats(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	game, err := server.Games.CreateGame(context.Background(), games.Game{Name: "D&D", Seats: 5})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	eventID := createTestEvent(t, server, game.ID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	rec := postBookingSeats(t, router, eventID, eventGames[0].ID, 3)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		SeatsReserved int `json:"seatsReserved"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&created); err != nil || created.SeatsReserved != 3 {
+		t.Fatalf("seatsReserved = %d (%v), want 3", created.SeatsReserved, err)
+	}
+
+	// La pagina evento vede due posti liberi, non quattro.
+	rec = httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d", eventID), nil))
+	var detail struct {
+		Games []struct {
+			Remaining int `json:"remaining"`
+		} `json:"games"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&detail); err != nil || detail.Games[0].Remaining != 2 {
+		t.Fatalf("remaining = %+v (%v), want 2", detail.Games, err)
+	}
+
+	// Tre posti non ci stanno più.
+	rec = postBookingSeats(t, router, eventID, eventGames[0].ID, 3)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), "abbastanza posti") {
+		t.Fatalf("expected 409 about free seats, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateBooking_RejectsZeroSeats(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	game, err := server.Games.CreateGame(context.Background(), games.Game{Name: "D&D", Seats: 5})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	eventID := createTestEvent(t, server, game.ID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+
+	if rec := postBookingSeats(t, router, eventID, eventGames[0].ID, 0); rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestListEventBookings_CarriesSeatsReserved(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	game, err := server.Games.CreateGame(context.Background(), games.Game{Name: "D&D", Seats: 5})
+	if err != nil {
+		t.Fatalf("create game: %v", err)
+	}
+	eventID := createTestEvent(t, server, game.ID, 1)
+	eventGames, _ := server.Events.ListEventGames(context.Background(), eventID)
+	if rec := postBookingSeats(t, router, eventID, eventGames[0].ID, 4); rec.Code != http.StatusCreated {
+		t.Fatalf("booking: %d %s", rec.Code, rec.Body.String())
+	}
+
+	req := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/events/%d/bookings", eventID), nil)
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	var list []struct {
+		SeatsReserved int `json:"seatsReserved"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&list); err != nil || len(list) != 1 || list[0].SeatsReserved != 4 {
+		t.Fatalf("admin list = %+v (%v)", list, err)
+	}
+}

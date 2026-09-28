@@ -5,8 +5,9 @@
  * entrambi, senza migrazioni.
  */
 export const GAME_KINDS = [
-  { value: 'board', label: 'Gioco da tavolo', plural: 'Giochi da tavolo', short: 'GDT' },
-  { value: 'rpg', label: 'Gioco di ruolo', plural: 'Giochi di ruolo', short: 'GDR' },
+  { value: 'board', label: 'Gioco da tavolo', plural: 'Giochi da tavolo', short: 'GDT', onBgg: true },
+  // Un gioco di ruolo su BoardGameGeek non c'è: si inserisce a mano.
+  { value: 'rpg', label: 'Gioco di ruolo', plural: 'Giochi di ruolo', short: 'GDR', onBgg: false },
 ] as const
 
 export type GameKind = (typeof GAME_KINDS)[number]['value']

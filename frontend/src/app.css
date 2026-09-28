@@ -2520,6 +2520,46 @@ ul.game-grid {
   margin: 0;
 }
 
+/* "Posti da riservare" nella modale di prenotazione: − numero +, tre
+   bersagli da 44px. I bottoni sono il modo principale (al tavolo si tocca,
+   non si digita); il campo resta scrivibile per chi prenota per otto. */
+.seats-stepper {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.seats-stepper button {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 1.2rem;
+  line-height: 1;
+}
+
+.seats-stepper input {
+  width: 4.5rem;
+  min-height: 44px;
+  text-align: center;
+  font-family: 'Data', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.05rem;
+}
+
+/* I posti di una prenotazione di gruppo, accanto al nome nell'admin: una
+   pastiglia neutra, perché è un dato e non uno stato. */
+.seats-chip {
+  display: inline-flex;
+  padding: 0.12rem 0.5rem;
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+  background: var(--card-alt);
+  color: var(--ink);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
 /* Pager dell'archivio: due passi e la posizione, non una fila di numeri —
    gli eventi passati si sfogliano, non si indirizzano. */
 .pager {
@@ -3781,9 +3821,10 @@ tbody tr:nth-child(3) .rank-medal {
 
 /* Aggiungere un gioco è cercarlo su BoardGameGeek, e cercarlo è scrivere
    finché il nome giusto non compare: la lista si aggiorna da sé mentre si
-   digita, senza un bottone "Cerca" da premere a ogni tentativo. La colonna
-   si ferma alla misura del campo, non a quella del pannello — la lista è la
-   continuazione dell'input, non una sezione a sé. */
+   digita, senza un bottone "Cerca" da premere a ogni tentativo. Il campo è
+   largo quanto il foglio, come gli altri input della card (a 30rem restava
+   più corto di Tipologia e Nome), e la lista dei risultati lo segue alla
+   stessa larghezza: è la continuazione dell'input, non una sezione a sé. */
 .bgg-select {
   align-self: stretch;
 }
@@ -3792,12 +3833,18 @@ tbody tr:nth-child(3) .rank-medal {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
-  max-width: 30rem;
+  /* Come un <label>: stessa distanza fra insegna e campo. */
+  gap: 0.3rem;
 }
 
+/* Gli altri input della card stanno dentro un <label> e ne ereditano corpo
+   e peso (`font: inherit`); questo no — l'insegna è un <label for> a parte
+   perché il combobox porta la lista sotto — e senza queste due righe era
+   più grande e più alto di Tipologia e Nome. */
 .bgg-combobox input {
   width: 100%;
+  font-size: 0.82rem;
+  font-weight: 500;
 }
 
 /* La nota è l'unica riga di stato del campo (istruzione, ricerca in corso,
@@ -3925,7 +3972,6 @@ tbody tr:nth-child(3) .rank-medal {
   display: flex;
   align-items: center;
   gap: 0.7rem;
-  max-width: 30rem;
   padding: 0.6rem 0.7rem;
   background: var(--card-alt);
   border: 1px solid var(--card-line);

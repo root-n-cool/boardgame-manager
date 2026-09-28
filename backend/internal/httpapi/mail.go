@@ -194,6 +194,7 @@ func (s *Server) bookingMailDataFor(ctx context.Context, b events.Booking) (book
 		Hours:           hours,
 		EventID:         b.EventID,
 		SharedTable:     eventGame.Seats > 1,
+		SeatsReserved:   b.SeatsReserved,
 	}, nil
 }
 

@@ -614,3 +614,89 @@ func TestCreateBooking_SetsTermsAcceptedAt(t *testing.T) {
 		t.Fatal("expected terms_accepted_at to be set on a newly created booking, got empty string")
 	}
 }
+
+// seatedTable prepara un tavolo aperto da `seats` posti prenotabili, una
+// copia sola, in una serata che non è ancora iniziata.
+func seatedTable(t *testing.T, seats int) (*events.Store, events.Event, int64, time.Time) {
+	t.Helper()
+	eventStore, gameStore := newTestStore(t)
+	gameID := mustCreateGameWithSeats(t, gameStore, "D&D", seats)
+	event := mustCreateEvent(t, eventStore, "Serata", "2026-10-01", "20:00", gameID)
+	eventGames, err := eventStore.ListEventGames(context.Background(), event.ID)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	return eventStore, event, eventGames[0].ID, time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+}
+
+func TestCreateBookingSeats_ReservesSeveralSeatsOnOneCode(t *testing.T) {
+	store, event, egID, now := seatedTable(t, 5)
+	ctx := context.Background()
+
+	b, err := store.CreateBookingSeats(ctx, event.ID, egID, "Mario", 3, now)
+	if err != nil {
+		t.Fatalf("booking: %v", err)
+	}
+	if b.SeatsReserved != 3 {
+		t.Fatalf("seats reserved = %d, want 3", b.SeatsReserved)
+	}
+	if remaining, _ := store.RemainingCapacity(ctx, egID); remaining != 2 {
+		t.Fatalf("remaining = %d, want 2", remaining)
+	}
+	if occupied, _ := store.ActiveBookingCountsByEventGame(ctx, event.ID); occupied[egID] != 3 {
+		t.Fatalf("occupied = %d, want 3", occupied[egID])
+	}
+	if seated, _ := store.CountActiveBookingsForEventGame(ctx, egID); seated != 3 {
+		t.Fatalf("seated = %d, want 3", seated)
+	}
+
+	looked, err := store.LookupBooking(ctx, b.BookingCode)
+	if err != nil || looked.SeatsReserved != 3 {
+		t.Fatalf("lookup: %+v %v", looked, err)
+	}
+	list, err := store.ListBookingsForEvent(ctx, event.ID)
+	if err != nil || len(list) != 1 || list[0].SeatsReserved != 3 {
+		t.Fatalf("list: %+v %v", list, err)
+	}
+}
+
+func TestCreateBookingSeats_RejectsMoreThanTheFreeSeats(t *testing.T) {
+	store, event, egID, now := seatedTable(t, 5)
+	ctx := context.Background()
+	if _, err := store.CreateBookingSeats(ctx, event.ID, egID, "Mario", 3, now); err != nil {
+		t.Fatalf("first: %v", err)
+	}
+
+	if _, err := store.CreateBookingSeats(ctx, event.ID, egID, "Luigi", 3, now); !errors.Is(err, events.ErrGameSoldOut) {
+		t.Fatalf("expected ErrGameSoldOut, got %v", err)
+	}
+	// Gli ultimi due posti restano prenotabili, tutti e due insieme.
+	if _, err := store.CreateBookingSeats(ctx, event.ID, egID, "Luigi", 2, now); err != nil {
+		t.Fatalf("last two seats: %v", err)
+	}
+	if _, err := store.CreateBooking(ctx, event.ID, egID, "Peach", now); !errors.Is(err, events.ErrGameSoldOut) {
+		t.Fatalf("expected a full table, got %v", err)
+	}
+}
+
+func TestCreateBookingSeats_RejectsZeroSeats(t *testing.T) {
+	store, event, egID, now := seatedTable(t, 5)
+	if _, err := store.CreateBookingSeats(context.Background(), event.ID, egID, "Mario", 0, now); !errors.Is(err, events.ErrInvalidSeats) {
+		t.Fatalf("expected ErrInvalidSeats, got %v", err)
+	}
+}
+
+func TestCancelBooking_FreesEverySeatOfTheCode(t *testing.T) {
+	store, event, egID, now := seatedTable(t, 4)
+	ctx := context.Background()
+	b, err := store.CreateBookingSeats(ctx, event.ID, egID, "Mario", 4, now)
+	if err != nil {
+		t.Fatalf("booking: %v", err)
+	}
+	if _, err := store.CancelBooking(ctx, b.ID, b.BookingCode); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	if remaining, _ := store.RemainingCapacity(ctx, egID); remaining != 4 {
+		t.Fatalf("remaining = %d, want 4", remaining)
+	}
+}

@@ -21,14 +21,18 @@ withDefaults(
     multiSeat: boolean
     hint?: boolean
     mailed?: boolean
+    /** Più di 1: il codice vale per un gruppo, e va detto. */
+    seatsReserved?: number
   }>(),
-  { hint: true, mailed: false },
+  { hint: true, mailed: false, seatsReserved: 1 },
 )
 </script>
 
 <template>
   <div class="booking-confirmation">
-    <p class="success">Prenotazione confermata per {{ gameLabel }}!</p>
+    <p class="success">
+      Prenotazione confermata per {{ gameLabel }}<template v-if="seatsReserved > 1">, {{ seatsReserved }} posti riservati</template>!
+    </p>
     <div class="booking-code-card">
       <span class="label">Il tuo codice</span>
       <span class="booking-code">{{ code }}</span>
@@ -42,7 +46,7 @@ withDefaults(
       i punti.
     </p>
     <p v-if="multiSeat">
-      Questo tavolo ha più posti prenotabili, uno a testa: il punteggio finale è uno per tavolo e
+      Questo tavolo ha più posti prenotabili: il punteggio finale è uno per tavolo e
       chiunque sieda qui può inserirlo o correggerlo con il proprio codice.
     </p>
   </div>

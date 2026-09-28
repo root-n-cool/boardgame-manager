@@ -28,6 +28,7 @@ interface BookingResult {
   eventId: number
   eventGameId: number
   participantName: string
+  seatsReserved: number
   bookingCode: string
   status: 'active' | 'cancelled'
   eventTitle: string
@@ -38,7 +39,7 @@ interface BookingResult {
   copyIndex: number
   seats: number
   gameCopies: number
-  /** Quante prenotazioni attive ci sono su questo tavolo, compresa la mia. */
+  /** Quanti posti sono occupati su questo tavolo, compresi i miei. */
   tableBookings: number
   /**
    * Quali agenti stanno dietro il link "Chiedi al Mentore": è la stessa
@@ -206,7 +207,10 @@ onMounted(async () => {
         <p class="booking-summary-meta">
           {{ booking.eventTitle }} · {{ booking.eventDate }} · {{ booking.startTime }}
         </p>
-        <p class="booking-summary-participant">Prenotato da <strong>{{ booking.participantName }}</strong></p>
+        <p class="booking-summary-participant">
+          Prenotato da <strong>{{ booking.participantName }}</strong
+          ><template v-if="booking.seatsReserved > 1"> · {{ booking.seatsReserved }} posti riservati</template>
+        </p>
         <p v-if="booking.seats > 1" class="row-meta">
           Tavolo da {{ booking.seats }} posti prenotabili · {{ booking.tableBookings }} prenotati
         </p>

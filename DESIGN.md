@@ -753,7 +753,10 @@ questa scheda.
   cambio, senza "Salva": sono una tendina e una spunta, non un numero da
   digitare. Il suggerimento sotto dice cosa *non* fa: il gioco resta
   aggiungibile agli eventi e la scheda si apre da link o QR. In creazione
-  (`/admin/games/new`) la tipologia è la prima voce dei "Dettagli".
+  (`/admin/games/new`) la tipologia è la prima voce della card "Gioco", e
+  decide la strada: una tipologia con `onBgg: false` in `GAME_KINDS`
+  (oggi il gioco di ruolo) nasconde la ricerca BoardGameGeek e apre
+  direttamente i campi manuali, senza il rimando "Torna alla ricerca".
 - **Due fogli dentro il gruppo «Lingue»** (`.section-group`): "Scheda" e
   "Media" sono card separate — un filetto full-bleed in mezzo a una card sola
   tagliava il foglio invece di articolarlo — ma stanno **dentro** il tappeto
@@ -1079,6 +1082,21 @@ La dicitura è sempre "posti prenotabili", mai "posti" da solo: un
 di giocatori del gioco. Una copia con un solo posto prenotabile non
 mostra nulla — resta la dicitura di disponibilità di sempre; da due in
 su compare `Posti prenotabili liberi: 3 di 5`.
+
+Una prenotazione può tenere più posti prenotabili: quel numero si dice
+**"posti riservati"** (`utils/seats.ts`, "1 posto riservato" / "3 posti
+riservati"), in conferma, gestione prenotazione, banco prestiti e mail.
+L'admin conta i **posti occupati**, non le righe: `3 di 5 posti
+prenotabili occupati`, e accanto al nome la pastiglia neutra
+`.seats-chip` (cartoncino `--card-alt`, bordo `--card-line`) quando la
+prenotazione vale più di un posto.
+
+- **"Posti da riservare"** nella modale di prenotazione: compare solo se
+  la copia ha più di un posto prenotabile libero. È un `role="group"`
+  etichettato con − numero + (`.seats-stepper`, tre bersagli da 44px,
+  numero in `Data` tabulare, campo comunque scrivibile), da 1 ai posti
+  liberi; la nota sotto dice che il codice è uno per tutti e che si
+  annulla in blocco.
 
 ### Scheda evento pubblica (`/events/:id`): il tavolo
 Sotto locandina, data, luogo e mappa arriva `Al tavolo` (`h2`), poi il

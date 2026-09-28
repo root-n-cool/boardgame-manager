@@ -383,7 +383,7 @@ func (s *Store) GetEventGame(ctx context.Context, id int64) (EventGame, error) {
 }
 
 // ActiveBookingCountsByEventGame returns, for every copy of the event, how
-// many active bookings sit on it — one grouped query instead of the
+// many seats its active bookings take (a booking can hold several) — one grouped query instead of the
 // RemainingCapacity-per-copy loop the public event page used to run: an
 // evening with 8 games × 2 copies went from ~9 queries to ~33 doing it that
 // way. Missing from the map means zero, same as RemainingCapacity's own count.
@@ -395,7 +395,7 @@ func (s *Store) RemainingCapacity(ctx context.Context, eventGameID int64) (int, 
 	var remaining int
 	err := s.db.QueryRowContext(ctx,
 		`SELECT eg.seats - (
-			SELECT COUNT(*) FROM bookings b WHERE b.event_game_id = eg.id AND b.status = 'active'
+			SELECT COALESCE(SUM(b.seats_reserved), 0) FROM bookings b WHERE b.event_game_id = eg.id AND b.status = 'active'
 		 ) FROM event_games eg WHERE eg.id = ?`, eventGameID,
 	).Scan(&remaining)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -583,10 +583,12 @@ func dropCopies(ctx context.Context, tx execer, copies []EventGame, occupied map
 	return nil
 }
 
-// occupiedCopies conta le prenotazioni attive di ogni copia dell'evento.
+// occupiedCopies conta i posti occupati da prenotazioni attive su ogni copia
+// dell'evento: la somma di seats_reserved, perché una prenotazione può
+// valere più posti. Zero vuol dire copia libera.
 func occupiedCopies(ctx context.Context, q queryer, eventID int64) (map[int64]int, error) {
 	rows, err := q.QueryContext(ctx,
-		`SELECT eg.id, COUNT(b.id) FROM event_games eg
+		`SELECT eg.id, COALESCE(SUM(b.seats_reserved), 0) FROM event_games eg
 		 LEFT JOIN bookings b ON b.event_game_id = eg.id AND b.status = 'active'
 		 WHERE eg.event_id = ? GROUP BY eg.id`, eventID)
 	if err != nil {

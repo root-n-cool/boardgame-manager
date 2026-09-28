@@ -10,6 +10,8 @@ import { clockTime, issuesLabel, type MaterialIssue } from '../utils/loans'
 interface CopyBooking {
   id: number
   name: string
+  /** Chi ha prenotato per un gruppo porta più posti con un nome solo. */
+  seatsReserved: number
 }
 
 interface OpenLoan {
@@ -70,6 +72,11 @@ interface EventHeader {
 }
 
 const route = useRoute()
+
+/** "Mario", o "Mario (3 posti riservati)" per chi ha prenotato per un gruppo. */
+function bookingLabel(b: CopyBooking) {
+  return b.seatsReserved > 1 ? `${b.name} (${b.seatsReserved} posti riservati)` : b.name
+}
 const eventId = route.params.id as string
 
 const desk = ref<LoanDesk>({ copies: [], returned: [] })
@@ -404,7 +411,7 @@ onMounted(async () => {
                 <span v-if="!copy.bookable" class="loan-tag">Senza prenotazione</span>
                 <span v-if="copy.activeBookings.length > 0" class="row-meta">
                   prenotata da
-                  {{ copy.activeBookings.map((b) => b.name).join(', ') }}
+                  {{ copy.activeBookings.map(bookingLabel).join(', ') }}
                 </span>
               </span>
               <span class="loan-row-action">Consegna</span>
@@ -466,7 +473,7 @@ onMounted(async () => {
           <ul role="list" class="loan-booking-picks">
             <li v-for="b in lending.activeBookings" :key="b.id">
               <button type="button" @click="pickBooking(b)">
-                {{ b.name }}
+                {{ bookingLabel(b) }}
               </button>
             </li>
           </ul>
