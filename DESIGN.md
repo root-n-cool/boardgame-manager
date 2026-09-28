@@ -327,6 +327,11 @@ card — il confine è sempre un `1px solid var(--card-line)` uniforme.
   Shapes lo esclude esplicitamente (il confine resta sempre `1px solid
   var(--card-line)` uniforme) — la pastiglia sulla copertina è la via per
   segnalare uno stato senza tingere il bordo.
+  Più stati sulla stessa copertina ("Incompleto", "Nascosto") stanno in un
+  gruppo `.state-chips` (assoluto, flex che va a capo) con le pastiglie
+  `.is-inline`. **`.is-muted`** (cartoncino, testo `--ink-muted`, bordo
+  `--card-line`) è per uno stato che è una scelta dell'admin e non un
+  allarme: "Nascosto".
 
 ### Testa di pagina (`.page-head`)
 - Titolo + `.page-meta` a sinistra, **azione primaria in alto a destra**
@@ -742,6 +747,13 @@ questa scheda.
   conseguenza, non anticipa l'oggetto). L'azione distruttiva sta in testa,
   non annegata in una riga di metadati insieme ai rimandi.
 - **`.back-link` verso il catalogo**, come `/admin/games/new`.
+- **Tipologia e visibilità** (`.game-classify-edit`), sotto i posti
+  prenotabili: tendina **Tipologia** (larga quanto le voci, non a tutta
+  riga) e spunta **Non visibile nel catalogo pubblico**. Si salvano al
+  cambio, senza "Salva": sono una tendina e una spunta, non un numero da
+  digitare. Il suggerimento sotto dice cosa *non* fa: il gioco resta
+  aggiungibile agli eventi e la scheda si apre da link o QR. In creazione
+  (`/admin/games/new`) la tipologia è la prima voce dei "Dettagli".
 - **Due fogli dentro il gruppo «Lingue»** (`.section-group`): "Scheda" e
   "Media" sono card separate — un filetto full-bleed in mezzo a una card sola
   tagliava il foglio invece di articolarlo — ma stanno **dentro** il tappeto
@@ -1077,13 +1089,36 @@ desktop, due sul telefono (`minmax(130px, 1fr)` sotto i 560px). Il minimo
 invece di lasciare una fascia verde vuota a destra quando le copie non
 bastano a fare una riga intera.
 
-La card porta, dall'alto: copertina 3/4, nome (`h3`, con `#2` solo se il
-gioco ha più copie), difficoltà, stato dei posti, e in fondo le due
-azioni ancorate da `margin-top: auto` — **Prenota** a piena larghezza e,
-sotto, **Dettagli →** (`.detail-link`, testo rosso seme) verso la scheda
-del gioco con manuali e video. Una card, una sola azione primaria: il
-nome non è più un link, perché due bersagli allo stesso peso su una
-tessera da 150px si sbagliano col pollice.
+La card porta, dall'alto: copertina 3/4 con la **pastiglia della
+tipologia** (`.kind-chip`, `GDT`/`GDR`) nell'angolo in alto a sinistra,
+nome (`h3`, con `#2` solo se il gioco ha più copie), difficoltà, stato dei
+posti, poi i **rimandi alla scheda** (`.event-game-links`) e in fondo le
+azioni ancorate da `margin-top: auto` — **Prenota** a piena larghezza. Una
+card, una sola azione primaria: il nome non è un link, perché due
+bersagli allo stesso peso su una tessera da 150px si sbagliano col
+pollice.
+
+- **Pastiglia della tipologia** (`.kind-chip`): sigla in maiuscoletto
+  tracciato (0.7rem, 700), fondo pieno perché deve leggersi su qualunque
+  copertina, `position: absolute` così non sposta nome né "Prenota". GDT è
+  cartoncino con testo `--ink`; **GDR prende il rosso seme** (`--accent`,
+  testo bianco): su un tavolo di scatole è quello da notare, perché si
+  prenota a posti e non a copie. Il nome per esteso ("Gioco di ruolo") è
+  nel `title` e in un `.visually-hidden`. Le tipologie vengono tutte da
+  `utils/gameKinds.ts` (`GAME_KINDS`: valore, etichetta, plurale, sigla),
+  specchio di `games.Kinds` nel backend: una tipologia nuova si aggiunge
+  lì e basta, e le serve una variante `.kind-chip.kind-<valore>` solo se
+  deve distinguersi dal cartoncino.
+- **Rimandi alla scheda** (`.event-game-links`): due pastiglie contornate
+  in fila, **Dettagli** (sempre) e **Mentore** (solo se il gioco ha una
+  chat, `chat.rules || chat.strategy`), che apre la scheda con `?chat=1`.
+  Bordo `--card-line`, testo rosso seme 600, hover `--accent-bg`. Stanno
+  nel corpo e non fra le azioni: "Mentore" c'è solo su alcune schede, e
+  in fondo alla card sposterebbe il "Prenota" solo su quelle. Hanno
+  sostituito il link "Dubbi o consigli? Chiedi al Mentore" e il vecchio
+  **Dettagli →** fra le azioni. Sulla colonna stretta del telefono vanno
+  a capo una sotto l'altra: accettato, la fila dei "Prenota" resta
+  allineata.
 
 ### Toggle a due voci (`.filter-toggle`, pagina evento)
 "Tutti / Prenotabili": due bottoni con `aria-pressed` in un `role="group"`
@@ -1103,8 +1138,12 @@ lista è ristretta. Scelta fatta con l'utente: 9 pastiglie occupavano due o
 tre righe su telefono, due tendine ne occupano una.
 
 - **Catalogo pubblico (`/giochi`)**: ricerca per nome (ignora maiuscole e
-  accenti) più le tendine **Giocatori** (2…6+) e **Difficoltà** con le
-  stesse fasce del badge (`utils/difficulty.ts`, una sola fonte). Un gioco
+  accenti) più le tendine **Giocatori** (2…6+), **Difficoltà** con le
+  stesse fasce del badge (`utils/difficulty.ts`, una sola fonte) e
+  **Tipo** (solo se lo scaffale mescola le tipologie). I giochi segnati
+  "Non visibile nel catalogo pubblico" non ci sono, nemmeno per un admin
+  loggato: il server non li manda ai visitatori, e la vista li scarta per
+  chi ha una sessione. Un gioco
   senza il dato esce appena il filtro relativo si accende. Nessun
   risultato: frase più **Azzera filtri** (`.filter-empty`, `.btn-secondary.is-compact`).
   Il proprietario non compare: è il nome di una persona. La griglia è
@@ -1112,8 +1151,10 @@ tre righe su telefono, due tendine ne occupano una.
   tetto di 230px dello scaffale admin: le card arrivano allo stesso bordo
   destro della barra dei filtri, e la regola telefono resta una sola.
 - **Scheda evento pubblica**: sotto `Al tavolo`, le pastiglie **Mostra**
-  (Tutti / Prenotabili, solo se la serata mescola i due tipi) e la tendina
-  **Giocatori**, entrambe nascoste con un solo tavolo. Si parte sempre da
+  (Tutti / Prenotabili, solo se la serata mescola i due tipi), la tendina
+  **Giocatori** e la tendina **Tipo** (Giochi da tavolo (GDT) / Giochi di
+  ruolo (GDR), solo se la serata mescola le tipologie), tutte nascoste con
+  un solo tavolo. Si parte sempre da
   "Tutti": un gioco senza prenotazione è comunque in sala.
 
 ### Controllo componenti (`GameMaterialsChecklist.vue`)

@@ -10,6 +10,7 @@ import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
 import type { ChatAvailability } from '../utils/game'
 import { PLAYER_FILTER_OPTIONS, fitsPlayers } from '../utils/gameFilters'
+import { KIND_FILTER_OPTIONS, gameKindInfo, hasKindMix, type GameKind } from '../utils/gameKinds'
 import { listMyBookings, removeMyBooking, saveMyBooking, type MyBooking } from '../utils/myBookings'
 
 interface EventGameInfo {
@@ -23,9 +24,10 @@ interface EventGameInfo {
   weight: number | null
   minPlayers: number | null
   maxPlayers: number | null
+  kind: string
   bookable: boolean
   /**
-   * Quali agenti stanno dietro il link "Chiedi al Mentore" (manuale
+   * Quali agenti stanno dietro il link "Mentore" (manuale
    * preparato / chiave Tavily + provider AI configurati). Nessuno dei due =
    * niente link: senza, il link portava alla scheda del gioco e non
    * succedeva niente — al tavolo si legge come un'app rotta.
@@ -91,6 +93,7 @@ const chipActionError = ref('')
 // credere che la serata ne porti meno di quanti ce ne sono.
 const onlyBookable = ref(false)
 const players = ref<number | null>(null)
+const kind = ref<GameKind | null>(null)
 
 /**
  * I codici già confermati restano qui, e nessuno li cancella: al tavolo un
@@ -141,6 +144,10 @@ const hasBookMix = computed(
   () => !!event.value && event.value.games.some((g) => g.bookable) && event.value.games.some((g) => !g.bookable),
 )
 
+// Come per il toggle: il filtro "Tipo" serve solo se la serata mescola
+// tavoli da gioco e tavoli di ruolo.
+const hasKinds = computed(() => !!event.value && hasKindMix(event.value.games))
+
 // Con un solo tavolo non c'è niente da filtrare.
 const showFilters = computed(() => !!event.value && event.value.games.length > 1)
 
@@ -148,13 +155,15 @@ const visibleGames = computed(() =>
   (event.value?.games ?? []).filter(
     (g) =>
       (!onlyBookable.value || g.bookable) &&
-      (players.value === null || fitsPlayers(g, players.value)),
+      (players.value === null || fitsPlayers(g, players.value)) &&
+      (kind.value === null || gameKindInfo(g.kind).value === kind.value),
   ),
 )
 
 function resetFilters() {
   onlyBookable.value = false
   players.value = null
+  kind.value = null
 }
 
 const hasStarted = computed(() => {
@@ -391,6 +400,7 @@ onMounted(async () => {
         </div>
       </div>
       <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
+      <SelectFilter v-if="hasKinds" v-model="kind" label="Tipo" :options="KIND_FILTER_OPTIONS" />
     </div>
 
     <ul v-if="visibleGames.length > 0" class="event-games">
@@ -414,23 +424,36 @@ onMounted(async () => {
             <circle cx="15.7" cy="15.7" r="1.3" fill="currentColor" />
           </svg>
         </div>
+        <!-- La tipologia sta sulla copertina, non nel corpo: è la prima cosa
+             che distingue un tavolo di ruolo da una scatola, e lì non sposta
+             né il nome né la fila dei "Prenota". -->
+        <span class="kind-chip" :class="`kind-${gameKindInfo(g.kind).value}`" :title="gameKindInfo(g.kind).label">
+          <span aria-hidden="true">{{ gameKindInfo(g.kind).short }}</span>
+          <span class="visually-hidden">{{ gameKindInfo(g.kind).label }}</span>
+        </span>
         <div class="event-game-body">
           <h3>{{ copyLabel(g) }}</h3>
           <GameDifficulty :weight="g.weight" />
           <p v-if="tableOnly(g)" class="seat-state">Senza prenotazione</p>
           <p v-else-if="isFull(g)" class="seat-state">Al completo</p>
           <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
-          <!-- Il link al manuale sta QUI e non fra le azioni in fondo alla
-               card: le azioni sono ancorate al fondo (`margin-top: auto`) per
-               tenere allineata la fila dei "Prenota", e una voce che c'è solo
-               su alcune schede spingerebbe quel bottone più in alto proprio
-               sulle schede col manuale. Qui è anche il posto giusto per
-               senso: è un'informazione sul gioco, non un passo della
-               prenotazione. -->
-          <p v-if="g.chat.rules || g.chat.strategy" class="event-game-ask">
-            <router-link :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }">
-              Dubbi o consigli? Chiedi al Mentore
+          <!-- I rimandi alla scheda stanno QUI e non fra le azioni in fondo
+               alla card: le azioni sono ancorate al fondo (`margin-top: auto`)
+               per tenere allineata la fila dei "Prenota", e "Mentore", che c'è
+               solo su alcune schede, spingerebbe quel bottone più in alto
+               proprio su quelle. Qui è anche il posto giusto per senso: sono
+               informazioni sul gioco, non passi della prenotazione. -->
+          <p class="event-game-links">
+            <router-link :to="`/games/${g.gameId}`">
+              Dettagli
               <span class="visually-hidden">di {{ copyLabel(g) }}</span>
+            </router-link>
+            <router-link
+              v-if="g.chat.rules || g.chat.strategy"
+              :to="{ path: `/games/${g.gameId}`, query: { chat: '1' } }"
+            >
+              Mentore
+              <span class="visually-hidden">: regole e consigli su {{ copyLabel(g) }}</span>
             </router-link>
           </p>
         </div>
@@ -454,11 +477,6 @@ onMounted(async () => {
           >
             Prenota
           </button>
-          <router-link class="detail-link" :to="`/games/${g.gameId}`">
-            Dettagli
-            <span aria-hidden="true">&rarr;</span>
-            <span class="visually-hidden">di {{ copyLabel(g) }}</span>
-          </router-link>
         </div>
       </li>
     </ul>

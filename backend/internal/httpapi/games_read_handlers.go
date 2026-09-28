@@ -30,7 +30,8 @@ func (s *Server) listGamesHandler(w http.ResponseWriter, r *http.Request) {
 	// è hasAdminSession, non currentUser: qui non c'è alcun contesto
 	// popolato da valutare.
 	var missing map[int64][]events.MissingPiece
-	if s.hasAdminSession(r) {
+	admin := s.hasAdminSession(r)
+	if admin {
 		ids := make([]int64, 0, len(list))
 		for _, g := range list {
 			ids = append(ids, g.ID)
@@ -45,12 +46,22 @@ func (s *Server) listGamesHandler(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]map[string]any, 0, len(list))
 	for _, g := range list {
+		// Un gioco nascosto sparisce dal catalogo pubblico, non dall'admin:
+		// i picker degli eventi e la lista di gestione leggono questa stessa
+		// rotta e devono continuare a vederlo.
+		if g.HiddenFromCatalog && !admin {
+			continue
+		}
 		var incomplete *bool
 		if missing != nil {
 			v := len(missing[g.ID]) > 0
 			incomplete = &v
 		}
-		out = append(out, toGameSummary(g, incomplete))
+		summary := toGameSummary(g, incomplete)
+		if admin {
+			summary["hiddenFromCatalog"] = g.HiddenFromCatalog
+		}
+		out = append(out, summary)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -84,13 +95,15 @@ func (s *Server) getGameHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type updateGameRequest struct {
-	Owner           *string  `json:"owner"`
-	Year            *int     `json:"year"`
-	MinPlayers      *int     `json:"minPlayers"`
-	MaxPlayers      *int     `json:"maxPlayers"`
-	PlaytimeMinutes *int     `json:"playtimeMinutes"`
-	Weight          *float64 `json:"weight"`
-	Seats           *int     `json:"seats"`
+	Owner             *string  `json:"owner"`
+	Year              *int     `json:"year"`
+	MinPlayers        *int     `json:"minPlayers"`
+	MaxPlayers        *int     `json:"maxPlayers"`
+	PlaytimeMinutes   *int     `json:"playtimeMinutes"`
+	Weight            *float64 `json:"weight"`
+	Seats             *int     `json:"seats"`
+	Kind              *string  `json:"kind"`
+	HiddenFromCatalog *bool    `json:"hiddenFromCatalog"`
 }
 
 func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
@@ -108,10 +121,15 @@ func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "i posti prenotabili devono essere almeno 1")
 		return
 	}
+	if req.Kind != nil && !games.ValidKind(*req.Kind) {
+		writeError(w, http.StatusBadRequest, "tipologia di gioco sconosciuta")
+		return
+	}
 	game, err := s.Games.UpdateGame(r.Context(), id, games.GameUpdate{
 		Owner: req.Owner, Year: req.Year, MinPlayers: req.MinPlayers,
 		MaxPlayers: req.MaxPlayers, PlaytimeMinutes: req.PlaytimeMinutes,
 		Weight: req.Weight, Seats: req.Seats,
+		Kind: req.Kind, HiddenFromCatalog: req.HiddenFromCatalog,
 	})
 	if errors.Is(err, games.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "game not found")
@@ -121,7 +139,9 @@ func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "could not update game")
 		return
 	}
-	writeJSON(w, http.StatusOK, toGameSummary(game, nil))
+	summary := toGameSummary(game, nil)
+	summary["hiddenFromCatalog"] = game.HiddenFromCatalog
+	writeJSON(w, http.StatusOK, summary)
 }
 
 func (s *Server) deleteGameHandler(w http.ResponseWriter, r *http.Request) {

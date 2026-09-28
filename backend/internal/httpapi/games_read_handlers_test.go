@@ -149,3 +149,109 @@ func TestDeleteGame_RemovesIt(t *testing.T) {
 		t.Fatalf("expected 404 after delete, got %d", getRec.Code)
 	}
 }
+
+func patchGame(t *testing.T, router http.Handler, cookie *http.Cookie, id int64, body map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	payload, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/games/%d", id), bytes.NewReader(payload))
+	req.AddCookie(cookie)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	return rec
+}
+
+func listGameNames(t *testing.T, router http.Handler, cookie *http.Cookie) map[string]map[string]any {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/api/games", nil)
+	if cookie != nil {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("list: %d %s", rec.Code, rec.Body.String())
+	}
+	var list []map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&list); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	out := map[string]map[string]any{}
+	for _, g := range list {
+		out[g["name"].(string)] = g
+	}
+	return out
+}
+
+func TestListGames_HidesHiddenGamesFromVisitorsOnly(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	createTestGame(t, router, cookie, "Azul")
+	hiddenID := createTestGame(t, router, cookie, "Segreto")
+	if rec := patchGame(t, router, cookie, hiddenID, map[string]any{"hiddenFromCatalog": true}); rec.Code != http.StatusOK {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
+	}
+
+	public := listGameNames(t, router, nil)
+	if _, ok := public["Segreto"]; ok || len(public) != 1 {
+		t.Fatalf("visitors must not see hidden games: %v", public)
+	}
+	if _, ok := public["Azul"]["hiddenFromCatalog"]; ok {
+		t.Fatal("the hidden flag is admin-only")
+	}
+
+	admin := listGameNames(t, router, cookie)
+	if len(admin) != 2 || admin["Segreto"]["hiddenFromCatalog"] != true {
+		t.Fatalf("admins see every game with its flag: %v", admin)
+	}
+
+	// La scheda resta raggiungibile da link.
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/games/%d", hiddenID), nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("hidden game detail: %d", rec.Code)
+	}
+}
+
+func TestGameKind_DefaultsToBoardAndIsEditable(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+	id := createTestGame(t, router, cookie, "Azul")
+
+	if got := listGameNames(t, router, nil)["Azul"]["kind"]; got != "board" {
+		t.Fatalf("kind = %v, want board", got)
+	}
+
+	rec := patchGame(t, router, cookie, id, map[string]any{"kind": "rpg"})
+	if rec.Code != http.StatusOK {
+		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
+	}
+	if got := listGameNames(t, router, nil)["Azul"]["kind"]; got != "rpg" {
+		t.Fatalf("kind = %v, want rpg", got)
+	}
+
+	if rec := patchGame(t, router, cookie, id, map[string]any{"kind": "wargame"}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown kind: expected 400, got %d", rec.Code)
+	}
+}
+
+func TestCreateGame_AcceptsKind(t *testing.T) {
+	server := newTestServer(t)
+	router := httpapi.NewRouter(server)
+	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
+
+	for kind, want := range map[string]int{"rpg": http.StatusCreated, "wargame": http.StatusBadRequest} {
+		payload, _ := json.Marshal(map[string]any{"languageCode": "it", "name": "Gioco " + kind, "kind": kind})
+		req := httptest.NewRequest(http.MethodPost, "/api/games", bytes.NewReader(payload))
+		req.AddCookie(cookie)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Fatalf("kind %q: expected %d, got %d %s", kind, want, rec.Code, rec.Body.String())
+		}
+	}
+	if got := listGameNames(t, router, nil)["Gioco rpg"]["kind"]; got != "rpg" {
+		t.Fatalf("kind = %v, want rpg", got)
+	}
+}

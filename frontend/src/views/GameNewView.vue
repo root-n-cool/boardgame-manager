@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/client'
 import BggSearchSelect, { type BggResult } from '../components/BggSearchSelect.vue'
+import { DEFAULT_GAME_KIND, GAME_KINDS, type GameKind } from '../utils/gameKinds'
 
 const router = useRouter()
 
@@ -25,6 +26,9 @@ const manualWeight = ref<number | null>(null)
 // entrambe le vie di creazione (BGG e manuale), quindi vive nei "Dettagli"
 // condivisi invece che duplicato nei due blocchi sopra.
 const seats = ref(1)
+// La tipologia, anche lei per entrambe le vie: BGG non la distingue in modo
+// affidabile, la sceglie l'admin.
+const kind = ref<GameKind>(DEFAULT_GAME_KIND)
 
 const error = ref('')
 const saving = ref(false)
@@ -66,12 +70,14 @@ async function createGame() {
           owner: owner.value,
           languageCode: languageCode.value,
           seats: seats.value,
+          kind: kind.value,
         }
       : {
           bggId: selected.value!.bggId,
           owner: owner.value,
           languageCode: languageCode.value,
           seats: seats.value,
+          kind: kind.value,
         }
     const game = await api.post<{ id: number }>('/games', payload)
     router.push({ name: 'admin-game-detail', params: { id: game.id } })
@@ -157,6 +163,12 @@ onMounted(async () => {
         <div class="section-head">
           <h2>Dettagli</h2>
         </div>
+        <label>
+          Tipologia
+          <select v-model="kind">
+            <option v-for="k in GAME_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
+          </select>
+        </label>
         <label>
           Lingua base
           <select v-model="languageCode">

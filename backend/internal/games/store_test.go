@@ -377,3 +377,71 @@ func TestCreateGame_WithoutBGGDescription(t *testing.T) {
 		t.Fatalf("expected no raw description for a manual game, got %q", *created.BGGDescription)
 	}
 }
+
+func TestCreateGame_DefaultsToBoardGameVisibleInCatalog(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+
+	created, err := store.CreateGame(ctx, games.Game{Name: "Catan"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.Kind != games.KindBoard {
+		t.Fatalf("kind = %q, want %q", created.Kind, games.KindBoard)
+	}
+	if created.HiddenFromCatalog {
+		t.Fatal("a new game must be visible in the catalog")
+	}
+}
+
+func TestCreateGame_KeepsKind(t *testing.T) {
+	store := newTestStore(t)
+	created, err := store.CreateGame(context.Background(), games.Game{Name: "D&D", Kind: games.KindRPG})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	if created.Kind != games.KindRPG {
+		t.Fatalf("kind = %q, want %q", created.Kind, games.KindRPG)
+	}
+}
+
+func TestUpdateGame_KindAndHidden(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	created, err := store.CreateGame(ctx, games.Game{Name: "D&D", Owner: strPtr("Mario")})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	kind := games.KindRPG
+	hidden := true
+	updated, err := store.UpdateGame(ctx, created.ID, games.GameUpdate{Kind: &kind, HiddenFromCatalog: &hidden})
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	if updated.Kind != games.KindRPG || !updated.HiddenFromCatalog {
+		t.Fatalf("unexpected game: %+v", updated)
+	}
+	if updated.Owner == nil || *updated.Owner != "Mario" {
+		t.Fatalf("owner lost: %+v", updated.Owner)
+	}
+
+	listed, err := store.ListGames(ctx)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(listed) != 1 || listed[0].Kind != games.KindRPG || !listed[0].HiddenFromCatalog {
+		t.Fatalf("list does not carry kind/hidden: %+v", listed)
+	}
+}
+
+func TestValidKind(t *testing.T) {
+	for _, k := range games.Kinds {
+		if !games.ValidKind(k) {
+			t.Fatalf("%q should be valid", k)
+		}
+	}
+	if games.ValidKind("") || games.ValidKind("wargame") {
+		t.Fatal("unknown kinds must be rejected")
+	}
+}

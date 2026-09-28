@@ -14,6 +14,8 @@ interface GameSummary {
    * cui il campo opzionale.
    */
   incomplete?: boolean
+  /** Anche questo solo con la sessione admin: il gioco non è nel catalogo pubblico. */
+  hiddenFromCatalog?: boolean
 }
 
 const games = ref<GameSummary[]>([])
@@ -51,7 +53,10 @@ onMounted(loadGames)
       <ul role="list" class="game-grid-items">
         <li v-for="g in games" :key="g.id">
           <router-link :to="{ name: 'admin-game-detail', params: { id: g.id } }">
-            <span v-if="g.incomplete" class="state-chip is-danger">Incompleto</span>
+            <span v-if="g.incomplete || g.hiddenFromCatalog" class="state-chips">
+              <span v-if="g.incomplete" class="state-chip is-inline is-danger">Incompleto</span>
+              <span v-if="g.hiddenFromCatalog" class="state-chip is-inline is-muted">Nascosto</span>
+            </span>
             <img
               v-if="g.coverPath"
               :src="`/api/uploads/${g.coverPath}`"

@@ -95,6 +95,12 @@ esterno obbligatorio.
   riapre da sola. La scheda del gioco ha anche il registro completo dei
   suoi prestiti, di ogni serata, con le riconsegne incomplete evidenziate
   e il dettaglio di cosa mancava.
+- **Tipologia e visibilità**: ogni gioco è un gioco da tavolo (GDT, il
+  default, anche per quelli inseriti prima) o un gioco di ruolo (GDR).
+  La pagina evento lo segna su ogni scatola e, come il catalogo pubblico,
+  permette di filtrare per tipo. Un gioco segnato "Non visibile nel
+  catalogo pubblico" sparisce solo dal catalogo: resta aggiungibile agli
+  eventi e la sua scheda si apre ancora da link o QR.
 - **Giochi senza prenotazione**: un gioco può stare in un evento senza
   essere prenotabile — un riempitivo sempre disponibile al tavolo, tipo
   Love Letter, per chi arriva senza aver prenotato nulla. Il punteggio

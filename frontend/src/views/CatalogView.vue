@@ -5,6 +5,7 @@ import SelectFilter from '../components/SelectFilter.vue'
 import GameDifficulty from '../components/GameDifficulty.vue'
 import { DIFFICULTY_LEVELS, difficultyLevel, type DifficultyLevel } from '../utils/difficulty'
 import { PLAYER_FILTER_OPTIONS, fitsPlayers, formatPlayers, normalizeName } from '../utils/gameFilters'
+import { KIND_FILTER_OPTIONS, gameKindInfo, hasKindMix, type GameKind } from '../utils/gameKinds'
 
 /**
  * Lo scaffale dell'associazione, aperto a tutti: cosa c'è da giocare, a
@@ -22,6 +23,14 @@ interface CatalogGame {
   playtimeMinutes: number | null
   weight: number | null
   coverPath: string | null
+  kind: string
+  /**
+   * Esce solo a chi ha una sessione admin: la rotta a un visitatore i
+   * giochi nascosti non li manda proprio, a un admin sì (servono ai
+   * picker degli eventi). Qui si scartano comunque, così il catalogo che
+   * vede l'admin è quello che vedono tutti.
+   */
+  hiddenFromCatalog?: boolean
 }
 
 const games = ref<CatalogGame[]>([])
@@ -31,10 +40,16 @@ const error = ref('')
 const query = ref('')
 const players = ref<number | null>(null)
 const difficulty = ref<DifficultyLevel | null>(null)
+const kind = ref<GameKind | null>(null)
 
 const difficultyOptions = DIFFICULTY_LEVELS.map((d) => ({ value: d, label: d }))
 
-const filtering = computed(() => query.value.trim() !== '' || players.value !== null || difficulty.value !== null)
+// Il filtro "Tipo" c'è solo se lo scaffale mescola le tipologie.
+const showKindFilter = computed(() => hasKindMix(games.value))
+
+const filtering = computed(
+  () => query.value.trim() !== '' || players.value !== null || difficulty.value !== null || kind.value !== null,
+)
 
 const visible = computed(() => {
   const q = normalizeName(query.value)
@@ -42,7 +57,8 @@ const visible = computed(() => {
     (g) =>
       (q === '' || normalizeName(g.name).includes(q)) &&
       (players.value === null || fitsPlayers(g, players.value)) &&
-      (difficulty.value === null || difficultyLevel(g.weight) === difficulty.value),
+      (difficulty.value === null || difficultyLevel(g.weight) === difficulty.value) &&
+      (kind.value === null || gameKindInfo(g.kind).value === kind.value),
   )
 })
 
@@ -66,12 +82,13 @@ function resetFilters() {
   query.value = ''
   players.value = null
   difficulty.value = null
+  kind.value = null
 }
 
 onMounted(async () => {
   try {
     const list = await api.get<CatalogGame[]>('/games')
-    games.value = [...list].sort((a, b) => a.name.localeCompare(b.name, 'it'))
+    games.value = list.filter((g) => !g.hiddenFromCatalog).sort((a, b) => a.name.localeCompare(b.name, 'it'))
   } catch (e) {
     console.error('caricamento catalogo', e)
     error.value = 'Il catalogo non è disponibile in questo momento. Riprova tra poco.'
@@ -100,6 +117,7 @@ onMounted(async () => {
         </label>
         <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
         <SelectFilter v-model="difficulty" label="Difficoltà" :options="difficultyOptions" anyLabel="Tutte" />
+        <SelectFilter v-if="showKindFilter" v-model="kind" label="Tipo" :options="KIND_FILTER_OPTIONS" />
       </div>
 
       <ul v-if="visible.length > 0" role="list" class="game-grid catalog-grid">

@@ -37,6 +37,35 @@ type Game struct {
 	// data con le mancanze registrate dopo (vedi events.GamesMissingPieces).
 	MaterialsCheckedAt *time.Time
 	MaterialsCheckedBy *int64
+	// Kind è la tipologia del gioco, uno dei valori di Kinds. Vuoto in
+	// CreateGame vale KindBoard: chi non la indica sta inserendo un gioco
+	// da tavolo, com'è sempre stato prima che la tipologia esistesse.
+	Kind string
+	// HiddenFromCatalog toglie il gioco dal catalogo pubblico. Non lo
+	// nasconde altrove: resta aggiungibile agli eventi e la sua scheda
+	// resta raggiungibile da link.
+	HiddenFromCatalog bool
+}
+
+// Le tipologie di gioco. Sono stringhe, non un enum SQL, perché l'elenco è
+// pensato per crescere: una tipologia nuova si aggiunge qui (e nel
+// GAME_KINDS del frontend), senza migrazioni.
+const (
+	KindBoard = "board"
+	KindRPG   = "rpg"
+)
+
+// Kinds è l'elenco delle tipologie ammesse, nell'ordine in cui le mostra
+// l'interfaccia.
+var Kinds = []string{KindBoard, KindRPG}
+
+func ValidKind(k string) bool {
+	for _, known := range Kinds {
+		if k == known {
+			return true
+		}
+	}
+	return false
 }
 
 type GameLanguage struct {
@@ -49,13 +78,15 @@ type GameLanguage struct {
 }
 
 type GameUpdate struct {
-	Owner           *string
-	Year            *int
-	MinPlayers      *int
-	MaxPlayers      *int
-	PlaytimeMinutes *int
-	Seats           *int
-	Weight          *float64
+	Owner             *string
+	Year              *int
+	MinPlayers        *int
+	MaxPlayers        *int
+	PlaytimeMinutes   *int
+	Seats             *int
+	Weight            *float64
+	Kind              *string
+	HiddenFromCatalog *bool
 }
 
 var ErrNotFound = errors.New("not found")
@@ -76,10 +107,13 @@ func (s *Store) CreateGame(ctx context.Context, g Game) (Game, error) {
 	if g.Seats < 1 {
 		g.Seats = 1
 	}
+	if g.Kind == "" {
+		g.Kind = KindBoard
+	}
 	res, err := s.db.ExecContext(ctx,
-		`INSERT INTO games (bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		g.BGGID, g.Name, g.Year, g.MinPlayers, g.MaxPlayers, g.PlaytimeMinutes, g.Owner, g.CoverPath, g.Seats, g.Weight, g.BGGDescription,
+		`INSERT INTO games (bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, kind, hidden_from_catalog)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		g.BGGID, g.Name, g.Year, g.MinPlayers, g.MaxPlayers, g.PlaytimeMinutes, g.Owner, g.CoverPath, g.Seats, g.Weight, g.BGGDescription, g.Kind, g.HiddenFromCatalog,
 	)
 	if err != nil {
 		return Game{}, err
@@ -97,9 +131,9 @@ func (s *Store) GetGame(ctx context.Context, id int64) (Game, error) {
 	var checkedAt sql.NullString
 	var checkedBy sql.NullInt64
 	err := s.db.QueryRowContext(ctx,
-		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at, materials_checked_at, materials_checked_by
+		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at, materials_checked_at, materials_checked_by, kind, hidden_from_catalog
 		 FROM games WHERE id = ?`, id,
-	).Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt, &checkedAt, &checkedBy)
+	).Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt, &checkedAt, &checkedBy, &g.Kind, &g.HiddenFromCatalog)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Game{}, ErrNotFound
 	}
@@ -113,7 +147,7 @@ func (s *Store) GetGame(ctx context.Context, id int64) (Game, error) {
 
 func (s *Store) ListGames(ctx context.Context) ([]Game, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at, materials_checked_at, materials_checked_by
+		`SELECT id, bgg_id, name, year, min_players, max_players, playtime_minutes, owner, cover_path, seats, weight, bgg_description, created_at, materials_checked_at, materials_checked_by, kind, hidden_from_catalog
 		 FROM games ORDER BY id`,
 	)
 	if err != nil {
@@ -127,7 +161,7 @@ func (s *Store) ListGames(ctx context.Context) ([]Game, error) {
 		var createdAt string
 		var checkedAt sql.NullString
 		var checkedBy sql.NullInt64
-		if err := rows.Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt, &checkedAt, &checkedBy); err != nil {
+		if err := rows.Scan(&g.ID, &g.BGGID, &g.Name, &g.Year, &g.MinPlayers, &g.MaxPlayers, &g.PlaytimeMinutes, &g.Owner, &g.CoverPath, &g.Seats, &g.Weight, &g.BGGDescription, &createdAt, &checkedAt, &checkedBy, &g.Kind, &g.HiddenFromCatalog); err != nil {
 			return nil, err
 		}
 		g.CreatedAt, _ = time.Parse("2006-01-02 15:04:05", createdAt)
@@ -177,10 +211,16 @@ func (s *Store) UpdateGame(ctx context.Context, id int64, upd GameUpdate) (Game,
 	if upd.Weight != nil {
 		current.Weight = upd.Weight
 	}
+	if upd.Kind != nil {
+		current.Kind = *upd.Kind
+	}
+	if upd.HiddenFromCatalog != nil {
+		current.HiddenFromCatalog = *upd.HiddenFromCatalog
+	}
 
 	_, err = s.db.ExecContext(ctx,
-		`UPDATE games SET owner = ?, year = ?, min_players = ?, max_players = ?, playtime_minutes = ?, seats = ?, weight = ? WHERE id = ?`,
-		current.Owner, current.Year, current.MinPlayers, current.MaxPlayers, current.PlaytimeMinutes, current.Seats, current.Weight, id,
+		`UPDATE games SET owner = ?, year = ?, min_players = ?, max_players = ?, playtime_minutes = ?, seats = ?, weight = ?, kind = ?, hidden_from_catalog = ? WHERE id = ?`,
+		current.Owner, current.Year, current.MinPlayers, current.MaxPlayers, current.PlaytimeMinutes, current.Seats, current.Weight, current.Kind, current.HiddenFromCatalog, id,
 	)
 	if err != nil {
 		return Game{}, err

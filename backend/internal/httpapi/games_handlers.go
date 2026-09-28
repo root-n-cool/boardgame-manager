@@ -30,7 +30,9 @@ type createGameRequest struct {
 	PlaytimeMinutes *int     `json:"playtimeMinutes"`
 	Weight          *float64 `json:"weight"`
 	// Seats sono i posti prenotabili per copia: assente vale 1.
-	Seats                 *int   `json:"seats"`
+	Seats *int `json:"seats"`
+	// Kind è la tipologia (games.Kinds): assente vale gioco da tavolo.
+	Kind                  string `json:"kind"`
 	NameTranslated        string `json:"nameTranslated"`
 	DescriptionTranslated string `json:"descriptionTranslated"`
 }
@@ -47,6 +49,10 @@ func (s *Server) createGameHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Seats != nil && *req.Seats < 1 {
 		writeError(w, http.StatusBadRequest, "i posti prenotabili devono essere almeno 1")
+		return
+	}
+	if req.Kind != "" && !games.ValidKind(req.Kind) {
+		writeError(w, http.StatusBadRequest, "tipologia di gioco sconosciuta")
 		return
 	}
 
@@ -110,7 +116,7 @@ func (s *Server) createGameFromBGG(w http.ResponseWriter, r *http.Request, req c
 	game, err := s.Games.CreateGame(r.Context(), games.Game{
 		BGGID: &bggID, Name: detail.Name, Year: &year, MinPlayers: &minPlayers,
 		MaxPlayers: &maxPlayers, PlaytimeMinutes: &playtime, Owner: &owner, CoverPath: coverPath,
-		Weight: weight, Seats: requestedSeats(req), BGGDescription: nilIfEmptyString(rawDescription),
+		Weight: weight, Seats: requestedSeats(req), Kind: req.Kind, BGGDescription: nilIfEmptyString(rawDescription),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create game")
@@ -153,7 +159,7 @@ func (s *Server) createGameManually(w http.ResponseWriter, r *http.Request, req 
 	game, err := s.Games.CreateGame(r.Context(), games.Game{
 		Name: req.Name, Year: req.Year, MinPlayers: req.MinPlayers,
 		MaxPlayers: req.MaxPlayers, PlaytimeMinutes: req.PlaytimeMinutes, Owner: &owner,
-		Weight: req.Weight, Seats: requestedSeats(req),
+		Weight: req.Weight, Seats: requestedSeats(req), Kind: req.Kind,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create game")

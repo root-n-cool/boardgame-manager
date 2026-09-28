@@ -12,6 +12,7 @@ import GameMaterialsPanel from '../components/GameMaterialsPanel.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import SuggestedQuestionsPanel from '../components/SuggestedQuestionsPanel.vue'
 import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
+import { GAME_KINDS, gameKindInfo } from '../utils/gameKinds'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,6 +47,11 @@ const coverError = ref('')
 const editSeats = ref(1)
 const seatsSaving = ref(false)
 const seatsError = ref('')
+
+// Tipologia e visibilità si salvano al cambio: sono una tendina e una
+// spunta, non un numero che si digita, quindi niente "Salva" a parte.
+const classifySaving = ref(false)
+const classifyError = ref('')
 
 const aiConfigured = ref(false)
 const translating = ref(false)
@@ -234,6 +240,19 @@ async function saveSeats() {
     seatsError.value = (e as Error).message
   } finally {
     seatsSaving.value = false
+  }
+}
+
+async function saveClassification(patch: { kind?: string; hiddenFromCatalog?: boolean }) {
+  classifyError.value = ''
+  classifySaving.value = true
+  try {
+    await api.patch(`/games/${gameId}`, patch)
+    await load()
+  } catch (e) {
+    classifyError.value = (e as Error).message
+  } finally {
+    classifySaving.value = false
   }
 }
 
@@ -558,6 +577,32 @@ onMounted(async () => {
               un proprio codice.
             </p>
             <p v-if="seatsError" class="error">{{ seatsError }}</p>
+          </div>
+          <!-- Niente `disabled` durante il salvataggio: toglierebbe il focus
+               a chi ha appena cambiato voce da tastiera. -->
+          <div class="game-classify-edit" :aria-busy="classifySaving">
+            <label>
+              Tipologia
+              <select
+                :value="gameKindInfo(game.kind).value"
+                @change="saveClassification({ kind: ($event.target as HTMLSelectElement).value })"
+              >
+                <option v-for="k in GAME_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
+              </select>
+            </label>
+            <label class="checkbox-label">
+              <input
+                type="checkbox"
+                :checked="!!game.hiddenFromCatalog"
+                @change="saveClassification({ hiddenFromCatalog: ($event.target as HTMLInputElement).checked })"
+              />
+              Non visibile nel catalogo pubblico
+            </label>
+            <p class="field-hint">
+              Un gioco nascosto resta aggiungibile agli eventi e la sua scheda
+              si apre ancora da link o QR.
+            </p>
+            <p v-if="classifyError" class="error">{{ classifyError }}</p>
           </div>
           <p v-if="coverError" class="error">{{ coverError }}</p>
         </div>
