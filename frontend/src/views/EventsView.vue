@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api/client'
+import EventPoster from '../components/EventPoster.vue'
 import { formatEventDateTime } from '../utils/dates'
 
 interface EventSummary {
@@ -52,15 +53,7 @@ onMounted(loadEvents)
     <ul role="list" class="game-grid event-card-grid">
       <li v-for="e in events" :key="e.id">
         <router-link :to="`/events/${e.id}`">
-          <img
-            v-if="e.imagePath"
-            :src="`/api/uploads/${e.imagePath}`"
-            alt=""
-            width="480"
-            height="270"
-            loading="lazy"
-            decoding="async"
-          />
+          <EventPoster v-if="e.imagePath" :path="e.imagePath" variant="card" />
           <div v-else class="event-image-placeholder" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
               <rect x="4" y="4" width="16" height="16" rx="4" stroke="currentColor" stroke-width="1.7" />

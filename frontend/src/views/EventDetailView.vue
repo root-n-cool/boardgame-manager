@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import BookingConfirmation from '../components/BookingConfirmation.vue'
+import EventPoster from '../components/EventPoster.vue'
 import SelectFilter from '../components/SelectFilter.vue'
 import GameDifficulty from '../components/GameDifficulty.vue'
 import MarkdownText from '../components/MarkdownText.vue'
@@ -331,15 +332,7 @@ onMounted(async () => {
 <template>
   <div v-if="event">
     <router-link :to="{ name: 'events' }" class="back-link">&larr; Eventi</router-link>
-    <img
-      v-if="event.imagePath"
-      :src="`/api/uploads/${event.imagePath}`"
-      alt=""
-      class="event-banner"
-      width="880"
-      height="495"
-      decoding="async"
-    />
+    <EventPoster v-if="event.imagePath" :path="event.imagePath" variant="banner" />
     <h1>{{ event.title }}</h1>
     <MarkdownText v-if="event.description" :text="event.description" />
     <p class="event-card-date">

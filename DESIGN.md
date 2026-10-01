@@ -1042,6 +1042,13 @@ regole sue.
   l'immagine, si sceglie il file, parte da sé. Nel form di creazione
   l'upload aspetta il salvataggio — l'evento deve esistere prima — e intanto
   si vede l'anteprima da un object URL.
+- **L'immagine non si ritaglia mai** (`EventPoster`): spesso è una
+  locandina verticale piena di testo, e un `cover` a 16/9 la rende
+  illeggibile. Si mostra intera (`contain`) e lo spazio che avanza lo
+  riempie la stessa immagine sfocata e un po' scurita. Nella card il
+  riquadro resta 16/9, così la griglia resta allineata; in cima alla scheda
+  evento prende le proporzioni dell'immagine, con un tetto in altezza
+  (`min(75vh, 40rem)`).
 - **La data si legge in italiano** (`formatEventDateTime`): "gio 1 ott 2026
   · 21:00", con il giorno della settimana, in mono con l'icona calendario a
   fare da insegna. Mai la data grezza dell'API (`2026-10-01`).

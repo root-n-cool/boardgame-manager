@@ -2395,7 +2395,6 @@ ul.game-grid {
   grid-template-columns: repeat(auto-fit, minmax(260px, 340px));
 }
 
-.event-card-grid img,
 .event-card-grid .event-image-placeholder,
 .event-card-grid .add-card .add-slot {
   aspect-ratio: 16 / 9;
@@ -2446,18 +2445,57 @@ ul.game-grid {
   }
 }
 
-/* L'immagine dell'evento in cima alla pagina pubblica: una locandina, non
-   una card — è già dentro il foglio della pagina. */
-.event-banner {
+/* L'immagine di un evento è spesso una locandina verticale piena di testo:
+   intera (contain), mai ritagliata. Lo spazio che avanza lo riempie la
+   stessa immagine sfocata e un po' scurita, che lascia il primo piano al poster, così il riquadro non resta vuoto. */
+.event-poster {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  background: var(--felt);
+}
+
+.event-poster::before {
+  content: '';
+  position: absolute;
+  inset: -12%;
+  z-index: -1;
+  background: var(--poster) center / cover no-repeat;
+  filter: blur(28px) saturate(1.1) brightness(0.85);
+}
+
+/* Specificità sopra `.game-grid img`, che impone 3:4 e cover alle copertine. */
+.event-poster .event-poster-img {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+
+/* Nella card: riquadro 16:9 fisso, perché la griglia resti allineata. */
+.event-poster--card {
   aspect-ratio: 16 / 9;
-  object-fit: cover;
+  margin: 0 0 0.7rem;
+  border-bottom: 1px solid var(--card-line);
+}
+
+/* In cima alla pagina dell'evento: una locandina, non una card — è già
+   dentro il foglio della pagina. Proporzioni dell'immagine, con un tetto
+   in altezza perché un poster verticale non riempia tutto lo schermo. */
+.event-poster--banner {
+  margin: 0 0 1.25rem;
   border-radius: var(--radius);
   border: 1px solid var(--card-line);
-  margin: 0 0 1.25rem;
   box-shadow: var(--shadow-card);
+}
+
+.event-poster--banner .event-poster-img {
+  height: auto;
+  max-height: min(75vh, 40rem);
 }
 
 /* Il selettore dell'immagine in un form: stessa cornice-controllo della
