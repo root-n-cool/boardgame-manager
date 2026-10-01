@@ -216,3 +216,48 @@ func TestMigration0024_TagsExistingQuestionsAsRules(t *testing.T) {
 		t.Fatal("two strategy questions at position 0 must be rejected")
 	}
 }
+
+func TestMigration0027_ConvertsExistingKinds(t *testing.T) {
+	conn, err := db.Open(":memory:")
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	conn.SetMaxOpenConns(1)
+	defer conn.Close()
+	ctx := context.Background()
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	// Riporta lo schema a com'era prima della 0027, con dentro giochi
+	// scritti dal vecchio codice, e rilancia la migrazione vera.
+	for _, stmt := range []string{
+		`DELETE FROM schema_migrations WHERE version = '0027_game_types.sql'`,
+		`DROP TABLE game_types`,
+		`ALTER TABLE games DROP COLUMN game_type_id`,
+		`INSERT INTO games (name, kind) VALUES ('Azul', 'board'), ('D&D', 'rpg'), ('Ignoto', 'wargame')`,
+	} {
+		if _, err := conn.ExecContext(ctx, stmt); err != nil {
+			t.Fatalf("%s: %v", stmt, err)
+		}
+	}
+	if err := db.Migrate(ctx, conn); err != nil {
+		t.Fatalf("re-migrate: %v", err)
+	}
+	got := map[string]int64{}
+	rows, err := conn.QueryContext(ctx, `SELECT name, game_type_id FROM games`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		var id int64
+		if err := rows.Scan(&name, &id); err != nil {
+			t.Fatal(err)
+		}
+		got[name] = id
+	}
+	if got["Azul"] != 1 || got["D&D"] != 2 || got["Ignoto"] != 1 {
+		t.Fatalf("types after migration = %v", got)
+	}
+}

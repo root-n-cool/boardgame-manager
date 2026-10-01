@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import GameTypeTabs, { matchesType } from './GameTypeTabs.vue'
 
 /**
  * Scelta dei giochi di un evento. Le due pagine che la usano — creazione e
@@ -14,6 +15,7 @@ export interface PickerGame {
   name: string
   /** Posti prenotabili per copia, dal catalogo. */
   seats: number
+  gameTypeId: number
 }
 
 export interface SelectedGame {
@@ -52,6 +54,7 @@ const props = defineProps<{
 const emit = defineEmits<{ 'update:modelValue': [value: SelectedGame[]] }>()
 
 const query = ref('')
+const typeId = ref<number | null>(null)
 
 const selectedRows = computed(() =>
   props.modelValue
@@ -66,12 +69,15 @@ const available = computed(() =>
   props.games.filter((g) => !props.modelValue.some((s) => s.gameId === g.id)),
 )
 
+// Le tab filtrano solo i giochi ancora da scegliere: quelli già sul
+// tavolo restano sempre in vista, qualunque tipologia abbiano.
 const filtered = computed(() => {
   const needle = query.value.trim().toLowerCase()
+  const inTab = available.value.filter((g) => matchesType(g, typeId.value))
   if (!needle) {
-    return available.value
+    return inTab
   }
-  return available.value.filter((g) => g.name.toLowerCase().includes(needle))
+  return inTab.filter((g) => g.name.toLowerCase().includes(needle))
 })
 
 // Sotto una manciata di giochi il campo di ricerca è solo un ingombro: si
@@ -192,6 +198,7 @@ function capacityLabel(game: PickerGame, copies: number) {
     </p>
 
     <template v-else>
+      <GameTypeTabs v-model="typeId" :games="available" />
       <label v-if="showSearch" class="games-picker-search">
         Cerca nel catalogo
         <input v-model="query" type="search" placeholder="Nome del gioco" />

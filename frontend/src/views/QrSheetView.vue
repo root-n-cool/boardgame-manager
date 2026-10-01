@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../api/client'
 import QrCard from '../components/QrCard.vue'
+import GameTypeTabs, { matchesType } from '../components/GameTypeTabs.vue'
 import { GAME_QR_INVITE, printableUrl, qrDataUrl } from '../utils/qr'
 
 /**
@@ -15,9 +16,13 @@ interface SheetCard {
   title: string
   url: string
   svg: string
+  gameTypeId: number
 }
 
 const cards = ref<Array<SheetCard & { src: string; printedUrl: string }>>([])
+// Si stampa la tab scelta: un foglio per tipologia, se servono separati.
+const typeId = ref<number | null>(null)
+const visibleCards = computed(() => cards.value.filter((c) => matchesType(c, typeId.value)))
 const configured = ref(true)
 const loaded = ref(false)
 const error = ref('')
@@ -41,7 +46,7 @@ const print = () => window.print()
   <div class="qr-page is-sheet">
     <div class="qr-toolbar is-wide">
       <router-link :to="{ name: 'admin-games' }" class="back-link">&larr; Catalogo giochi</router-link>
-      <button type="button" class="is-compact" :disabled="cards.length === 0" @click="print">
+      <button type="button" class="is-compact" :disabled="visibleCards.length === 0" @click="print">
         <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path
             d="M7 9V4h10v5M7 17H5.5A1.5 1.5 0 0 1 4 15.5v-5A1.5 1.5 0 0 1 5.5 9h13a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5H17M7 14h10v6H7z"
@@ -57,7 +62,7 @@ const print = () => window.print()
     <div class="qr-sheet-intro is-wide">
       <h1>QR di tutti i giochi</h1>
       <p v-if="loaded && !error" class="page-meta">
-        {{ cards.length === 1 ? '1 cartellino' : `${cards.length} cartellini` }}, nove per foglio A4.
+        {{ visibleCards.length === 1 ? '1 cartellino' : `${visibleCards.length} cartellini` }}, nove per foglio A4.
         Per un PDF scegli «Salva come PDF» nella stampa. I giochi nascosti dal catalogo restano fuori.
       </p>
     </div>
@@ -75,9 +80,10 @@ const print = () => window.print()
       Nessun gioco visibile nel catalogo pubblico: non c'è niente da stampare.
     </p>
 
+    <GameTypeTabs v-model="typeId" :games="cards" />
     <div v-if="cards.length" class="qr-sheet">
       <QrCard
-        v-for="c in cards"
+        v-for="c in visibleCards"
         :key="c.id"
         heading="h2"
         :title="c.title"

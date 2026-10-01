@@ -2696,7 +2696,7 @@ label.booking-consent input[type='checkbox'] {
    posti su un tavolo e nessuna su una copia singola, i "Prenota" della
    stessa fila resterebbero a tre altezze diverse. */
 .event-games li {
-  /* Àncora della pastiglia della tipologia (.kind-chip). */
+  /* Àncora della pastiglia della tipologia (.type-chip). */
   position: relative;
   display: flex;
   flex-direction: column;
@@ -2791,10 +2791,10 @@ label.booking-consent input[type='checkbox'] {
   outline-offset: 2px;
 }
 
-/* La tipologia (GDT / GDR) sulla copertina, in alto a sinistra: fondo pieno
+/* La sigla della tipologia (GDT, GDR, MTG...) sulla copertina, in alto a sinistra: fondo pieno
    perché deve leggersi su qualunque scatola, e posizione assoluta perché non
    sposti né il nome né la fila dei "Prenota". */
-.kind-chip {
+.type-chip {
   position: absolute;
   top: 0.5rem;
   left: 0.5rem;
@@ -2808,12 +2808,18 @@ label.booking-consent input[type='checkbox'] {
   letter-spacing: 0.06em;
 }
 
-/* Il gioco di ruolo prende il colore della casa: su un tavolo di scatole è
-   quello da notare, perché si prenota diverso (posti, non copie). */
-.kind-chip.kind-rpg {
-  background: var(--accent);
-  color: #fff;
-}
+/* Il colore della pastiglia segue l'ordine delle tipologie (store
+   gameTypes, PALETTE_SIZE = 6): la prima resta neutra, la seconda prende
+   il colore della casa, poi i toni del sistema. Non lo sceglie l'admin:
+   così qualunque tipologia nuova resta dentro la palette. */
+.type-color-0 { background: var(--card); color: var(--ink); }
+.type-color-1 { background: var(--accent); color: #fff; }
+/* Niente feltro: la copertina segnaposto è feltro, e la pastiglia ci
+   sparirebbe sopra. */
+.type-color-2 { background: var(--gold); color: var(--ink); }
+.type-color-3 { background: var(--success); color: #fff; }
+.type-color-4 { background: var(--ink-muted); color: #fff; }
+.type-color-5 { background: var(--ink); color: var(--card); }
 
 /* Le azioni stanno in fondo alla card: `margin-top: auto` le spinge giù
    qualunque sia l'altezza del nome, così la fila resta allineata. */
@@ -6355,6 +6361,111 @@ label.select-filter {
 
 .filter-empty .empty-note {
   margin: 0;
+}
+
+/* Tab per tipologia sopra le liste di giochi. Sul telefono scorrono in
+   orizzontale invece di andare a capo: restano una riga sola, e la lista
+   sotto non si sposta cambiando tab. */
+.type-tabs {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  margin: 0 0 1rem;
+  padding-bottom: 0.1rem;
+}
+.type-tabs::-webkit-scrollbar { display: none; }
+.type-tabs button {
+  flex: none;
+  min-height: 44px;
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.type-tabs button.is-active {
+  background: var(--felt);
+  border-color: var(--felt);
+  color: var(--felt-text);
+}
+.type-tab-count {
+  margin-left: 0.25rem;
+  font-weight: 400;
+  opacity: 0.75;
+}
+@media print {
+  .type-tabs { display: none; }
+}
+
+/* ---------- Tipologie di gioco (admin) ---------- */
+
+/* Pastiglia, nome e azioni su una riga; su telefono le azioni vanno a
+   capo sotto il testo invece di schiacciarlo. */
+.type-admin-list {
+  display: grid;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+}
+
+.type-admin-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 0.9rem;
+}
+
+.type-admin-text {
+  display: grid;
+  flex: 1 1 12rem;
+}
+
+.type-admin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.type-admin-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.25rem;
+}
+
+.type-admin-actions svg {
+  width: 1rem;
+  height: 1rem;
+}
+
+.type-admin-note {
+  margin: 1rem 0 0;
+}
+
+.type-admin-edit {
+  display: grid;
+  flex: 1 1 100%;
+  gap: 0.6rem;
+}
+
+/* In una lista i bottoni nascono d'allarme (`li button`): "Salva" è
+   l'azione principale e torna al colore della casa. */
+.type-admin-list li button.type-admin-save {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* La pastiglia fuori dalla copertina: nel flusso, non in sovrimpressione. */
+.type-chip.is-inline {
+  position: static;
+  box-shadow: none;
+  border: 1px solid var(--card-line);
 }
 
 /* ---------- Catalogo pubblico ---------- */

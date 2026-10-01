@@ -5,7 +5,7 @@ import SelectFilter from '../components/SelectFilter.vue'
 import GameDifficulty from '../components/GameDifficulty.vue'
 import { DIFFICULTY_LEVELS, difficultyLevel, type DifficultyLevel } from '../utils/difficulty'
 import { PLAYER_FILTER_OPTIONS, fitsPlayers, formatPlayers, normalizeName } from '../utils/gameFilters'
-import { KIND_FILTER_OPTIONS, gameKindInfo, hasKindMix, type GameKind } from '../utils/gameKinds'
+import GameTypeTabs, { matchesType } from '../components/GameTypeTabs.vue'
 
 /**
  * Lo scaffale dell'associazione, aperto a tutti: cosa c'è da giocare, a
@@ -23,7 +23,7 @@ interface CatalogGame {
   playtimeMinutes: number | null
   weight: number | null
   coverPath: string | null
-  kind: string
+  gameTypeId: number
   /**
    * Esce solo a chi ha una sessione admin: la rotta a un visitatore i
    * giochi nascosti non li manda proprio, a un admin sì (servono ai
@@ -40,15 +40,12 @@ const error = ref('')
 const query = ref('')
 const players = ref<number | null>(null)
 const difficulty = ref<DifficultyLevel | null>(null)
-const kind = ref<GameKind | null>(null)
+const typeId = ref<number | null>(null)
 
 const difficultyOptions = DIFFICULTY_LEVELS.map((d) => ({ value: d, label: d }))
 
-// Il filtro "Tipo" c'è solo se lo scaffale mescola le tipologie.
-const showKindFilter = computed(() => hasKindMix(games.value))
-
 const filtering = computed(
-  () => query.value.trim() !== '' || players.value !== null || difficulty.value !== null || kind.value !== null,
+  () => query.value.trim() !== '' || players.value !== null || difficulty.value !== null || typeId.value !== null,
 )
 
 const visible = computed(() => {
@@ -58,7 +55,7 @@ const visible = computed(() => {
       (q === '' || normalizeName(g.name).includes(q)) &&
       (players.value === null || fitsPlayers(g, players.value)) &&
       (difficulty.value === null || difficultyLevel(g.weight) === difficulty.value) &&
-      (kind.value === null || gameKindInfo(g.kind).value === kind.value),
+      matchesType(g, typeId.value),
   )
 })
 
@@ -82,7 +79,7 @@ function resetFilters() {
   query.value = ''
   players.value = null
   difficulty.value = null
-  kind.value = null
+  typeId.value = null
 }
 
 onMounted(async () => {
@@ -110,6 +107,7 @@ onMounted(async () => {
     <p v-if="error" class="error">{{ error }}</p>
 
     <template v-else-if="loaded && games.length > 0">
+      <GameTypeTabs v-model="typeId" :games="games" />
       <div class="catalog-filters">
         <label class="catalog-search">
           <span class="visually-hidden">Cerca per nome</span>
@@ -117,7 +115,6 @@ onMounted(async () => {
         </label>
         <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
         <SelectFilter v-model="difficulty" label="Difficoltà" :options="difficultyOptions" anyLabel="Tutte" />
-        <SelectFilter v-if="showKindFilter" v-model="kind" label="Tipo" :options="KIND_FILTER_OPTIONS" />
       </div>
 
       <ul v-if="visible.length > 0" role="list" class="game-grid catalog-grid">

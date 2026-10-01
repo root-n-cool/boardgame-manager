@@ -213,45 +213,42 @@ func TestListGames_HidesHiddenGamesFromVisitorsOnly(t *testing.T) {
 	}
 }
 
-func TestGameKind_DefaultsToBoardAndIsEditable(t *testing.T) {
+func TestGameType_DefaultsToFirstAndIsEditable(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 	id := createTestGame(t, router, cookie, "Azul")
 
-	if got := listGameNames(t, router, nil)["Azul"]["kind"]; got != "board" {
-		t.Fatalf("kind = %v, want board", got)
+	if got := listGameNames(t, router, nil)["Azul"]["gameTypeId"]; got != float64(1) {
+		t.Fatalf("gameTypeId = %v, want 1", got)
 	}
-
-	rec := patchGame(t, router, cookie, id, map[string]any{"kind": "rpg"})
-	if rec.Code != http.StatusOK {
+	if rec := patchGame(t, router, cookie, id, map[string]any{"gameTypeId": 2}); rec.Code != http.StatusOK {
 		t.Fatalf("patch: %d %s", rec.Code, rec.Body.String())
 	}
-	if got := listGameNames(t, router, nil)["Azul"]["kind"]; got != "rpg" {
-		t.Fatalf("kind = %v, want rpg", got)
+	if got := listGameNames(t, router, nil)["Azul"]["gameTypeId"]; got != float64(2) {
+		t.Fatalf("gameTypeId = %v, want 2", got)
 	}
-
-	if rec := patchGame(t, router, cookie, id, map[string]any{"kind": "wargame"}); rec.Code != http.StatusBadRequest {
-		t.Fatalf("unknown kind: expected 400, got %d", rec.Code)
+	if rec := patchGame(t, router, cookie, id, map[string]any{"gameTypeId": 99}); rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown type: expected 400, got %d", rec.Code)
 	}
 }
 
-func TestCreateGame_AcceptsKind(t *testing.T) {
+func TestCreateGame_AcceptsGameType(t *testing.T) {
 	server := newTestServer(t)
 	router := httpapi.NewRouter(server)
 	cookie := bootstrapFirstAdmin(t, router, "admin@example.com", "supersecret1")
 
-	for kind, want := range map[string]int{"rpg": http.StatusCreated, "wargame": http.StatusBadRequest} {
-		payload, _ := json.Marshal(map[string]any{"languageCode": "it", "name": "Gioco " + kind, "kind": kind})
+	for typeID, want := range map[int]int{2: http.StatusCreated, 99: http.StatusBadRequest} {
+		payload, _ := json.Marshal(map[string]any{"languageCode": "it", "name": fmt.Sprintf("Gioco %d", typeID), "gameTypeId": typeID})
 		req := httptest.NewRequest(http.MethodPost, "/api/games", bytes.NewReader(payload))
 		req.AddCookie(cookie)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
 		if rec.Code != want {
-			t.Fatalf("kind %q: expected %d, got %d %s", kind, want, rec.Code, rec.Body.String())
+			t.Fatalf("type %d: expected %d, got %d %s", typeID, want, rec.Code, rec.Body.String())
 		}
 	}
-	if got := listGameNames(t, router, nil)["Gioco rpg"]["kind"]; got != "rpg" {
-		t.Fatalf("kind = %v, want rpg", got)
+	if got := listGameNames(t, router, nil)["Gioco 2"]["gameTypeId"]; got != float64(2) {
+		t.Fatalf("gameTypeId = %v, want 2", got)
 	}
 }

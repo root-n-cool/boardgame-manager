@@ -102,12 +102,16 @@ esterno obbligatorio.
   riapre da sola. La scheda del gioco ha anche il registro completo dei
   suoi prestiti, di ogni serata, con le riconsegne incomplete evidenziate
   e il dettaglio di cosa mancava.
-- **Tipologia e visibilità**: ogni gioco è un gioco da tavolo (GDT, il
-  default, anche per quelli inseriti prima) o un gioco di ruolo (GDR).
-  I giochi di ruolo non esistono su BoardGameGeek: scegliendo "Gioco di
-  ruolo" in creazione si passa direttamente all'inserimento a mano.
-  La pagina evento lo segna su ogni scatola e, come il catalogo pubblico,
-  permette di filtrare per tipo. Un gioco segnato "Non visibile nel
+- **Tipologie e visibilità**: ogni gioco ha una tipologia. Le tipologie
+  si gestiscono da **Admin → Tipologie**: nome, sigla (es. GDT, GDR,
+  MTG), se la creazione passa dalla ricerca BoardGameGeek, e l'ordine.
+  All'installazione ci sono "Gioco da tavolo" (GDT, con BGG) e "Gioco di
+  ruolo" (GDR, inserimento a mano); se ne aggiungono altre — per esempio
+  Magic: The Gathering — senza toccare il codice. Una tipologia che ha
+  ancora giochi non si elimina. Ogni lista di giochi (catalogo pubblico e
+  admin, pagina evento, scelta dei giochi di un evento, foglio QR) si
+  divide in tab per tipologia quando ne contiene almeno due, e la pagina
+  evento mostra la sigla su ogni scatola. Un gioco segnato "Non visibile nel
   catalogo pubblico" sparisce solo dal catalogo: resta aggiungibile agli
   eventi e la sua scheda si apre ancora da link o QR.
 - **Giochi senza prenotazione**: un gioco può stare in un evento senza

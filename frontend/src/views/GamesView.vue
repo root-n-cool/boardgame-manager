@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { api } from '../api/client'
 import QrPrintLink from '../components/QrPrintLink.vue'
+import GameTypeTabs, { matchesType } from '../components/GameTypeTabs.vue'
 
 interface GameSummary {
   id: number
@@ -9,6 +10,7 @@ interface GameSummary {
   year: number | null
   owner: string | null
   coverPath: string | null
+  gameTypeId: number
   /**
    * Presente solo quando la richiesta ha una sessione admin (assente per il
    * catalogo pubblico): questa vista legge la rotta pubblica `/games`, da
@@ -21,6 +23,8 @@ interface GameSummary {
 
 const games = ref<GameSummary[]>([])
 const error = ref('')
+const typeId = ref<number | null>(null)
+const visible = computed(() => games.value.filter((g) => matchesType(g, typeId.value)))
 
 async function loadGames() {
   try {
@@ -57,9 +61,10 @@ onMounted(loadGames)
       </div>
     </div>
     <p v-if="error" class="error">{{ error }}</p>
+    <GameTypeTabs v-model="typeId" :games="games" />
     <div class="game-grid">
       <ul role="list" class="game-grid-items">
-        <li v-for="g in games" :key="g.id">
+        <li v-for="g in visible" :key="g.id">
           <router-link :to="{ name: 'admin-game-detail', params: { id: g.id } }">
             <span v-if="g.incomplete || g.hiddenFromCatalog" class="state-chips">
               <span v-if="g.incomplete" class="state-chip is-inline is-danger">Incompleto</span>

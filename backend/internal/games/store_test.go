@@ -378,34 +378,60 @@ func TestCreateGame_WithoutBGGDescription(t *testing.T) {
 	}
 }
 
-func TestCreateGame_DefaultsToBoardGameVisibleInCatalog(t *testing.T) {
+func TestCreateGame_DefaultsToFirstGameTypeVisibleInCatalog(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
-
-	created, err := store.CreateGame(ctx, games.Game{Name: "Catan"})
+	created, err := store.CreateGame(ctx, games.Game{Name: "Azul"})
 	if err != nil {
-		t.Fatalf("create: %v", err)
+		t.Fatal(err)
 	}
-	if created.Kind != games.KindBoard {
-		t.Fatalf("kind = %q, want %q", created.Kind, games.KindBoard)
+	if created.GameTypeID != 1 {
+		t.Fatalf("type = %d, want 1 (GDT)", created.GameTypeID)
 	}
 	if created.HiddenFromCatalog {
 		t.Fatal("a new game must be visible in the catalog")
 	}
+	// Il default segue l'ordine: portata GDR in cima, vale GDR.
+	if err := store.MoveGameType(ctx, 2, true); err != nil {
+		t.Fatal(err)
+	}
+	next, err := store.CreateGame(ctx, games.Game{Name: "Vampire"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.GameTypeID != 2 {
+		t.Fatalf("type = %d, want 2 after reorder", next.GameTypeID)
+	}
 }
 
-func TestCreateGame_KeepsKind(t *testing.T) {
+func TestCreateGame_KeepsGameType(t *testing.T) {
 	store := newTestStore(t)
-	created, err := store.CreateGame(context.Background(), games.Game{Name: "D&D", Kind: games.KindRPG})
+	created, err := store.CreateGame(context.Background(), games.Game{Name: "D&D", GameTypeID: 2})
 	if err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	if created.Kind != games.KindRPG {
-		t.Fatalf("kind = %q, want %q", created.Kind, games.KindRPG)
+	if created.GameTypeID != 2 {
+		t.Fatalf("type = %d, want 2", created.GameTypeID)
 	}
 }
 
-func TestUpdateGame_KindAndHidden(t *testing.T) {
+func TestDeleteFirstGameType_DefaultMovesOn(t *testing.T) {
+	store := newTestStore(t)
+	ctx := context.Background()
+	// GDT (1) è vuota e prima in ordine: si può eliminare.
+	if err := store.DeleteGameType(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	g, err := store.CreateGame(ctx, games.Game{Name: "Azul"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.GameTypeID != 2 {
+		t.Fatalf("type = %d, want 2", g.GameTypeID)
+	}
+}
+
+func TestUpdateGame_GameTypeAndHidden(t *testing.T) {
 	store := newTestStore(t)
 	ctx := context.Background()
 	created, err := store.CreateGame(ctx, games.Game{Name: "D&D", Owner: strPtr("Mario")})
@@ -413,13 +439,12 @@ func TestUpdateGame_KindAndHidden(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 
-	kind := games.KindRPG
-	hidden := true
-	updated, err := store.UpdateGame(ctx, created.ID, games.GameUpdate{Kind: &kind, HiddenFromCatalog: &hidden})
+	typeID, hidden := int64(2), true
+	updated, err := store.UpdateGame(ctx, created.ID, games.GameUpdate{GameTypeID: &typeID, HiddenFromCatalog: &hidden})
 	if err != nil {
 		t.Fatalf("update: %v", err)
 	}
-	if updated.Kind != games.KindRPG || !updated.HiddenFromCatalog {
+	if updated.GameTypeID != 2 || !updated.HiddenFromCatalog {
 		t.Fatalf("unexpected game: %+v", updated)
 	}
 	if updated.Owner == nil || *updated.Owner != "Mario" {
@@ -430,18 +455,7 @@ func TestUpdateGame_KindAndHidden(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list: %v", err)
 	}
-	if len(listed) != 1 || listed[0].Kind != games.KindRPG || !listed[0].HiddenFromCatalog {
-		t.Fatalf("list does not carry kind/hidden: %+v", listed)
-	}
-}
-
-func TestValidKind(t *testing.T) {
-	for _, k := range games.Kinds {
-		if !games.ValidKind(k) {
-			t.Fatalf("%q should be valid", k)
-		}
-	}
-	if games.ValidKind("") || games.ValidKind("wargame") {
-		t.Fatal("unknown kinds must be rejected")
+	if len(listed) != 1 || listed[0].GameTypeID != 2 || !listed[0].HiddenFromCatalog {
+		t.Fatalf("list does not carry type/hidden: %+v", listed)
 	}
 }

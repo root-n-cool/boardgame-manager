@@ -57,8 +57,8 @@ export interface GameDetail {
   owner: string | null
   coverPath: string | null
   seats: number
-  /** La tipologia (vedi utils/gameKinds): "board", "rpg", ... */
-  kind: string
+  /** La tipologia (store gameTypes). */
+  gameTypeId: number
   /** Solo con una sessione admin: il gioco è tolto dal catalogo pubblico. */
   hiddenFromCatalog?: boolean
   /** Vero quando esiste una descrizione BGG originale da cui ritradurre. */

@@ -3,6 +3,7 @@ import { useAuthStore } from '../stores/auth'
 import SetupView from '../views/SetupView.vue'
 import LoginView from '../views/LoginView.vue'
 import UsersView from '../views/UsersView.vue'
+import GameTypesView from '../views/GameTypesView.vue'
 import SettingsView from '../views/SettingsView.vue'
 import GamesView from '../views/GamesView.vue'
 import GameNewView from '../views/GameNewView.vue'
@@ -107,6 +108,7 @@ const router = createRouter({
       props: { kind: 'game' },
       meta: { bare: true },
     },
+    { path: '/admin/game-types', name: 'admin-game-types', component: GameTypesView },
     { path: '/admin/users', name: 'admin-users', component: UsersView },
     { path: '/admin/settings', name: 'admin-settings', component: SettingsView },
     // Le pagine di gestione stavano sulla root prima di finire sotto /admin:

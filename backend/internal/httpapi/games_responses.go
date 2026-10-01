@@ -19,7 +19,7 @@ func toGameSummary(g games.Game, incomplete *bool) map[string]any {
 		"id": g.ID, "bggId": g.BGGID, "name": g.Name, "year": g.Year,
 		"minPlayers": g.MinPlayers, "maxPlayers": g.MaxPlayers,
 		"playtimeMinutes": g.PlaytimeMinutes, "weight": g.Weight,
-		"owner": g.Owner, "coverPath": g.CoverPath, "seats": g.Seats, "kind": g.Kind,
+		"owner": g.Owner, "coverPath": g.CoverPath, "seats": g.Seats, "gameTypeId": g.GameTypeID,
 		// canTranslate dice che esiste un originale BGG da cui ritradurre.
 		// Esce il booleano, non il testo: la scheda di modifica deve solo
 		// sapere se il bottone ha una sorgente.

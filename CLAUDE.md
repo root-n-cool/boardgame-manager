@@ -149,6 +149,10 @@ risultato di una sessione di brainstorming con l'utente.
   relative chiavi nelle impostazioni; altrimenti inserimento o upload
   manuale. L'admin conferma sempre i risultati automatici prima del
   salvataggio.
+- Ogni gioco ha una tipologia (tabella `game_types`, gestita da admin:
+  nome, sigla, flag ricerca BGG, ordine). Le liste di giochi si dividono
+  in tab per tipologia; prenotazioni e punteggi non dipendono dalla
+  tipologia.
 - Ogni gioco ha una o più `GameLanguage` (lingua base scelta alla
   creazione, altre aggiungibili dopo), ciascuna con una lista di media
   di tipo file/link/youtube. Il gioco ha anche un campo `owner`

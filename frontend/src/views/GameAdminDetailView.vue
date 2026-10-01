@@ -12,8 +12,9 @@ import GameMaterialsPanel from '../components/GameMaterialsPanel.vue'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 import SuggestedQuestionsPanel from '../components/SuggestedQuestionsPanel.vue'
 import { languageName, type GameDetail, type GameLanguageInfo } from '../utils/game'
-import { GAME_KINDS, gameKindInfo } from '../utils/gameKinds'
+import { useGameTypesStore } from '../stores/gameTypes'
 
+const types = useGameTypesStore()
 const route = useRoute()
 const router = useRouter()
 const gameId = route.params.id as string
@@ -243,7 +244,7 @@ async function saveSeats() {
   }
 }
 
-async function saveClassification(patch: { kind?: string; hiddenFromCatalog?: boolean }) {
+async function saveClassification(patch: { gameTypeId?: number; hiddenFromCatalog?: boolean }) {
   classifyError.value = ''
   classifySaving.value = true
   try {
@@ -417,6 +418,7 @@ async function removeMedia(mediaId: number, title: string) {
 }
 
 onMounted(async () => {
+  types.load()
   try {
     await load()
     if (game.value && game.value.languages.length > 0) {
@@ -584,10 +586,10 @@ onMounted(async () => {
             <label>
               Tipologia
               <select
-                :value="gameKindInfo(game.kind).value"
-                @change="saveClassification({ kind: ($event.target as HTMLSelectElement).value })"
+                :value="game.gameTypeId"
+                @change="saveClassification({ gameTypeId: Number(($event.target as HTMLSelectElement).value) })"
               >
-                <option v-for="k in GAME_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
+                <option v-for="t in types.list" :key="t.id" :value="t.id">{{ t.name }}</option>
               </select>
             </label>
             <label class="checkbox-label">

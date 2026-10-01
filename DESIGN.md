@@ -769,8 +769,8 @@ questa scheda.
   digitare. Il suggerimento sotto dice cosa *non* fa: il gioco resta
   aggiungibile agli eventi e la scheda si apre da link o QR. In creazione
   (`/admin/games/new`) la tipologia è la prima voce della card "Gioco", e
-  decide la strada: una tipologia con `onBgg: false` in `GAME_KINDS`
-  (oggi il gioco di ruolo) nasconde la ricerca BoardGameGeek e apre
+  decide la strada: una tipologia senza "Cerca su BoardGameGeek"
+  (GDR, MTG...) nasconde la ricerca BoardGameGeek e apre
   direttamente i campi manuali, senza il rimando "Torna alla ricerca".
 - **Due fogli dentro il gruppo «Lingue»** (`.section-group`): "Scheda" e
   "Media" sono card separate — un filetto full-bleed in mezzo a una card sola
@@ -1123,7 +1123,7 @@ invece di lasciare una fascia verde vuota a destra quando le copie non
 bastano a fare una riga intera.
 
 La card porta, dall'alto: copertina 3/4 con la **pastiglia della
-tipologia** (`.kind-chip`, `GDT`/`GDR`) nell'angolo in alto a sinistra,
+tipologia** (`.type-chip`, la sigla: `GDT`, `GDR`, `MTG`...) nell'angolo in alto a sinistra,
 nome (`h3`, con `#2` solo se il gioco ha più copie), difficoltà, stato dei
 posti, poi i **rimandi alla scheda** (`.event-game-links`) e in fondo le
 azioni ancorate da `margin-top: auto` — **Prenota** a piena larghezza. Una
@@ -1131,17 +1131,18 @@ card, una sola azione primaria: il nome non è un link, perché due
 bersagli allo stesso peso su una tessera da 150px si sbagliano col
 pollice.
 
-- **Pastiglia della tipologia** (`.kind-chip`): sigla in maiuscoletto
+- **Pastiglia della tipologia** (`.type-chip`): sigla in maiuscoletto
   tracciato (0.7rem, 700), fondo pieno perché deve leggersi su qualunque
-  copertina, `position: absolute` così non sposta nome né "Prenota". GDT è
-  cartoncino con testo `--ink`; **GDR prende il rosso seme** (`--accent`,
-  testo bianco): su un tavolo di scatole è quello da notare, perché si
-  prenota a posti e non a copie. Il nome per esteso ("Gioco di ruolo") è
-  nel `title` e in un `.visually-hidden`. Le tipologie vengono tutte da
-  `utils/gameKinds.ts` (`GAME_KINDS`: valore, etichetta, plurale, sigla),
-  specchio di `games.Kinds` nel backend: una tipologia nuova si aggiunge
-  lì e basta, e le serve una variante `.kind-chip.kind-<valore>` solo se
-  deve distinguersi dal cartoncino.
+  copertina, `position: absolute` così non sposta nome né "Prenota"
+  (`.type-chip.is-inline` la rimette nel flusso, nella pagina admin). Il
+  colore è una classe `.type-color-N` scelta dall'ordine delle tipologie,
+  non dall'admin: 0 cartoncino con testo `--ink`, 1 rosso seme
+  (`--accent`), 2 oro (`--gold`, testo `--ink`), 3 `--success`, 4
+  `--ink-muted`, 5 inchiostro — niente feltro, perché la copertina
+  segnaposto è feltro e la pastiglia ci sparirebbe sopra; dalla settima si ricomincia. Il nome per esteso è nel
+  `title` e in un `.visually-hidden`. Le tipologie le gestisce l'admin
+  (`/admin/game-types`) e il frontend le legge dallo store
+  `stores/gameTypes.ts`.
 - **Rimandi alla scheda** (`.event-game-links`): due pastiglie contornate
   in fila, **Dettagli** (sempre) e **Mentore** (solo se il gioco ha una
   chat, `chat.rules || chat.strategy`), che apre la scheda con `?chat=1`.
@@ -1163,6 +1164,17 @@ l'utente: la pastiglia "Senza prenotazione" sballava l'altezza delle card
 e il toggle Tutti / Prenotabili era una separazione fatta a mano che
 l'ordine fa da solo.
 
+### Tab per tipologia (`GameTypeTabs.vue`)
+Sopra ogni lista di giochi (catalogo pubblico e admin, scheda evento
+pubblica, scelta dei giochi di un evento, foglio QR) una fila di
+pastiglie-tab: **Tutti** e poi una per tipologia, nell'ordine dell'admin,
+col conteggio in peso normale. Compaiono solo se la lista mescola almeno
+due tipologie, e mostrano solo quelle presenti. Alte 44px, bordo
+`--card-line`; la tab attiva è feltro pieno (`--felt`/`--felt-text`). Sul
+telefono scorrono in orizzontale su una riga sola. Se la tab scelta
+sparisce dalla lista si torna a "Tutti". In stampa non ci sono: il foglio
+QR stampa solo la tab scelta. Sostituiscono la vecchia tendina **Tipo**.
+
 ### Filtri a tendina (`SelectFilter.vue`)
 Il filtro è una `<select>` nativa (sul telefono
 apre il selettore di sistema), con un'etichetta (`.filter-label`: mono,
@@ -1175,8 +1187,8 @@ tre righe su telefono, due tendine ne occupano una.
 
 - **Catalogo pubblico (`/giochi`)**: ricerca per nome (ignora maiuscole e
   accenti) più le tendine **Giocatori** (2…6+), **Difficoltà** con le
-  stesse fasce del badge (`utils/difficulty.ts`, una sola fonte) e
-  **Tipo** (solo se lo scaffale mescola le tipologie). I giochi segnati
+  stesse fasce del badge (`utils/difficulty.ts`, una sola fonte); la
+  tipologia sta nelle tab sopra i filtri. I giochi segnati
   "Non visibile nel catalogo pubblico" non ci sono, nemmeno per un admin
   loggato: il server non li manda ai visitatori, e la vista li scarta per
   chi ha una sessione. Un gioco
@@ -1186,10 +1198,8 @@ tre righe su telefono, due tendine ne occupano una.
   `.game-grid` con `--grid-fill: auto-fill; --grid-max: 1fr` al posto del
   tetto di 230px dello scaffale admin: le card arrivano allo stesso bordo
   destro della barra dei filtri, e la regola telefono resta una sola.
-- **Scheda evento pubblica**: sotto `Al tavolo`, la tendina
-  **Giocatori** e la tendina **Tipo** (Giochi da tavolo (GDT) / Giochi di
-  ruolo (GDR), solo se la serata mescola le tipologie), tutte nascoste con
-  un solo tavolo. I filtri valgono per entrambi i gruppi (prenotabili e
+- **Scheda evento pubblica**: sotto `Al tavolo`, le tab per tipologia e
+  la tendina **Giocatori**, nascosta con un solo tavolo. I filtri valgono per entrambi i gruppi (prenotabili e
   "a disposizione durante la serata").
 
 ### Controllo componenti (`GameMaterialsChecklist.vue`)

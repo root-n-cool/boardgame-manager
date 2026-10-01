@@ -102,7 +102,7 @@ type updateGameRequest struct {
 	PlaytimeMinutes   *int     `json:"playtimeMinutes"`
 	Weight            *float64 `json:"weight"`
 	Seats             *int     `json:"seats"`
-	Kind              *string  `json:"kind"`
+	GameTypeID        *int64   `json:"gameTypeId"`
 	HiddenFromCatalog *bool    `json:"hiddenFromCatalog"`
 }
 
@@ -121,15 +121,14 @@ func (s *Server) updateGameHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "i posti prenotabili devono essere almeno 1")
 		return
 	}
-	if req.Kind != nil && !games.ValidKind(*req.Kind) {
-		writeError(w, http.StatusBadRequest, "tipologia di gioco sconosciuta")
+	if req.GameTypeID != nil && !s.validGameType(w, r, *req.GameTypeID) {
 		return
 	}
 	game, err := s.Games.UpdateGame(r.Context(), id, games.GameUpdate{
 		Owner: req.Owner, Year: req.Year, MinPlayers: req.MinPlayers,
 		MaxPlayers: req.MaxPlayers, PlaytimeMinutes: req.PlaytimeMinutes,
 		Weight: req.Weight, Seats: req.Seats,
-		Kind: req.Kind, HiddenFromCatalog: req.HiddenFromCatalog,
+		GameTypeID: req.GameTypeID, HiddenFromCatalog: req.HiddenFromCatalog,
 	})
 	if errors.Is(err, games.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "game not found")

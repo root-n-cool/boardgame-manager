@@ -10,7 +10,8 @@ import ModalDialog from '../components/ModalDialog.vue'
 import { formatEventDateTime } from '../utils/dates'
 import type { ChatAvailability } from '../utils/game'
 import { PLAYER_FILTER_OPTIONS, fitsPlayers } from '../utils/gameFilters'
-import { KIND_FILTER_OPTIONS, gameKindInfo, hasKindMix, type GameKind } from '../utils/gameKinds'
+import GameTypeTabs, { matchesType } from '../components/GameTypeTabs.vue'
+import { useGameTypesStore } from '../stores/gameTypes'
 import { listMyBookings, removeMyBooking, saveMyBooking, type MyBooking } from '../utils/myBookings'
 
 interface EventGameInfo {
@@ -24,7 +25,7 @@ interface EventGameInfo {
   weight: number | null
   minPlayers: number | null
   maxPlayers: number | null
-  kind: string
+  gameTypeId: number
   bookable: boolean
   /**
    * Quali agenti stanno dietro il link "Mentore" (manuale
@@ -96,7 +97,8 @@ const chipActionError = ref('')
 // I filtri sopra "Al tavolo". Prenotabili e non prenotabili non si
 // filtrano: stanno in due gruppi separati, uno sotto l'altro.
 const players = ref<number | null>(null)
-const kind = ref<GameKind | null>(null)
+const typeId = ref<number | null>(null)
+const types = useGameTypesStore()
 
 /**
  * I codici già confermati restano qui, e nessuno li cancella: al tavolo un
@@ -141,10 +143,6 @@ const venueLines = computed(() => {
   return { title: venue.name || venue.address, detail: venue.name ? venue.address : '' }
 })
 
-// Il filtro "Tipo" serve solo se la serata mescola
-// tavoli da gioco e tavoli di ruolo.
-const hasKinds = computed(() => !!event.value && hasKindMix(event.value.games))
-
 // Con un solo tavolo non c'è niente da filtrare.
 const showFilters = computed(() => !!event.value && event.value.games.length > 1)
 
@@ -152,7 +150,7 @@ const visibleGames = computed(() =>
   (event.value?.games ?? []).filter(
     (g) =>
       (players.value === null || fitsPlayers(g, players.value)) &&
-      (kind.value === null || gameKindInfo(g.kind).value === kind.value),
+      matchesType(g, typeId.value),
   ),
 )
 
@@ -174,7 +172,7 @@ const gameSections = computed(() =>
 
 function resetFilters() {
   players.value = null
-  kind.value = null
+  typeId.value = null
 }
 
 const hasStarted = computed(() => {
@@ -321,6 +319,7 @@ async function cancelMyBooking(entry: MyBooking) {
 }
 
 onMounted(async () => {
+  types.load()
   try {
     await load()
   } catch (e) {
@@ -411,9 +410,9 @@ onMounted(async () => {
     </p>
     <p v-if="chipActionError" class="error">{{ chipActionError }}</p>
 
+    <GameTypeTabs v-if="event" v-model="typeId" :games="event.games" />
     <div v-if="showFilters" class="event-filters">
       <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
-      <SelectFilter v-if="hasKinds" v-model="kind" label="Tipo" :options="KIND_FILTER_OPTIONS" />
     </div>
 
     <template v-for="section in gameSections" :key="section.key">
@@ -445,9 +444,14 @@ onMounted(async () => {
         <!-- La tipologia sta sulla copertina, non nel corpo: è la prima cosa
              che distingue un tavolo di ruolo da una scatola, e lì non sposta
              né il nome né la fila dei "Prenota". -->
-        <span class="kind-chip" :class="`kind-${gameKindInfo(g.kind).value}`" :title="gameKindInfo(g.kind).label">
-          <span aria-hidden="true">{{ gameKindInfo(g.kind).short }}</span>
-          <span class="visually-hidden">{{ gameKindInfo(g.kind).label }}</span>
+        <span
+          v-if="types.byId(g.gameTypeId)"
+          class="type-chip"
+          :class="types.colorClass(g.gameTypeId)"
+          :title="types.byId(g.gameTypeId)!.name"
+        >
+          <span aria-hidden="true">{{ types.byId(g.gameTypeId)!.slug }}</span>
+          <span class="visually-hidden">{{ types.byId(g.gameTypeId)!.name }}</span>
         </span>
         <div class="event-game-body">
           <h3>{{ copyLabel(g) }}</h3>

@@ -31,8 +31,9 @@ type createGameRequest struct {
 	Weight          *float64 `json:"weight"`
 	// Seats sono i posti prenotabili per copia: assente vale 1.
 	Seats *int `json:"seats"`
-	// Kind è la tipologia (games.Kinds): assente vale gioco da tavolo.
-	Kind                  string `json:"kind"`
+	// GameTypeID è la tipologia (tabella game_types): assente vale la
+	// prima in ordine.
+	GameTypeID            *int64 `json:"gameTypeId"`
 	NameTranslated        string `json:"nameTranslated"`
 	DescriptionTranslated string `json:"descriptionTranslated"`
 }
@@ -51,8 +52,7 @@ func (s *Server) createGameHandler(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "i posti prenotabili devono essere almeno 1")
 		return
 	}
-	if req.Kind != "" && !games.ValidKind(req.Kind) {
-		writeError(w, http.StatusBadRequest, "tipologia di gioco sconosciuta")
+	if req.GameTypeID != nil && !s.validGameType(w, r, *req.GameTypeID) {
 		return
 	}
 
@@ -116,7 +116,7 @@ func (s *Server) createGameFromBGG(w http.ResponseWriter, r *http.Request, req c
 	game, err := s.Games.CreateGame(r.Context(), games.Game{
 		BGGID: &bggID, Name: detail.Name, Year: &year, MinPlayers: &minPlayers,
 		MaxPlayers: &maxPlayers, PlaytimeMinutes: &playtime, Owner: &owner, CoverPath: coverPath,
-		Weight: weight, Seats: requestedSeats(req), Kind: req.Kind, BGGDescription: nilIfEmptyString(rawDescription),
+		Weight: weight, Seats: requestedSeats(req), GameTypeID: derefID(req.GameTypeID), BGGDescription: nilIfEmptyString(rawDescription),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create game")
@@ -159,7 +159,7 @@ func (s *Server) createGameManually(w http.ResponseWriter, r *http.Request, req 
 	game, err := s.Games.CreateGame(r.Context(), games.Game{
 		Name: req.Name, Year: req.Year, MinPlayers: req.MinPlayers,
 		MaxPlayers: req.MaxPlayers, PlaytimeMinutes: req.PlaytimeMinutes, Owner: &owner,
-		Weight: req.Weight, Seats: requestedSeats(req), Kind: req.Kind,
+		Weight: req.Weight, Seats: requestedSeats(req), GameTypeID: derefID(req.GameTypeID),
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "could not create game")
@@ -328,4 +328,26 @@ func requestedSeats(req createGameRequest) int {
 		return 1
 	}
 	return *req.Seats
+}
+
+// validGameType scrive già la risposta d'errore quando l'id non va: il
+// chiamante deve solo uscire.
+func (s *Server) validGameType(w http.ResponseWriter, r *http.Request, id int64) bool {
+	ok, err := s.Games.GameTypeExists(r.Context(), id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "could not check game type")
+		return false
+	}
+	if !ok {
+		writeError(w, http.StatusBadRequest, "tipologia di gioco sconosciuta")
+		return false
+	}
+	return true
+}
+
+func derefID(p *int64) int64 {
+	if p == nil {
+		return 0
+	}
+	return *p
 }

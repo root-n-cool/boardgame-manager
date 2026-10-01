@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api/client'
 import BggSearchSelect, { type BggResult } from '../components/BggSearchSelect.vue'
-import { DEFAULT_GAME_KIND, GAME_KINDS, gameKindInfo, type GameKind } from '../utils/gameKinds'
+import { useGameTypesStore } from '../stores/gameTypes'
 
 const router = useRouter()
 
@@ -27,10 +27,12 @@ const manualWeight = ref<number | null>(null)
 // condivisi invece che duplicato nei due blocchi sopra.
 const seats = ref(1)
 // La tipologia la sceglie l'admin, per prima: decide anche la strada. Una
-// tipologia che su BoardGameGeek non c'è (i giochi di ruolo) va dritta
+// tipologia senza ricerca BoardGameGeek (i giochi di ruolo, MTG) va dritta
 // all'inserimento a mano — chiedere di cercarla lì sarebbe un passo a vuoto.
-const kind = ref<GameKind>(DEFAULT_GAME_KIND)
-const kindOnBgg = computed(() => gameKindInfo(kind.value).onBgg)
+const types = useGameTypesStore()
+const gameTypeId = ref<number | null>(null)
+const selectedType = computed(() => types.byId(gameTypeId.value) ?? types.defaultType)
+const kindOnBgg = computed(() => selectedType.value?.bggSearch ?? true)
 const isManual = computed(() => manual.value || !kindOnBgg.value)
 
 const error = ref('')
@@ -73,14 +75,14 @@ async function createGame() {
           owner: owner.value,
           languageCode: languageCode.value,
           seats: seats.value,
-          kind: kind.value,
+          gameTypeId: gameTypeId.value ?? undefined,
         }
       : {
           bggId: selected.value!.bggId,
           owner: owner.value,
           languageCode: languageCode.value,
           seats: seats.value,
-          kind: kind.value,
+          gameTypeId: gameTypeId.value ?? undefined,
         }
     const game = await api.post<{ id: number }>('/games', payload)
     router.push({ name: 'admin-game-detail', params: { id: game.id } })
@@ -92,6 +94,8 @@ async function createGame() {
 }
 
 onMounted(async () => {
+  await types.load()
+  gameTypeId.value = types.defaultType?.id ?? null
   try {
     const s = await api.get<{ aiConfigured: boolean }>('/settings')
     aiConfigured.value = s.aiConfigured
@@ -109,7 +113,7 @@ onMounted(async () => {
       <div class="page-head-text">
         <h1>Aggiungi gioco</h1>
         <p class="page-meta">
-          {{ kindOnBgg ? "Cercalo su BoardGameGeek, o inseriscilo a mano se non c'è." : 'I giochi di ruolo si inseriscono a mano.' }}
+          {{ kindOnBgg ? "Cercalo su BoardGameGeek, o inseriscilo a mano se non c'è." : `${selectedType?.name ?? 'Questa tipologia'}: si inserisce a mano.` }}
         </p>
       </div>
     </div>
@@ -122,8 +126,8 @@ onMounted(async () => {
 
         <label>
           Tipologia
-          <select v-model="kind">
-            <option v-for="k in GAME_KINDS" :key="k.value" :value="k.value">{{ k.label }}</option>
+          <select v-model="gameTypeId">
+            <option v-for="t in types.list" :key="t.id" :value="t.id">{{ t.name }}</option>
           </select>
         </label>
 

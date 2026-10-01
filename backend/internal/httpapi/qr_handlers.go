@@ -113,7 +113,7 @@ func (s *Server) gamesQRHandler(w http.ResponseWriter, r *http.Request) {
 	base, configured := s.publicAddress(r)
 	cards := make([]map[string]any, 0, len(visible))
 	for _, g := range visible {
-		card := map[string]any{"id": g.ID, "title": g.Name}
+		card := map[string]any{"id": g.ID, "title": g.Name, "gameTypeId": g.GameTypeID}
 		if err := fillQRCard(card, gamePageURL(base, g.ID)); err != nil {
 			writeError(w, http.StatusInternalServerError, "could not encode the QR code")
 			return

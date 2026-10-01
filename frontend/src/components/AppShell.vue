@@ -35,6 +35,7 @@ const ICONS: Record<string, string> = {
   box: 'M12 3.5l7.5 4v9L12 20.5l-7.5-4v-9l7.5-4ZM12 12l7.5-4.5M12 12v8.5M12 12L4.5 7.5',
   users:
     'M9.5 11.5a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8ZM3.5 19.5c0-2.8 2.7-4.6 6-4.6s6 1.8 6 4.6M17 19.5c0-1.9-.6-3.4-1.8-4.4M16.2 5.1a3.4 3.4 0 0 1 0 6.4',
+  tag: 'M4.5 12.3V5.5a1 1 0 0 1 1-1h6.8l7.2 7.2-7.7 7.7-7.3-7.1ZM8.6 8.6h.01',
   sliders: 'M4.5 7.5h9M17.5 7.5h2M4.5 16.5h2M10.5 16.5h9M15.5 5.3v4.4M8.5 14.3v4.4',
 }
 
@@ -64,6 +65,7 @@ const publicItems: NavItem[] = [
 const adminItems: NavItem[] = [
   { label: 'Eventi', to: '/admin/events', icon: 'calendar', matches: (p) => p.startsWith('/admin/events') },
   { label: 'Giochi', to: '/admin/games', icon: 'box', matches: (p) => p.startsWith('/admin/games') },
+  { label: 'Tipologie', to: '/admin/game-types', icon: 'tag', matches: (p) => p.startsWith('/admin/game-types') },
   { label: 'Utenti', to: '/admin/users', icon: 'users', matches: (p) => p.startsWith('/admin/users') },
   {
     label: 'Impostazioni',
