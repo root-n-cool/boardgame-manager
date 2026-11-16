@@ -146,3 +146,19 @@ func TestSMTPTestMail_UsesTheConfiguredSiteName(t *testing.T) {
 		}
 	}
 }
+
+// Le mail portano la pelle del blog: intestazione nera, bottoni arancio
+// con testo nero, nessun resto del feltro o del rosso seme.
+func TestMailShellUsesNightPalette(t *testing.T) {
+	out := mailShell("Titolo", "<p>x</p>") + mailButton("Vai", "https://example.com")
+	for _, want := range []string{"#000000", "#db8142"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("manca %s nella cornice della mail", want)
+		}
+	}
+	for _, old := range []string{"#1f4d3a", "#9c2b2b", "#f1ece0", "Space Grotesk", "IBM Plex Sans"} {
+		if strings.Contains(out, old) {
+			t.Errorf("resto del vecchio tema %q nella cornice della mail", old)
+		}
+	}
+}

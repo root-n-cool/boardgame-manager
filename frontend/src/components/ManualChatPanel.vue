@@ -342,8 +342,8 @@ const errorMessages = {
   },
 }
 
-// deep-chat vive in shadow DOM: i token di app.css (--felt, --felt-text,
-// --card-alt, --ink per le bolle, --danger e --danger-bg per la bolla di
+// deep-chat vive in shadow DOM: i token di app.css (
+// --accent, --accent-ink, --card-alt, --ink per le bolle, --danger e --danger-bg per la bolla di
 // errore qui sotto) non ci cascano dentro, quindi i colori sono ricopiati
 // qui come valori letterali. Se uno di questi token cambia in app.css, va
 // aggiornato a mano anche qui — è la duplicazione che DESIGN.md documenta
@@ -362,16 +362,16 @@ const messageStyles = {
     user: {
       bubble: {
         maxWidth: '82%',
-        backgroundColor: '#1f4d3a', // --felt
-        color: '#f4efe1', // --felt-text
+        backgroundColor: '#db8142', // --accent
+        color: '#000000', // --accent-ink
         borderBottomRightRadius: '3px',
       },
     },
     ai: {
       bubble: {
         maxWidth: '88%',
-        backgroundColor: '#f2ead4', // --card-alt
-        color: '#241f18', // --ink
+        backgroundColor: '#1f1f1f', // --card-alt
+        color: '#f3efe6', // --ink
         borderBottomLeftRadius: '3px',
       },
     },
@@ -381,8 +381,8 @@ const messageStyles = {
   // pagina. Qui porta gli stessi due colori di `.error` in app.css.
   error: {
     bubble: {
-      backgroundColor: '#f8e3d4', // --danger-bg
-      color: '#ad4a22', // --danger
+      backgroundColor: '#2e1513', // --danger-bg
+      color: '#e5675d', // --danger
       borderRadius: '10px',
       fontSize: '0.95rem',
     },
@@ -391,15 +391,15 @@ const messageStyles = {
 
 // Il link alla pagina del manuale nasce col blu di serie del browser
 // (#0000EE, misurato): l'unica cosa blu in tutta l'app, dentro l'unica
-// bolla che cita una fonte. Qui prende il rosso dei link di app.css.
+// bolla che cita una fonte. Qui prende l'arancio dei link di app.css.
 //
 // `#input` è il campo di deep-chat: al suo posto c'è ChatComposer, fuori
 // dallo shadow DOM.
 const auxiliaryStyle = `
   #input { display: none; }
   ::-webkit-scrollbar { width: 8px; }
-  ::-webkit-scrollbar-thumb { background-color: #ddd0ab; border-radius: 4px; } /* --card-line */
-  .message-bubble a { color: #9c2b2b; text-underline-offset: 2px; } /* --accent */
+  ::-webkit-scrollbar-thumb { background-color: #333333; border-radius: 4px; } /* --card-line */
+  .message-bubble a { color: #db8142; text-underline-offset: 2px; } /* --accent */
 `
 </script>
 

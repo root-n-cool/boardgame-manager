@@ -21,13 +21,19 @@ import (
 // client di posta non sono browser. La palette è quella di DESIGN.md.
 
 const (
-	mailColorFelt     = "#1f4d3a"
-	mailColorCard     = "#faf6ec"
-	mailColorCardAlt  = "#f2ead4"
-	mailColorInk      = "#241f18"
-	mailColorInkMuted = "#6e6250"
-	mailColorAccent   = "#9c2b2b"
-	mailColorLine     = "#ddd0ab"
+	// Intestazione nel nero del logo con testo gesso, come il blog; il corpo
+	// resta chiaro perché i client di posta (e le loro modalità scure)
+	// rovinano i fondi scuri. Bottoni nell'arancio della pedina, testo nero.
+	mailColorHead      = "#000000"
+	mailColorHeadText  = "#f3efe6"
+	mailColorPage      = "#ececec"
+	mailColorCard      = "#ffffff"
+	mailColorCardAlt   = "#f3efe6"
+	mailColorInk       = "#111111"
+	mailColorInkMuted  = "#555555"
+	mailColorAccent    = "#db8142"
+	mailColorAccentInk = "#000000"
+	mailColorLine      = "#dddddd"
 )
 
 // bookingMailData è quello che serve alle due mail di prenotazione. I
@@ -50,18 +56,18 @@ type bookingMailData struct {
 	SeatsReserved int
 }
 
-// mailShell avvolge il corpo nella cornice comune: intestazione in feltro
-// col nome dell'app, carta sotto, e nessun piede — non c'è nulla da
+// mailShell avvolge il corpo nella cornice comune: intestazione nera col
+// nome dell'app, foglio chiaro sotto, e nessun piede — non c'è nulla da
 // disiscrivere, sono tre mail transazionali.
 func mailShell(heading, bodyHTML string) string {
-	return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f1ece0;margin:0;padding:24px 12px;">
+	return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:` + mailColorPage + `;margin:0;padding:24px 12px;">
 <tr><td align="center">
 <table role="presentation" width="560" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;border-collapse:collapse;">
-<tr><td style="background:` + mailColorFelt + `;padding:18px 24px;border-radius:10px 10px 0 0;">
-<span style="font:600 17px/1.3 'Space Grotesk',system-ui,sans-serif;color:#faf6ec;letter-spacing:-0.01em;">` +
+<tr><td style="background:` + mailColorHead + `;padding:18px 24px;border-radius:10px 10px 0 0;">
+<span style="font:900 19px/1.2 Georgia,'Times New Roman',serif;color:` + mailColorHeadText + `;">` +
 		html.EscapeString(heading) + `</span>
 </td></tr>
-<tr><td style="background:` + mailColorCard + `;padding:24px;border-radius:0 0 10px 10px;border:1px solid ` + mailColorLine + `;border-top:0;font:15px/1.55 'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:` + mailColorInk + `;">` +
+<tr><td style="background:` + mailColorCard + `;padding:24px;border-radius:0 0 10px 10px;border:1px solid ` + mailColorLine + `;border-top:0;font:15px/1.55 'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:` + mailColorInk + `;">` +
 		bodyHTML + `</td></tr>
 </table>
 </td></tr></table>`
@@ -71,8 +77,8 @@ func mailShell(heading, bodyHTML string) string {
 // resta un link con uno sfondo.
 func mailButton(label, url string) string {
 	return `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0;"><tr>
-<td style="background:` + mailColorAccent + `;border-radius:6px;">
-<a href="` + html.EscapeString(url) + `" style="display:inline-block;padding:11px 20px;color:#ffffff;text-decoration:none;font:600 15px/1 'IBM Plex Sans',system-ui,sans-serif;">` +
+<td style="background:` + mailColorAccent + `;border-radius:99px;">
+<a href="` + html.EscapeString(url) + `" style="display:inline-block;padding:11px 22px;color:` + mailColorAccentInk + `;text-decoration:none;font:700 15px/1 'Atkinson Hyperlegible',system-ui,sans-serif;">` +
 		html.EscapeString(label) + `</a>
 </td></tr></table>`
 }

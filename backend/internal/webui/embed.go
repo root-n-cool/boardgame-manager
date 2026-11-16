@@ -20,14 +20,16 @@ import (
 //go:embed dist/*
 var distFS embed.FS
 
-// defaultSiteTitle e defaultFaviconHref sono quello che index.html mostra
-// finché nessuno configura un titolo o una favicon dal pannello
-// impostazioni, o se le impostazioni non sono raggiungibili: mai una
-// pagina rotta per un DB irraggiungibile.
+// defaultSiteTitle è quello che index.html mostra finché nessuno configura
+// un titolo dal pannello impostazioni, o se le impostazioni non sono
+// raggiungibili: mai una pagina rotta per un DB irraggiungibile.
+// faviconHref è fissa: la pedina arancio di Root'n'Cool, presa dal blog
+// (frontend/public/favicon.png). Una favicon caricata dalle impostazioni
+// non la sostituisce più.
 const (
-	defaultSiteTitle   = "BoardGames Manager"
-	defaultFaviconHref = "/favicon.svg"
-	robotsNoIndexMeta  = `<meta name="robots" content="noindex, nofollow" />`
+	defaultSiteTitle  = "BoardGames Manager"
+	faviconHref       = "/favicon.png"
+	robotsNoIndexMeta = `<meta name="robots" content="noindex, nofollow" />`
 )
 
 // SettingsReader è il sottoinsieme di settings.Store che serve qui: leggere
@@ -72,7 +74,7 @@ func handlerFor(root fs.FS, store SettingsReader) (http.Handler, error) {
 	serveIndex := func(w http.ResponseWriter, r *http.Request) {
 		// Senza impostazioni leggibili il divieto d'indicizzazione resta:
 		// meglio un sito non trovato che uno indicizzato per sbaglio.
-		title, faviconHref, robotsMeta := defaultSiteTitle, defaultFaviconHref, robotsNoIndexMeta
+		title, robotsMeta := defaultSiteTitle, robotsNoIndexMeta
 		if cfg, err := store.Get(r.Context()); err != nil {
 			log.Printf("webui: could not load site settings, serving defaults: %v", err)
 		} else {
@@ -81,9 +83,6 @@ func handlerFor(root fs.FS, store SettingsReader) (http.Handler, error) {
 			}
 			if cfg.SiteTitle != "" {
 				title = cfg.SiteTitle
-			}
-			if cfg.FaviconFilename != "" {
-				faviconHref = "/api/uploads/" + cfg.FaviconFilename
 			}
 		}
 		body := strings.NewReplacer(

@@ -1,32 +1,38 @@
 ---
 name: BoardGames Manager
-description: Dado e pedina su un tavolo in feltro, per una serata di giochi da tavolo
+description: Tavolo di notte — la stessa pelle del blog di Root'n'Cool
 colors:
-  felt: "#1f4d3a"
-  felt-deep: "#143528"
-  card: "#faf6ec"
-  card-alt: "#f2ead4"
-  card-line: "#ddd0ab"
-  ink: "#241f18"
-  ink-muted: "#6e6250"
-  accent: "#9c2b2b"
-  accent-deep: "#7c1f1f"
-  accent-bg: "#f6e4e0"
-  gold: "#b8842a"
-  gold-text: "#8a611c"
-  gold-bg: "#f8ecd2"
-  danger: "#ad4a22"
-  danger-bg: "#f8e3d4"
-  success: "#2f6b45"
-  success-bg: "#e7f2e9"
-  page-bg: "#f1ece0"
+  felt: "#000000"
+  felt-deep: "#0b0b0b"
+  page-bg: "#000000"
+  card: "#151515"
+  card-alt: "#1f1f1f"
+  card-line: "#333333"
+  field-line: "#6e6e6e"
+  ink: "#f3efe6"
+  ink-muted: "#b5b0a6"
+  accent: "#db8142"
+  accent-deep: "#e9995f"
+  accent-ink: "#000000"
+  accent-bg: "#2e1d12"
+  blu: "#035cb6"
+  arancio: "#db8142"
+  verde: "#5c8d2d"
+  grigio: "#aeb2b3"
+  gold: "#e3b23c"
+  gold-text: "#e3b23c"
+  gold-bg: "#2b2412"
+  danger: "#e5675d"
+  danger-bg: "#2e1513"
+  success: "#74a843"
+  success-bg: "#18230f"
 typography:
-  display:
-    fontFamily: "Space Grotesk, system-ui, sans-serif"
-    fontWeight: 600
-    letterSpacing: "-0.01em"
-  body:
-    fontFamily: "IBM Plex Sans, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif"
+  titoli:
+    fontFamily: "Fraunces Variable (SOFT 100), Georgia, serif"
+    fontWeight: 900
+    lineHeight: 1.05
+  testo:
+    fontFamily: "Atkinson Hyperlegible, system-ui, sans-serif"
     fontSize: "15px"
     lineHeight: 1.55
   data:
@@ -34,6 +40,7 @@ typography:
 rounded:
   sm: "6px"
   md: "10px"
+  pill: "99px"
 spacing:
   sm: "0.5rem"
   md: "1rem"
@@ -41,19 +48,20 @@ spacing:
 components:
   button-primary:
     backgroundColor: "{colors.accent}"
-    textColor: "#ffffff"
-    rounded: "{rounded.sm}"
+    textColor: "{colors.accent-ink}"
+    rounded: "{rounded.pill}"
     padding: "0.55rem 1rem"
   button-primary-hover:
     backgroundColor: "{colors.accent-deep}"
   button-secondary:
     backgroundColor: "transparent"
     textColor: "{colors.ink}"
-    rounded: "{rounded.sm}"
+    borderColor: "{colors.field-line}"
+    rounded: "{rounded.pill}"
   button-danger:
     backgroundColor: "transparent"
     textColor: "{colors.danger}"
-    rounded: "{rounded.sm}"
+    rounded: "{rounded.pill}"
   card-surface:
     backgroundColor: "{colors.card}"
     rounded: "{rounded.md}"
@@ -63,101 +71,131 @@ components:
 
 ## Overview
 
-**Creative North Star: "Dado & pedina su tavolo in feltro"**
+**Creative North Star: "Tavolo di notte"**
 
-Il catalogo è uno scaffale di scatole di gioco, un evento è un tavolo in
-feltro verde con le scatole disponibili: non cartelle e form come ogni
-altro pannello admin. Il sistema nasce dal mondo fisico dell'Eurogame —
-scatole, feltro, cartoncino, pedine (meeple) e dadi — tradotto in una
-grammatica di interfaccia funzionale, senza mai scivolare nel gadget o nel
-clip-art giocoso. **Corretto dopo revisione utente**: la prima resa usava
-un seme di carte (♠) e una texture a righe da dorso di carta da poker —
-letta correttamente come "troppo poker" per un'app di giochi in stile
-german. Il marchio e i placeholder ora usano una pedina (meeple) e un
-dado, gli unici prestiti iconografici dal mondo fisico del gioco.
+Il manager è la stanza sul retro del blog di Root'n'Cool
+(`rnc-blog`): chi arriva dal blog per prenotare un tavolo deve
+riconoscere la casa al primo colpo d'occhio. Stessa pelle: il nero del
+logo come fondo, testo color gesso, le quattro pedine del logo (blu,
+arancio, verde, grigio) come colori pieni, titoli in Fraunces, testo in
+Atkinson Hyperlegible, bottoni a pillola. Il progetto è open source sulla
+carta, ma la pelle è quella di Root'n'Cool, fissa nel codice: niente temi
+configurabili (scelta del 2026-11-16). Anche **logo e favicon sono fissi
+nel codice**, presi dal blog (`frontend/src/assets/logo-rootncool.png`,
+`frontend/public/favicon.png`): dalle impostazioni si cambia solo il
+titolo. La testata è alta come quella del blog (4rem sul telefono,
+4.75rem da desktop, `--topbar-h`) col logo che la riempie.
+
+Fino al 2026-11-16 il sistema era "Dado & pedina su tavolo in feltro"
+(feltro verde, cartoncino avorio, rosso seme, Space Grotesk + IBM Plex
+Sans). Dal vecchio tema restano il linguaggio dado/pedina per marchio e
+placeholder (mai carte da poker, mai emoji) e i nomi dei token `--felt*`,
+che ora indicano la chrome nera.
 
 Il registro resta **Operate**: l'admin scansiona liste ed evade compiti da
 laptop, il partecipante prenota e inserisce un punteggio dal telefono,
-spesso in piedi, al tavolo di gioco. Il calore ("caldo e giocoso",
-richiesto esplicitamente) vive nella palette e nei dettagli — dado per le
-copertine mancanti, medaglie di rango — mai a scapito della velocità con
+spesso in piedi, al tavolo di gioco. Il tono del blog (irriverente,
+mai autopromozione) vive nei dettagli, mai a scapito della velocità con
 cui si completa un'azione.
 
-Rifiutato esplicitamente: il default "dashboard SaaS" grigio/blu piatto
-(lo stato precedente dell'app), l'iconografia da poker (seme di carte,
-dorso a righe), e qualunque emoji al posto di un'icona disegnata (🏆/★).
-
 **Key Characteristics:**
-- Feltro verde come fondo strutturale (nav, header di tabella, il "tavolo"
-  dove sono disposte le scatole di un evento pubblico).
-- Cartoncino avorio come superficie di contenuto, su tutte le schermate.
-- Un solo accento caldo (rosso) per le azioni primarie; oro riservato a
-  distintivi e medaglie, mai a testo corrente su fondo chiaro.
-- Tipografia grottesca per i titoli, mono per i dati (booking code,
-  punteggi, date) — mai il default di sistema come voce del brand.
-- Marchio e placeholder nel linguaggio dado/pedina — mai carte da gioco,
-  mai emoji.
+- Nero del logo come fondo e come chrome (topbar, sidebar, il "tavolo"
+  delle scatole di un evento pubblico).
+- Superfici di contenuto appena più chiare (`#151515`, `#1f1f1f`) e linee
+  sottili: sul nero le ombre non si vedono, separano superfici e filetti.
+- Un solo accento per le azioni: l'arancio della pedina, **con testo nero
+  sopra**. Le altre pedine (blu, verde, grigio) e il giallo colorano
+  pastiglie, tipologie, medaglie.
+- Fraunces per i titoli, Atkinson per tutto il resto, mono solo per codici
+  e numeri.
+- Bottoni, badge e linguette a pillola.
+
+### Glossario per le sezioni più vecchie
+
+Molte sezioni componente qui sotto sono state scritte col tema in feltro
+e ne usano ancora le parole. Leggile così:
+
+| Parola vecchia | Oggi |
+|---|---|
+| feltro, feltro profondo (`--felt`, `--felt-deep`) | nero della chrome (`#000`, `#0b0b0b`) |
+| cartoncino, carta (`--card`, `--card-alt`) | superficie scura (`#151515`, `#1f1f1f`) |
+| inchiostro (`--ink`) | gesso (`#f3efe6`) |
+| rosso seme, accento | arancio (`#db8142`) con testo nero |
+| oro | giallo (`#e3b23c`) |
+| font Display / grottesca | Fraunces (titoli) o Atkinson 700 (etichette, nav) |
+| "mono come ogni etichetta" | Atkinson 700 piccolo; il mono resta solo su codici e numeri |
 
 ## Colors
 
-Palette "Committed": il feltro verde possiede le zone strutturali a piena
-superficie (non è un accento sparso), il rosso seme è l'unico accento per
-le azioni, l'oro è riservato a distintivi/medaglie.
+Palette presa dal blog (`rnc-blog/src/styles/global.css`): il nero
+possiede tutto il fondo, le pedine sono colori pieni, l'arancio è l'unico
+accento d'azione.
 
 ### Primary
-- **Rosso caldo** (`#9c2b2b`, hover `#7c1f1f`): azione primaria (bottoni
-  submit, CTA "Crea evento"/"Aggiungi gioco", link trattati come azione).
+- **Arancio** (`#db8142`, hover `#e9995f`): azione primaria (bottoni
+  submit, "Prenota", "Crea evento"), link, anello di focus. Il testo sopra
+  è **nero** (`--accent-ink`, 7.2:1): il bianco starebbe a 2.9:1.
 
-### Secondary
-- **Oro** (`#b8842a`, testo `#8a611c` su fondo chiaro): distintivi —
-  medaglia del podio in classifica, indicatore vincitore nello storico
-  partite, badge lingua base, bordo della card del booking code. Non è mai
-  usato come testo corrente: a 3.05:1 su cartoncino non supera la soglia
-  AA per testo normale, solo per elementi grandi/decorativi.
+### Secondary — le pedine
+- **Blu** (`#035cb6`): solo come riempimento con testo bianco (6.5:1).
+  Mai come colore di testo sul nero (3.2:1).
+- **Verde** (`#5c8d2d`) e **grigio** (`#aeb2b3`): riempimenti con testo
+  nero (tipologie, medaglia d'argento).
+- **Giallo** (`#e3b23c`, ex oro): distintivi, medaglia d'oro, pallini di
+  difficoltà; come testo regge sul nero (7.8:1 sul suo `--gold-bg`).
+
+### Stato
+- **Pericolo** `#e5675d` e **successo** `#74a843`: rosso e verde
+  schiariti rispetto alle pedine, perché come testo sul `#151515` devono
+  passare 4.5:1. I fondi tenui (`*-bg`) sono tinte scure dello stesso
+  colore.
 
 ### Neutral
-- **Feltro** (`#1f4d3a`, profondo `#143528`): fondo di nav e header
-  pubblico/admin, header delle tabelle, il "tavolo" delle scatole di un
-  evento, sfondo delle pagine di autenticazione.
-- **Cartoncino** (`#faf6ec`, alternativo `#f2ead4`): superficie di
-  contenuto — card, form, tabelle — su ogni schermata.
-- **Inchiostro** (`#241f18` testo primario, `#6e6250` testo secondario):
-  mai nero puro, per restare coerente col calore del cartoncino.
-- **Bordo cartoncino** (`#ddd0ab`): bordi di card, input, tabelle.
+- **Nero** (`#000`): fondo di pagina, topbar; `#0b0b0b` la sidebar.
+- **Superficie** (`#151515`, alternativa `#1f1f1f`): card, form, liste,
+  testate di tabella, voce attiva della sidebar.
+- **Gesso** (`#f3efe6` testo, `#b5b0a6` secondario: 8.5:1 su `#151515`).
+- **Linee** (`#333333` fra superfici; `#6e6e6e` per i bordi dei campi,
+  3.6:1, sopra la soglia 3:1 di un confine di componente).
 
 ### Named Rules
-**La regola del feltro strutturale.** Il verde feltro copre solo chrome
-strutturale (nav, header tabella, il tavolo di un evento pubblico) — mai il
-fondo di una schermata admin densa di dati, dove comprometterebbe la
-leggibilità.
+**La regola del testo nero sull'arancio.** Tutto ciò che è riempito
+d'arancio (bottone primario, avatar, bolla di chi chiede nella chat)
+porta testo nero. Mai bianco.
 
-**La regola dell'oro non-testo.** L'oro (`#b8842a`) etichetta, non scrive:
-usalo per badge, medaglie, bordi — mai come colore di un blocco di testo
-corrente.
+**La regola del blu che non scrive.** Il blu della pedina è un fondo,
+mai un colore di testo.
+
+**La regola del foglio bianco.** I cartellini e i fogli QR restano bianchi
+con inchiostro nero, a schermo e in stampa: sono fatti per la carta.
 
 ## Typography
 
-**Display Font:** Space Grotesk (fallback: system-ui, sans-serif)
-**Body Font:** IBM Plex Sans (fallback: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif)
-**Label/Mono Font:** IBM Plex Mono — riservato ai dati: booking code,
-punteggi, date/ore nelle liste, indici di lingua.
+**Titoli:** Fraunces Variable, asse `SOFT 100`, peso 900 (800 sui titoli
+di card), `line-height` 1.05 — lo stesso dei titoli del blog. Su `h1`,
+`h2`, `h3`, titoli di card, nomi dei giochi, marchio.
+**Testo:** Atkinson Hyperlegible 400/700 (+ corsivi): corpo, form,
+navigazione, etichette (in 700, piccole, spesso maiuscolette), testate di
+tabella.
+**Data:** IBM Plex Mono — **solo** codici e numeri: booking code,
+punteggi, quantità, conteggi, codice nei testi.
 
-**Character:** una grottesca decisa per i titoli, una sans neutra e molto
-leggibile per il corpo, un monospazio per tutto ciò che è un dato
-misurabile o un codice da copiare a mano.
+Tutti self-hosted in `frontend/src/assets/fonts/` (copiati da
+`@fontsource`, senza dipendenze npm).
 
 ### Hierarchy
-- **Display/H1** (600, 1.7rem, tracking -0.01em): titolo di pagina.
-- **H2** (600, 1.1rem): titoli di sezione.
-- **Body** (400, 15px/1.55): testo corrente, form, liste.
-- **Label** (500, 0.82rem, uppercase nei `legend`): etichette di campo.
+- **H1** (Fraunces 900, 1.7rem): titolo di pagina.
+- **H2** (Fraunces 900, 1.1rem): titoli di sezione.
+- **Body** (Atkinson 400, 15px/1.55): testo corrente, form, liste.
+- **Label** (Atkinson 700, 0.7–0.82rem, maiuscoletto): etichette, occhielli,
+  metadati, gruppi della sidebar.
 - **Data** (mono 400/600): booking code (2rem, tracking 0.14em), punteggi
-  in tabella, date/orari nelle card evento.
+  in tabella, quantità.
 
 ### Named Rules
-**La regola del dato in mono.** Qualunque cifra o codice che l'utente
+**La regola del dato in mono.** Una cifra o un codice che l'utente
 potrebbe dover leggere a voce alta o ricopiare (booking code, punteggio,
-data) è in IBM Plex Mono con cifre tabulari — mai nella sans corrente.
+quantità) è in IBM Plex Mono. Un'etichetta no: è Atkinson.
 
 ## Layout
 
@@ -168,36 +206,28 @@ laterale 1.5rem che scende a 1rem sotto i 640px. Le griglie di card
 — così il numero di colonne si adatta senza breakpoint espliciti fino al
 passaggio a colonna singola su mobile.
 
-**Shell:** una sola shell (`AppShell.vue`) per tutta l'app — topbar in
-feltro alta 3.25rem, sticky, con marchio a sinistra e menù utente a
-destra; sidebar in feltro profondo larga 15rem. **Da 900px la sidebar è
+**Shell:** una sola shell (`AppShell.vue`) per tutta l'app — topbar nera
+alta 3.25rem, sticky, con marchio a sinistra e menù utente a destra;
+sidebar nera (`--felt-deep`) larga 15rem. La voce corrente è una tessera
+`--card-alt` col filetto arancio a sinistra. **Da 900px la sidebar è
 un elemento a sé, a tutta altezza** (`position: fixed; top: 0`, z-index 31
 sopra la topbar): non sta sotto la topbar ma accanto, e la topbar copre
 solo la colonna centrale — lo stesso schema della barra della chat a
-destra, così le due ali sono speculari (segnalato dall'utente: la sidebar
-«sotto» la topbar faceva lo scalino e leggeva squilibrata). Il marchio sta
+destra, così le due ali sono speculari. Il marchio sta
 nella topbar, quindi segue il contenuto: si sposta quando la sidebar si
 apre o si chiude. **Chiusa non sparisce**: resta una colonna di sole icone
 da 3.5rem, col nome della voce nel `title` e nel testo nascosto a vista
 (`.app-sidebar-label`, che resta il nome del link per gli screen reader);
 del gruppo Gestione resta il filetto. Si apre e chiude dall'**hamburger in
-cima alla sidebar** (`.app-sidebar-head`): una prima riga alta quanto la
-topbar, col suo stesso filetto sotto, dove da aperta si legge "≡ Menù" e
-da chiusa resta l'icona centrata come le altre. Da desktop l'hamburger
+cima alla sidebar** (`.app-sidebar-head`). Da desktop l'hamburger
 della topbar non c'è: il bottone appartiene alla colonna che apre. Aperta
 per default finché non la si chiude. Il contenuto le fa spazio con il
-`padding-left` della shell (15rem o 3.5rem) e il passaggio è istantaneo:
-nessuna larghezza o padding animato, che sarebbe un reflow a ogni frame.
-Le `li` della sidebar sono spogliate della regola globale (flex, padding,
-filetto sotto): stringevano i link e disegnavano un filetto fra le voci.
+`padding-left` della shell (15rem o 3.5rem) e il passaggio è istantaneo.
 Sotto i 900px è un drawer `fixed` che entra in `transform` sopra la pagina, con
-overlay in dissolvenza, scroll del body bloccato
-(`body.has-open-drawer`) e contenuto reso `inert`, così il Tab non esce dal
-menù per finire in una pagina che non si vede. Lo stato aperto/chiuso è una
-preferenza da desktop salvata in `localStorage` (`bgm.sidebar`): il drawer
-su telefono parte sempre chiuso e non la sporca. Sotto i 520px il wordmark
-si nasconde lasciando la sola carta-marchio (pedina), perché hamburger,
-marchio e pallina utente devono stare su una riga sola. Setup, login e
+overlay nero in dissolvenza, scroll del body bloccato
+(`body.has-open-drawer`) e contenuto reso `inert`. Lo stato aperto/chiuso è una
+preferenza da desktop salvata in `localStorage` (`bgm.sidebar`). Sotto i
+520px il wordmark si nasconde lasciando il solo marchio. Setup, login e
 accettazione invito (`meta.bare`) restano pagine a schermo pieno senza
 shell.
 
@@ -205,71 +235,95 @@ shell.
 (`.table-scroll`, `overflow-x:auto`) invece di spingere l'intera pagina in
 scroll orizzontale sotto i 480px.
 
+### Telefono: testata come quella del blog (2026-11-16)
+- **Riga delle sezioni** (`.app-mobile-nav`, sotto i 900px): Eventi,
+  Giochi, Prenotazione in chiaro sotto il logo, ognuna con la sua pedina
+  (arancio, blu, verde); la voce corrente si sottolinea nel suo colore.
+  L'hamburger sul telefono c'è solo a sessione aperta, per l'area di
+  gestione. `--header-h` = testata + riga sezioni: da lì partono drawer e
+  overlay.
+- **Testata a scomparsa**: sul telefono, oltre i 120px, scorrendo in giù
+  esce di scena (`.is-header-hidden`) e torna risalendo; mai col menù
+  aperto o col focus dentro, niente animazione con riduci animazioni.
+- **Pedina di sezione**: ogni voce di menù (pubblica e admin) ha una
+  pedina; colora il filetto della voce attiva nella sidebar e la **barra a
+  sinistra dell'`h1`** di pagina (`--segno`, impostata da `AppShell`;
+  gesso fuori dalle sezioni), come le intestazioni delle rubriche del
+  blog.
+- **Tavolo a righe**: sotto i 560px ogni scatola di `.event-games` è una
+  riga intera (copertina 5.5rem a sinistra, nome, posti, link e
+  "Prenota" a destra) invece di due colonne strette.
+- **Modale come foglio dal basso**: sotto i 560px `.modal` è a tutta
+  larghezza, ancorata in fondo, angoli tondi solo in alto, entra dal
+  basso; rispetta `safe-area-inset-bottom`.
+- **Piè di pagina**: blog, Instagram, termini, privacy, senza
+  separatori (andando a capo ne restava uno appeso).
+- **Drawer sul telefono** (solo a sessione aperta): porta la sola
+  Gestione, perché le voci pubbliche sono già nella riga sotto il logo.
+- **Bottoni disabilitati**: i pieni diventano pillola `--card-alt` con
+  testo `--ink-muted` (l'opacità sull'arancio dava un marrone fangoso); i
+  bottoni a contorno si spengono con opacità 0.5.
+- **Spunte e radio** in arancio (`accent-color`): col tema scuro il
+  browser le farebbe blu.
+- **Titoli dei media** in Atkinson 700: sono nomi di file e URL.
+
 ## Elevation & Depth
 
-Sistema a due livelli, mai decorativo: `--shadow-card` (0 1px 2px al 6% +
-0 6px 16px a -8px al 22%) per lo stato a riposo di card/form/tabelle,
-`--shadow-lift` (più ampia e più scura) per l'hover di card cliccabili
-(griglia giochi, griglia eventi). Le card del tavolo di un evento
-(`.event-games li`) non sollevano — sono "posate" sul feltro, non
-cliccabili come intere unità (solo il bottone "Prenota" lo è).
-
-### Shadow Vocabulary
-- **card** (`0 1px 2px rgba(36,31,24,.06), 0 6px 16px -8px rgba(36,31,24,.22)`): stato a riposo.
-- **lift** (`0 2px 4px rgba(36,31,24,.08), 0 14px 28px -12px rgba(36,31,24,.32)`): hover di card cliccabili.
+Sul nero le ombre non si leggono: la profondità la fanno le superfici
+(`#000` → `#151515` → `#1f1f1f`) e i filetti `#333`. `--shadow-card` è un
+filo di luce (1px al 3%), `--shadow-lift` un'ombra nera ampia per ciò che
+galleggia (modali, menù, hover di card cliccabili).
 
 ### Named Rules
 **La regola del sollevamento cliccabile.** Solo le card che sono un intero
-link/azione (griglia giochi, griglia eventi) sollevano al passaggio del
-mouse. Le card informative (righe di lista, risultati) restano ferme.
+link/azione (griglia giochi, griglia eventi) cambiano stato al passaggio
+del mouse. Le card informative (righe di lista, risultati) restano ferme.
 
 **La regola del segnale senza movimento.** Sotto
 `prefers-reduced-motion: reduce` il sollevamento sparisce, non il feedback:
-ombra, bordo e fondo continuano a cambiare stato, solo senza spostamento.
-Mai azzerare tutte le transizioni in blocco. Applicata su `.game-grid`;
-`.event-grid` la eredita quando quella pagina verrà rivista.
+bordo e fondo continuano a cambiare stato, solo senza spostamento.
 
 ## Shapes
 
-Due raggi: `10px` (card, form, tabelle, pillole del tavolo in feltro) e
-`6px` (input, bottoni, tab, voci di sidebar). Restano tondi a `999px` solo
-gli elementi che sono davvero pastiglie: linguette e trigger del menù
-utente. Nessun bordo colorato laterale sulle
-card — il confine è sempre un `1px solid var(--card-line)` uniforme.
+Tre raggi: `99px` (`--radius-pill`) per tutto ciò che si preme o
+etichetta — bottoni, badge, linguette, tipologie, link d'azione — come
+nel blog; `10px` per card, form, tabelle; `6px` per campi, voci di
+sidebar e piccoli riquadri.
 
 ## Components
 
 ### Buttons
-- **Shape:** 6px, padding `0.55rem 1rem`.
-- **Primary** (default `<button>`): fondo rosso seme, testo bianco — ogni
-  submit e ogni azione costruttiva.
-- **`.btn-secondary`:** trasparente, bordo cartoncino, testo inchiostro —
-  azioni non distruttive e non primarie ("Aggiungi giocatore", "Crea
-  manualmente").
-- **`.btn-danger`:** trasparente, testo/bordo color danger (`#ad4a22`) —
-  cancellazioni, rimozioni, annullamenti fuori da una lista.
+- **Shape:** pillola (`--radius-pill`), padding `0.55rem 1rem`.
+- **Primary** (default `<button>`): fondo arancio, testo nero — ogni
+  submit e ogni azione costruttiva. Hover su `#e9995f`.
+- **`.btn-secondary`:** trasparente, contorno `--field-line`, testo gesso;
+  hover con fondo `--card-alt` e contorno gesso.
+- **`.btn-danger`:** trasparente, testo rosso (`--danger`) — cancellazioni,
+  rimozioni, annullamenti fuori da una lista.
 - **Bottoni in una `<li>`:** rosso danger di default (la maggioranza dei
   bottoni in lista sono "Rimuovi"). Una lista che non è fatta di azioni
   distruttive — i risultati BGG, dove la riga *è* la selezione — non mette
   bottoni nelle righe: si sceglie la riga, non un bottone dentro la riga.
 - **`.btn-with-icon`:** bottone in `inline-flex` con l'icona (1.05rem,
-  tratto 1.7, mai emoji) **prima** dell'etichetta e 0.45rem di respiro. Si
-  combina con le varianti sopra (`.btn-danger.btn-with-icon`). L'icona
-  nomina la conseguenza — dischetto per salvare, cestino per rimuovere,
-  × cerchiata per annullare, lente per cercare — e serve dove l'azione va
-  riconosciuta di colpo, in piedi al tavolo. Diverso da `.is-compact`, che
-  rimpicciolisce un'azione di testa: qui cambia il contenuto, non la
-  misura.
-- **`.link-button`:** nessun fondo né bordo, testo accento sottolineato —
-  una deviazione dal percorso principale citata dentro una nota
-  ("Inseriscilo a mano"), dove un bottone vero peserebbe quanto l'azione
-  che si sta scavalcando.
+  tratto 1.7, mai emoji) **prima** dell'etichetta e 0.45rem di respiro.
+  L'icona nomina la conseguenza — dischetto per salvare, cestino per
+  rimuovere, × cerchiata per annullare, lente per cercare.
+- **`.link-button`:** nessun fondo né bordo, testo arancio sottolineato —
+  una deviazione dal percorso principale citata dentro una nota.
+
+### Inputs (riassunto)
+Fondo nero dentro le card, bordo `--field-line`, testo gesso, focus con
+anello arancio. L'autocompletamento del browser viene riportato al nero
+(`input:-webkit-autofill`), altrimenti dipingerebbe il campo di giallo o
+bianco col testo gesso illeggibile. `color-scheme: dark` per i controlli
+nativi (date, select, scrollbar). L'editor Markdown usa il tema `dark` di
+md-editor-v3 con le custom property `--md-*` sui token.
 
 ### Cards / Containers
 - **Corner Style:** 10px.
-- **Background:** cartoncino (`#faf6ec`).
+- **Background:** cartoncino (`#151515`).
 - **Shadow Strategy:** vedi Elevation.
-- **Border:** `1px solid #ddd0ab`.
+- **Border:** `1px solid #333333`.
 - **Cover mancante:** placeholder disegnato (`.cover-placeholder`) — feltro
   verde con trama a puntini e un dado a 5 centrato, mai un riquadro vuoto
   o un'icona generica (e mai iconografia da carte da gioco).
@@ -1443,7 +1497,7 @@ l'azione sta in basso a destra, dove il pollice la trova.
   una serata a una striscia.
 
 ### Inputs / Fields
-- **Style:** fondo cartoncino, bordo `#ddd0ab`, radius 6px.
+- **Style:** fondo cartoncino, bordo `#333333`, radius 6px.
 - **Focus:** outline 2px accento, offset 2px (mai un semplice cambio di
   bordo).
 - **Checkbox inline** (`.checkbox-label`): riga orizzontale
@@ -1519,11 +1573,13 @@ qualunque, spesso il peggiore possibile in fatto di CSS. Le tre mail
 (invito, conferma di prenotazione, annullamento) e quella di prova
 condividono una cornice (`mailShell`) fatta di tabelle e stili inline —
 niente CSS esterno, niente immagine, niente font caricato da fuori —
-larga al massimo 560px, con intestazione in feltro (col nome dell'app),
-corpo su cartoncino, bottoni nell'accento rosso e il codice di
-prenotazione nello stesso mono con cui compare a schermo
-(`.booking-code-card`). È la stessa palette del resto dell'app, non una
-sua reinterpretazione.
+larga al massimo 560px, con intestazione nera (col nome dell'app in un
+serif di sistema, Georgia 900: Fraunces nei client di posta non si
+carica), corpo **chiaro** (bianco su grigio chiaro: i client di posta e
+le loro modalità scure rovinano i fondi scuri), bottoni a pillola
+nell'arancio con testo nero e il codice di prenotazione nello stesso mono
+con cui compare a schermo (`.booking-code-card`). È l'unica superficie,
+con i fogli QR, dove il corpo resta chiaro.
 
 **La versione in solo testo è di pari rango, non un ripiego.** Ogni mail
 esce come `multipart/alternative` con la parte testo scritta per intero
@@ -1607,7 +1663,7 @@ prima di questa voce.
   "indice d'angolo" come metafora dichiarata) — corretto in sessione dopo
   feedback utente: il motivo proprio dell'app è dado/pedina (Eurogame),
   non poker.
-- **Don't** usare l'oro (`#b8842a`) come colore di testo corrente su
+- **Don't** usare l'oro (`#e3b23c`) come colore di testo corrente su
   cartoncino: sotto la soglia AA per testo normale (3.05:1).
 - **Don't** lasciare un `<li>` di lista ereditare lo stile "Rimuovi" di
   default per un'azione non distruttiva — serve sempre una classe esplicita

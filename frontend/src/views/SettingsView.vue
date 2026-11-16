@@ -1,15 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { api } from '../api/client'
-import { useSiteStore } from '../stores/site'
 import MarkdownEditor from '../components/MarkdownEditor.vue'
 
 interface SettingsResponse {
   defaultLanguage: string
   publicBaseUrl: string
   siteTitle: string
-  logoFilename: string
-  faviconFilename: string
   termsMarkdown: string
   privacyMarkdown: string
   hideFromSearchEngines: boolean
@@ -34,20 +31,12 @@ interface SettingsResponse {
   smtpConfigured: boolean
 }
 
-const site = useSiteStore()
 const defaultLanguage = ref('it')
 const publicBaseUrl = ref('')
 const siteTitle = ref('')
-const logoFilename = ref('')
-const faviconFilename = ref('')
 const termsMarkdown = ref('')
 const privacyMarkdown = ref('')
 const hideFromSearchEngines = ref(true)
-const logoInput = ref<HTMLInputElement | null>(null)
-const faviconInput = ref<HTMLInputElement | null>(null)
-const logoUploading = ref(false)
-const faviconUploading = ref(false)
-const brandingError = ref('')
 const bggApiToken = ref('')
 const bggApiTokenMasked = ref('')
 const aiBaseUrl = ref('')
@@ -79,8 +68,6 @@ async function load() {
   defaultLanguage.value = s.defaultLanguage
   publicBaseUrl.value = s.publicBaseUrl || ''
   siteTitle.value = s.siteTitle || ''
-  logoFilename.value = s.logoFilename || ''
-  faviconFilename.value = s.faviconFilename || ''
   termsMarkdown.value = s.termsMarkdown || ''
   privacyMarkdown.value = s.privacyMarkdown || ''
   hideFromSearchEngines.value = s.hideFromSearchEngines
@@ -170,56 +157,6 @@ async function sendTestEmail() {
   }
 }
 
-function pickLogo() {
-  brandingError.value = ''
-  logoInput.value?.click()
-}
-
-function pickFavicon() {
-  brandingError.value = ''
-  faviconInput.value?.click()
-}
-
-async function onLogoSelected(event: Event) {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  target.value = ''
-  if (!file) return
-  brandingError.value = ''
-  logoUploading.value = true
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    await api.post('/settings/logo', formData)
-    await load()
-    await site.load()
-  } catch (e) {
-    brandingError.value = (e as Error).message
-  } finally {
-    logoUploading.value = false
-  }
-}
-
-async function onFaviconSelected(event: Event) {
-  const target = event.target as HTMLInputElement
-  const file = target.files?.[0]
-  target.value = ''
-  if (!file) return
-  brandingError.value = ''
-  faviconUploading.value = true
-  const formData = new FormData()
-  formData.append('file', file)
-  try {
-    await api.post('/settings/favicon', formData)
-    await load()
-    await site.load()
-  } catch (e) {
-    brandingError.value = (e as Error).message
-  } finally {
-    faviconUploading.value = false
-  }
-}
-
 onMounted(async () => {
   try {
     await load()
@@ -265,9 +202,9 @@ onMounted(async () => {
           <h2>Sito</h2>
         </div>
         <p class="field-hint">
-          Rimarchizza l'installazione: il titolo compare nel titolo della pagina
-          e nell'header quando non c'è un logo, logo e favicon sono immagini
-          JPEG, PNG o WebP fino a 5MB.
+          Il titolo compare nel titolo della pagina del browser. Logo e
+          favicon sono quelli di Root'n'Cool, presi dal blog: stanno nel
+          codice e non si cambiano da qui.
         </p>
 
         <label>
@@ -275,56 +212,6 @@ onMounted(async () => {
           <input v-model="siteTitle" placeholder="BoardGames Manager" />
         </label>
 
-        <div class="field-row">
-          <div>
-            <span class="field-label">Logo</span>
-            <div class="branding-upload">
-              <img
-                v-if="logoFilename"
-                :src="`/api/uploads/${logoFilename}`"
-                class="branding-preview"
-                alt="Logo attuale"
-              />
-              <button type="button" class="btn-secondary" :disabled="logoUploading" @click="pickLogo">
-                {{ logoUploading ? 'Caricamento…' : logoFilename ? 'Cambia logo' : 'Carica logo' }}
-              </button>
-              <input
-                ref="logoInput"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                class="visually-hidden"
-                tabindex="-1"
-                aria-hidden="true"
-                @change="onLogoSelected"
-              />
-            </div>
-          </div>
-
-          <div>
-            <span class="field-label">Favicon</span>
-            <div class="branding-upload">
-              <img
-                v-if="faviconFilename"
-                :src="`/api/uploads/${faviconFilename}`"
-                class="branding-preview branding-preview-small"
-                alt="Favicon attuale"
-              />
-              <button type="button" class="btn-secondary" :disabled="faviconUploading" @click="pickFavicon">
-                {{ faviconUploading ? 'Caricamento…' : faviconFilename ? 'Cambia favicon' : 'Carica favicon' }}
-              </button>
-              <input
-                ref="faviconInput"
-                type="file"
-                accept="image/png,image/jpeg,image/webp"
-                class="visually-hidden"
-                tabindex="-1"
-                aria-hidden="true"
-                @change="onFaviconSelected"
-              />
-            </div>
-          </div>
-        </div>
-        <p v-if="brandingError" class="error">{{ brandingError }}</p>
 
         <label class="checkbox-label">
           <input v-model="hideFromSearchEngines" type="checkbox" />

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import logoUrl from '../assets/logo-rootncool.png'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
@@ -20,8 +21,15 @@ const route = useRoute()
 
 interface NavItem {
   label: string
+  /** Etichetta corta per la riga di menù sul telefono, dove le tre voci
+   *  pubbliche devono stare in 390px. */
+  short?: string
   to: string
   icon: string
+  /** La pedina del logo che segna la sezione (come le rubriche del blog):
+   *  colora il pallino nel menù e la barra accanto al titolo di pagina. */
+  pedina: 'arancio' | 'blu' | 'verde' | 'grigio'
+
   /** La voce è accesa su tutte le pagine che discendono da lei, non solo sul
    *  suo indirizzo esatto: la scheda di un evento resta sotto "Eventi". */
   matches: (path: string) => boolean
@@ -44,47 +52,64 @@ const publicItems: NavItem[] = [
     label: 'Eventi',
     to: '/',
     icon: 'calendar',
+    pedina: 'arancio',
     matches: (p) => p === '/' || p.startsWith('/events'),
   },
   {
     label: 'Giochi',
     to: '/giochi',
     icon: 'box',
+    pedina: 'blu',
     // Le schede pubbliche (/games/:id) stanno sotto lo scaffale da cui
     // vengono, anche quando ci si arriva dal tavolo di una serata.
     matches: (p) => p.startsWith('/giochi') || p.startsWith('/games'),
   },
   {
     label: 'Gestisci prenotazione',
+    short: 'Prenotazione',
     to: '/manage-booking',
     icon: 'ticket',
+    pedina: 'verde',
     matches: (p) => p.startsWith('/manage-booking') || p.startsWith('/prenotazione'),
   },
 ]
 
 const adminItems: NavItem[] = [
-  { label: 'Eventi', to: '/admin/events', icon: 'calendar', matches: (p) => p.startsWith('/admin/events') },
-  { label: 'Giochi', to: '/admin/games', icon: 'box', matches: (p) => p.startsWith('/admin/games') },
-  { label: 'Tipologie', to: '/admin/game-types', icon: 'tag', matches: (p) => p.startsWith('/admin/game-types') },
-  { label: 'Utenti', to: '/admin/users', icon: 'users', matches: (p) => p.startsWith('/admin/users') },
+  {
+    label: 'Eventi',
+    to: '/admin/events',
+    icon: 'calendar',
+    pedina: 'arancio',
+    matches: (p) => p.startsWith('/admin/events'),
+  },
+  { label: 'Giochi', to: '/admin/games', icon: 'box', pedina: 'blu', matches: (p) => p.startsWith('/admin/games') },
+  {
+    label: 'Tipologie',
+    to: '/admin/game-types',
+    icon: 'tag',
+    pedina: 'grigio',
+    matches: (p) => p.startsWith('/admin/game-types'),
+  },
+  { label: 'Utenti', to: '/admin/users', icon: 'users', pedina: 'verde', matches: (p) => p.startsWith('/admin/users') },
   {
     label: 'Impostazioni',
     to: '/admin/settings',
     icon: 'sliders',
+    pedina: 'grigio',
     matches: (p) => p.startsWith('/admin/settings'),
   },
 ]
 
 // Il gruppo di gestione esiste solo a sessione aperta: chi partecipa non deve
 // nemmeno intuire che sotto ci sia un'area riservata.
-const groups = computed(() =>
-  auth.user
-    ? [
-        { id: 'pubblico', label: '', items: publicItems },
-        { id: 'gestione', label: 'Gestione', items: adminItems },
-      ]
-    : [{ id: 'pubblico', label: '', items: publicItems }],
-)
+// Sul telefono le voci pubbliche stanno già nella riga sotto il logo: il
+// drawer porta solo la gestione.
+const groups = computed(() => {
+  const pubblico = { id: 'pubblico', label: '', items: publicItems }
+  const gestione = { id: 'gestione', label: 'Gestione', items: adminItems }
+  if (!auth.user) return [pubblico]
+  return isDesktop.value ? [pubblico, gestione] : [gestione]
+})
 
 function readStored(): boolean {
   try {
@@ -111,6 +136,30 @@ const isDrawer = computed(() => open.value && !isDesktop.value)
 
 function isActive(item: NavItem) {
   return item.matches(route.path)
+}
+
+// La sezione corrente dà il colore alla barra accanto al titolo di pagina;
+// fuori dalle sezioni (termini, privacy) resta il gesso.
+const segno = computed(() => {
+  const item = [...publicItems, ...adminItems].find(isActive)
+  return item ? `var(--${item.pedina})` : 'var(--ink)'
+})
+
+// Sul telefono la testata si toglie di mezzo scorrendo in giù e torna appena
+// si risale, come quella del blog: al tavolo lo schermo serve alle scatole.
+// In cima alla pagina resta sempre, e non sparisce mai col menù aperto o col
+// focus dentro (chi naviga da tastiera non deve perderla).
+const HIDE_THRESHOLD = 120
+const header = ref<HTMLElement | null>(null)
+const headerHidden = ref(false)
+let lastScrollY = 0
+
+function onScroll() {
+  const y = window.scrollY
+  if (Math.abs(y - lastScrollY) < 6) return
+  const focusInside = header.value?.contains(document.activeElement) ?? false
+  headerHidden.value = !isDesktop.value && !open.value && !focusInside && y > lastScrollY && y > HIDE_THRESHOLD
+  lastScrollY = y
 }
 
 function store(value: boolean) {
@@ -158,11 +207,13 @@ onMounted(() => {
   media = window.matchMedia(DESKTOP_QUERY)
   media.addEventListener('change', onMediaChange)
   document.addEventListener('keydown', onKeydown)
+  window.addEventListener('scroll', onScroll, { passive: true })
 })
 
 onBeforeUnmount(() => {
   media?.removeEventListener('change', onMediaChange)
   document.removeEventListener('keydown', onKeydown)
+  window.removeEventListener('scroll', onScroll)
   document.body.classList.remove(BODY_LOCK_CLASS)
 })
 
@@ -178,14 +229,22 @@ watch(
   () => route.fullPath,
   () => {
     if (!isDesktop.value) open.value = false
+    headerHidden.value = false
   },
 )
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'is-open': open, 'is-drawer': isDrawer }">
-    <header class="app-topbar">
+  <div
+    class="app-shell"
+    :class="{ 'is-open': open, 'is-drawer': isDrawer, 'is-header-hidden': headerHidden }"
+    :style="{ '--segno': segno }"
+  >
+    <header ref="header" class="app-topbar" @focusin="headerHidden = false">
+      <!-- Sul telefono l'hamburger serve solo all'area di gestione: le voci
+           pubbliche stanno in chiaro nella riga sotto il logo. -->
       <button
+        v-if="auth.user || isDesktop"
         ref="toggleButton"
         type="button"
         class="app-nav-toggle"
@@ -205,30 +264,28 @@ watch(
         </svg>
       </button>
 
-      <router-link
-        :to="{ name: 'events' }"
-        class="brand"
-        :aria-label="site.logoFilename ? site.siteTitle : undefined"
-      >
-        <img
-          v-if="site.logoFilename"
-          :src="`/api/uploads/${site.logoFilename}`"
-          class="brand-logo"
-          alt=""
-        />
-        <template v-else>
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="5.6" r="2.6" fill="currentColor" />
-            <path
-              d="M9 9.2h6c1.6 0 2.6.1 3.3.5l.1 3c.05.7-.6 1.2-1.3 1l-1.7-.5-.4 2c.6 1.8.8 3.6.6 5.4h-2.3l-.6-4.6h-1.4l-.6 4.6H8.4c-.2-1.8 0-3.6.6-5.4l-.4-2-1.7.5c-.7.2-1.35-.3-1.3-1l.1-3c.7-.4 1.7-.5 3.3-.5Z"
-              fill="currentColor"
-            />
-          </svg>
-          <span class="brand-name">{{ site.siteTitle }}</span>
-        </template>
+      <!-- Il logo di Root'n'Cool, preso dal blog: fisso, non si carica più
+           dalle impostazioni. Il nome del link è il titolo del sito. -->
+      <router-link :to="{ name: 'events' }" class="brand" :aria-label="site.siteTitle">
+        <img :src="logoUrl" class="brand-logo" alt="" />
       </router-link>
 
       <UserMenu v-if="auth.user" />
+
+      <!-- Telefono: le tre voci pubbliche in chiaro, ognuna con la sua pedina,
+           come le rubriche nella testata del blog. Da desktop ci pensa la
+           sidebar. -->
+      <nav v-if="!isDesktop" class="app-mobile-nav" aria-label="Sezioni">
+        <router-link
+          v-for="item in publicItems"
+          :key="item.to"
+          :to="item.to"
+          :aria-current="isActive(item) ? 'page' : undefined"
+          :style="{ '--pedina': `var(--${item.pedina})` }"
+        >
+          <i class="app-pedina" aria-hidden="true"></i>{{ item.short ?? item.label }}
+        </router-link>
+      </nav>
     </header>
 
     <div class="app-body">
@@ -281,6 +338,7 @@ watch(
                 :class="{ 'is-active': isActive(item) }"
                 :aria-current="isActive(item) ? 'page' : undefined"
                 :title="isDesktop && !open ? item.label : undefined"
+                :style="{ '--pedina': `var(--${item.pedina})` }"
               >
                 <svg viewBox="0 0 24 24" aria-hidden="true">
                   <path
@@ -309,9 +367,12 @@ watch(
         <div class="app-page">
           <slot />
         </div>
+        <!-- Come il piè di pagina del blog: il manager non è un vicolo cieco,
+             da qui si torna al blog e a Instagram. -->
         <footer class="app-footer">
+          <a href="https://rootncool.org">Il blog di Root'n'Cool</a>
+          <a href="https://www.instagram.com/rootncool/">Instagram</a>
           <router-link to="/terms">Termini e condizioni</router-link>
-          <span aria-hidden="true">·</span>
           <router-link to="/privacy">Privacy</router-link>
         </footer>
       </main>

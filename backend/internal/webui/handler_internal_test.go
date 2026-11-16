@@ -82,7 +82,9 @@ func TestHandlerFor_ServesIndexHTMLForClientRoutes(t *testing.T) {
 	})
 }
 
-func TestHandlerFor_InjectsTheConfiguredTitleAndFavicon(t *testing.T) {
+// La favicon è sempre quella di Root'n'Cool, presa dal blog: una caricata
+// dalle impostazioni non la sostituisce. Il titolo resta configurabile.
+func TestHandlerFor_InjectsTheConfiguredTitleButKeepsTheBlogFavicon(t *testing.T) {
 	handler, err := handlerFor(indexFS(), fakeSettingsReader{
 		cfg: settings.Settings{SiteTitle: "Ludoteca Vicolo Corto", FaviconFilename: "abc123.png"},
 	})
@@ -97,8 +99,8 @@ func TestHandlerFor_InjectsTheConfiguredTitleAndFavicon(t *testing.T) {
 	if !strings.Contains(body, "<title>Ludoteca Vicolo Corto</title>") {
 		t.Errorf("expected the configured title, got: %s", body)
 	}
-	if !strings.Contains(body, `href="/api/uploads/abc123.png"`) {
-		t.Errorf("expected the configured favicon URL, got: %s", body)
+	if !strings.Contains(body, `href="/favicon.png"`) {
+		t.Errorf("expected the blog favicon even when one is configured, got: %s", body)
 	}
 }
 
@@ -115,7 +117,7 @@ func TestHandlerFor_FallsBackToDefaultsWhenNothingIsConfigured(t *testing.T) {
 	if !strings.Contains(body, "<title>BoardGames Manager</title>") {
 		t.Errorf("expected the default title, got: %s", body)
 	}
-	if !strings.Contains(body, `href="/favicon.svg"`) {
+	if !strings.Contains(body, `href="/favicon.png"`) {
 		t.Errorf("expected the default favicon, got: %s", body)
 	}
 }
@@ -135,7 +137,7 @@ func TestHandlerFor_FallsBackToDefaultsWhenSettingsFail(t *testing.T) {
 		t.Fatalf("got status %d, want 200", rec.Code)
 	}
 	body := rec.Body.String()
-	if !strings.Contains(body, "<title>BoardGames Manager</title>") || !strings.Contains(body, `href="/favicon.svg"`) {
+	if !strings.Contains(body, "<title>BoardGames Manager</title>") || !strings.Contains(body, `href="/favicon.png"`) {
 		t.Errorf("expected the defaults on a settings error, got: %s", body)
 	}
 }

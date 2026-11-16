@@ -216,9 +216,11 @@ risultato di una sessione di brainstorming con l'utente.
   apri la pagina su http://localhost:8080, controlla desktop e
   viewport mobile (le pagine pubbliche sono mobile-first) e leggi la
   console per errori.
-- Il sistema visivo (colori, tipografia, componenti, tono "dado &
-  pedina") è documentato in `DESIGN.md`: rispettalo e aggiornalo quando
-  introduci nuovi pattern. I token stanno in `frontend/src/app.css`.
+- Il sistema visivo ("tavolo di notte": la stessa pelle del blog di
+  Root'n'Cool, `~/project/rootncool/rnc-blog` — nero, gesso, le quattro
+  pedine del logo, Fraunces + Atkinson, pillole) è documentato in
+  `DESIGN.md`: rispettalo e aggiornalo quando introduci nuovi pattern. I
+  token stanno in `frontend/src/app.css`. Niente temi configurabili.
 - Le pagine pubbliche (prenotazione, gestione booking, inserimento
   punteggi) sono usate da smartphone, in piedi al tavolo: mobile-first
   e pochi passaggi.
