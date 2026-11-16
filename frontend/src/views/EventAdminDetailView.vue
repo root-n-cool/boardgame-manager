@@ -8,6 +8,7 @@ import MarkdownEditor from '../components/MarkdownEditor.vue'
 import VenueSearchSelect, { type Venue } from '../components/VenueSearchSelect.vue'
 import QrPrintLink from '../components/QrPrintLink.vue'
 import { formatEventDateTime } from '../utils/dates'
+import { groupForPreparation } from '../utils/preparation'
 import { seatsLabel as formatSeats } from '../utils/seats'
 
 interface EventGameInfo {
@@ -83,6 +84,10 @@ const occupiedCopiesByGame = ref<Record<number, number>>({})
 /** Quante copie di ogni gioco ha l'evento: serve a numerarle solo se >1. */
 const copiesByGame = ref<Record<number, number>>({})
 const bookings = ref<BookingAdminInfo[]>([])
+/** Le copie dell'evento così come le dà il server: servono a "Da preparare". */
+const eventGames = ref<EventGameInfo[]>([])
+/** Il proprietario di ogni gioco del catalogo (testo libero, può mancare). */
+const ownerByGame = ref<Record<number, string | null>>({})
 const matchResults = ref<MatchResultAdminInfo[]>([])
 const bookingError = ref('')
 
@@ -107,6 +112,18 @@ const chosenLabel = computed(() =>
 function copyLabel(gameId: number, gameName: string, copyIndex: number) {
   return (copiesByGame.value[gameId] ?? 1) > 1 ? `${gameName} #${copyIndex}` : gameName
 }
+
+/** "Da preparare": i giochi della serata per proprietario, prenotati in testa. */
+const preparation = computed(() =>
+  groupForPreparation(eventGames.value, (id) => ownerByGame.value[id], bookings.value, copiesByGame.value),
+)
+
+const preparationSummary = computed(() => {
+  const total = eventGames.value.length
+  const booked = preparation.value.reduce((n, g) => n + g.items.filter((i) => i.bookedBy.length).length, 0)
+  // Si contano le copie: due copie di Catan sono due tavoli da preparare.
+  return `${booked} ${booked === 1 ? 'prenotato' : 'prenotati'} su ${total} ${total === 1 ? 'copia' : 'copie'}`
+})
 
 /** Prenotazioni raggruppate per copia, nell'ordine in cui arrivano. */
 const bookingsByCopy = computed(() => {
@@ -137,10 +154,16 @@ const bookingsByCopy = computed(() => {
 })
 
 async function load() {
-  const [event, games] = await Promise.all([
+  // Le prenotazioni arrivano insieme all'evento: "Da preparare" non deve
+  // mostrare per un attimo le copie nuove con le prenotazioni vecchie.
+  const [event, games, eventBookings] = await Promise.all([
     api.get<EventDetail>(`/events/${eventId}`),
-    api.get<PickerGame[]>('/games'),
+    api.get<(PickerGame & { owner?: string | null })[]>('/games'),
+    api.get<BookingAdminInfo[]>(`/events/${eventId}/bookings`),
   ])
+  eventGames.value = event.games
+  bookings.value = eventBookings
+  ownerByGame.value = Object.fromEntries(games.map((g) => [g.id, g.owner ?? null]))
   title.value = event.title
   description.value = event.description || ''
   eventDate.value = event.eventDate
@@ -170,7 +193,6 @@ async function load() {
     copies: count,
     bookable: bookable[Number(gameId)] ?? true,
   }))
-  bookings.value = await api.get<BookingAdminInfo[]>(`/events/${eventId}/bookings`)
   matchResults.value = await api.get<MatchResultAdminInfo[]>(`/events/${eventId}/match-results`)
 }
 
@@ -398,6 +420,35 @@ onMounted(async () => {
       <p v-if="saveMessage" class="success">{{ saveMessage }}</p>
       <p v-if="error" class="error">{{ error }}</p>
     </form>
+
+    <!-- Per chi prepara le buste: di chi è ogni gioco della serata e quali
+         sono già prenotati. Solo lettura, si aggiorna con il resto della
+         scheda. -->
+    <div class="panel-card">
+      <div class="section-head">
+        <h2>Da preparare</h2>
+        <span v-if="eventGames.length" class="section-count">{{ preparationSummary }}</span>
+      </div>
+      <p v-if="eventGames.length === 0" class="empty-note">
+        Nessun gioco nell'evento: aggiungili in "Giochi dell'evento".
+      </p>
+      <div v-for="group in preparation" :key="group.key" class="prep-group">
+        <h3 class="prep-owner">
+          {{ group.owner ?? 'Senza proprietario' }}
+          <span class="prep-owner-count" aria-hidden="true">{{ group.items.length }}</span>
+          <span class="visually-hidden">: {{ group.items.length === 1 ? '1 copia' : `${group.items.length} copie` }}</span>
+        </h3>
+        <ul role="list" class="prep-list">
+          <li v-for="item in group.items" :key="item.eventGameId" :class="{ 'is-booked': item.bookedBy.length }">
+            <span class="prep-name">{{ item.label }}</span>
+            <span v-if="item.bookedBy.length" class="prep-booked">
+              <span class="status-badge status-active">Prenotato</span>
+              <span class="prep-who">{{ item.bookedBy.join(', ') }}</span>
+            </span>
+          </li>
+        </ul>
+      </div>
+    </div>
 
     <div class="panel-card">
       <div class="section-head">

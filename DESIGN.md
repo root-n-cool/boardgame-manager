@@ -1419,6 +1419,17 @@ l'azione sta in basso a destra, dove il pollice la trova.
   bottone eredita il rosso dalla regola dei bottoni in `<li>`, con
   conferma che nomina partecipante e gioco.
 
+### Da preparare (scheda evento admin)
+Per chi riempie le buste prima della serata: i giochi dell'evento
+raggruppati per **proprietario** (campo testuale `owner`, raggruppato
+senza distinguere maiuscole e spazi; "Senza proprietario" in fondo). La
+testata del gruppo è un'etichetta maiuscoletta col conteggio; ogni copia
+è una riga (`#n` solo con più copie). I prenotati vengono prima, in
+grassetto, con la pastiglia "Prenotato" e i nomi (`Mario +2` = due posti
+in più); i liberi seguono in gesso attenuato. Solo lettura, niente spunte:
+si aggiorna con il resto della scheda. Logica in
+`frontend/src/utils/preparation.ts`.
+
 ### Banco prestiti (`/admin/events/:id/prestiti`)
 - **Riga-bersaglio** (`.loan-row`, dentro `.loan-list`): ogni riga è un
   `<button>` intero, alta almeno 3.5rem, testo a sinistra e verbo

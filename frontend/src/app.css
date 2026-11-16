@@ -7272,3 +7272,88 @@ label.select-filter {
 .event-game-name:focus-visible {
   outline-offset: -2px;
 }
+
+/* ---------- Da preparare (scheda evento admin) ---------- */
+
+/* Un gruppo per proprietario: chi prepara le buste legge "di chi è" e,
+   accanto a ogni scatola, se è già prenotata e da chi. */
+.prep-group + .prep-group {
+  margin-top: 1.25rem;
+}
+
+.prep-owner {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin: 0 0 0.4rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--card-line);
+  font-family: 'Testo', system-ui, sans-serif;
+  font-variation-settings: normal;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.prep-owner-count {
+  font-family: 'Data', monospace;
+  letter-spacing: 0;
+}
+
+.prep-list {
+  margin: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.prep-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.3rem 1rem;
+  min-height: 2.75rem;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--card-line);
+}
+
+.prep-list li:last-child {
+  border-bottom: none;
+}
+
+.prep-name {
+  font-weight: 700;
+}
+
+/* I liberi un tono sotto: a colpo d'occhio si contano i prenotati. */
+.prep-list li:not(.is-booked) .prep-name {
+  font-weight: 400;
+  color: var(--ink-muted);
+}
+
+.prep-booked {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.prep-booked .status-badge {
+  align-self: center;
+}
+
+.prep-who {
+  font-size: 0.9rem;
+}
+
+/* Sul telefono i nomi vanno sotto il gioco, non a fianco. */
+@media (max-width: 560px) {
+  .prep-list li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
