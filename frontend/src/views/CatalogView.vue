@@ -1,11 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api } from '../api/client'
 import SelectFilter from '../components/SelectFilter.vue'
 import GameDifficulty from '../components/GameDifficulty.vue'
 import { DIFFICULTY_LEVELS, difficultyLevel, type DifficultyLevel } from '../utils/difficulty'
 import { PLAYER_FILTER_OPTIONS, fitsPlayers, formatPlayers, normalizeName } from '../utils/gameFilters'
 import GameTypeTabs, { matchesType } from '../components/GameTypeTabs.vue'
+import ModalDialog from '../components/ModalDialog.vue'
+import ViewSwitcher from '../components/ViewSwitcher.vue'
+import { usePhone } from '../composables/usePhone'
+import { readListView, saveListView } from '../utils/listView'
 
 /**
  * Lo scaffale dell'associazione, aperto a tutti: cosa c'è da giocare, a
@@ -43,6 +47,27 @@ const difficulty = ref<DifficultyLevel | null>(null)
 const typeId = ref<number | null>(null)
 
 const difficultyOptions = DIFFICULTY_LEVELS.map((d) => ({ value: d, label: d }))
+
+// Card, lista o miniature: la scelta resta nel browser di chi guarda.
+const view = ref(readListView('catalog'))
+watch(view, (v) => saveListView('catalog', v))
+
+// Sul telefono i filtri a tendina stanno in un foglio dal basso, dietro un
+// bottone che dice quanti sono attivi: in linea spingevano il primo gioco
+// a metà del secondo schermo.
+const isPhone = usePhone()
+const filtersOpen = ref(false)
+const activeFilters = computed(() => (players.value !== null ? 1 : 0) + (difficulty.value !== null ? 1 : 0))
+// Allargando la finestra le tendine tornano in riga: il foglio si chiude.
+watch(isPhone, (phone) => {
+  if (!phone) filtersOpen.value = false
+})
+
+/** "Azzera" nel foglio tocca solo i filtri del foglio: ricerca e tab restano. */
+function resetSheetFilters() {
+  players.value = null
+  difficulty.value = null
+}
 
 const filtering = computed(
   () => query.value.trim() !== '' || players.value !== null || difficulty.value !== null || typeId.value !== null,
@@ -113,11 +138,43 @@ onMounted(async () => {
           <span class="visually-hidden">Cerca per nome</span>
           <input v-model="query" type="search" placeholder="Cerca per nome" autocomplete="off" />
         </label>
-        <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
-        <SelectFilter v-model="difficulty" label="Difficoltà" :options="difficultyOptions" anyLabel="Tutte" />
+        <template v-if="!isPhone">
+          <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
+          <SelectFilter v-model="difficulty" label="Difficoltà" :options="difficultyOptions" anyLabel="Tutte" />
+        </template>
+        <div class="list-tools">
+          <button
+            v-if="isPhone"
+            type="button"
+            class="btn-secondary filters-button"
+            :class="{ 'is-active': activeFilters > 0 }"
+            @click="filtersOpen = true"
+          >
+            Filtri<span v-if="activeFilters > 0" class="filters-count">{{ activeFilters }}</span>
+          </button>
+          <ViewSwitcher v-model="view" />
+        </div>
       </div>
 
-      <ul v-if="visible.length > 0" role="list" class="game-grid catalog-grid">
+      <ModalDialog :open="filtersOpen" title="Filtri" @close="filtersOpen = false">
+        <div class="filters-sheet">
+          <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
+          <SelectFilter v-model="difficulty" label="Difficoltà" :options="difficultyOptions" anyLabel="Tutte" />
+          <div class="form-actions">
+            <button type="button" class="btn-secondary" @click="resetSheetFilters">Azzera filtri</button>
+            <button type="button" @click="filtersOpen = false">
+              Mostra {{ visible.length === 1 ? '1 gioco' : `${visible.length} giochi` }}
+            </button>
+          </div>
+        </div>
+      </ModalDialog>
+
+      <ul
+        v-if="visible.length > 0"
+        role="list"
+        class="game-grid catalog-grid"
+        :class="{ 'is-list': view === 'list', 'is-thumbs': view === 'thumbs' }"
+      >
         <li v-for="g in visible" :key="g.id">
           <router-link :to="{ name: 'game-detail', params: { id: g.id } }">
             <img

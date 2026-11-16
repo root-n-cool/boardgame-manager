@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref } from 'vue'
+import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { api } from '../api/client'
 import BookingConfirmation from '../components/BookingConfirmation.vue'
@@ -14,6 +14,9 @@ import { PLAYER_FILTER_OPTIONS, fitsPlayers } from '../utils/gameFilters'
 import GameTypeTabs, { matchesType } from '../components/GameTypeTabs.vue'
 import { useGameTypesStore } from '../stores/gameTypes'
 import { listMyBookings, removeMyBooking, saveMyBooking, type MyBooking } from '../utils/myBookings'
+import ViewSwitcher from '../components/ViewSwitcher.vue'
+import { usePhone } from '../composables/usePhone'
+import { readListView, saveListView } from '../utils/listView'
 
 interface EventGameInfo {
   eventGameId: number
@@ -146,6 +149,17 @@ const venueLines = computed(() => {
 
 // Con un solo tavolo non c'è niente da filtrare.
 const showFilters = computed(() => !!event.value && event.value.games.length > 1)
+
+// Card, lista o miniature per i giochi al tavolo: la scelta resta nel
+// browser. Sul telefono il filtro "Giocatori" va nel foglio dal basso.
+const view = ref(readListView('event'))
+watch(view, (v) => saveListView('event', v))
+const isPhone = usePhone()
+const filtersOpen = ref(false)
+// Allargando la finestra la tendina torna in riga: il foglio si chiude.
+watch(isPhone, (phone) => {
+  if (!phone) filtersOpen.value = false
+})
 
 const visibleGames = computed(() =>
   (event.value?.games ?? []).filter(
@@ -404,16 +418,45 @@ onMounted(async () => {
     <p v-if="chipActionError" class="error">{{ chipActionError }}</p>
 
     <GameTypeTabs v-if="event" v-model="typeId" :games="event.games" />
-    <div v-if="showFilters" class="event-filters">
-      <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
+    <div class="event-filters">
+      <SelectFilter
+        v-if="showFilters && !isPhone"
+        v-model="players"
+        label="Giocatori"
+        :options="PLAYER_FILTER_OPTIONS"
+      />
+      <div class="list-tools">
+        <button
+          v-if="showFilters && isPhone"
+          type="button"
+          class="btn-secondary filters-button"
+          :class="{ 'is-active': players !== null }"
+          @click="filtersOpen = true"
+        >
+          Filtri<span v-if="players !== null" class="filters-count">1</span>
+        </button>
+        <ViewSwitcher v-if="event.games.length > 1" v-model="view" />
+      </div>
     </div>
+
+    <ModalDialog :open="filtersOpen" title="Filtri" @close="filtersOpen = false">
+      <div class="filters-sheet">
+        <SelectFilter v-model="players" label="Giocatori" :options="PLAYER_FILTER_OPTIONS" />
+        <div class="form-actions">
+          <button type="button" class="btn-secondary" @click="players = null">Azzera filtri</button>
+          <button type="button" @click="filtersOpen = false">
+            Mostra {{ visibleGames.length === 1 ? '1 gioco' : `${visibleGames.length} giochi` }}
+          </button>
+        </div>
+      </div>
+    </ModalDialog>
 
     <template v-for="section in gameSections" :key="section.key">
       <template v-if="section.title">
         <h3 class="table-subheading">{{ section.title }}</h3>
         <p class="table-note">Non si prenotano: chiedili all'organizzatore quando arrivi.</p>
       </template>
-    <ul class="event-games">
+    <ul class="event-games" :class="{ 'is-list': view === 'list', 'is-thumbs': view === 'thumbs' }">
       <li v-for="g in section.games" :key="g.eventGameId" :class="{ 'is-full': isFull(g) }">
         <img
           v-if="g.coverPath"
@@ -447,7 +490,11 @@ onMounted(async () => {
           <span class="visually-hidden">{{ types.byId(g.gameTypeId)!.name }}</span>
         </span>
         <div class="event-game-body">
-          <h3>{{ copyLabel(g) }}</h3>
+          <!-- Il nome porta alla scheda: in lista e miniature è l'unico
+               rimando, perché "Dettagli" e "Mentore" non ci stanno. -->
+          <h3>
+            <router-link :to="`/games/${g.gameId}`" class="event-game-name">{{ copyLabel(g) }}</router-link>
+          </h3>
           <GameDifficulty :weight="g.weight" />
           <p v-if="isFull(g)" class="seat-state">Al completo</p>
           <p v-else-if="seatsLabel(g)">{{ seatsLabel(g) }}</p>
@@ -475,7 +522,7 @@ onMounted(async () => {
           <template v-if="myBookingFor(g)">
             <span class="status-badge status-active">Prenotato</span>
             <button type="button" class="btn-danger" @click="cancelMyBooking(myBookingFor(g)!)">
-              Annulla prenotazione
+              Annulla<span class="label-long"> prenotazione</span>
             </button>
             <router-link
               class="detail-link"

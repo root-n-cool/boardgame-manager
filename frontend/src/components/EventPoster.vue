@@ -19,6 +19,16 @@ const backdrop = computed(() => ({ '--poster': `url("${src.value}")` }))
     :class="`event-poster--${variant}`"
     :style="backdrop"
   >
+    <!-- La locandina in cima alla pagina si apre intera: sul telefono è
+         contenuta a metà schermo e il testo piccolo va letto da vicino. -->
+    <a
+      v-if="variant === 'banner'"
+      :href="src"
+      target="_blank"
+      rel="noopener"
+      class="event-poster-open"
+      aria-label="Apri la locandina intera (nuova scheda)"
+    ></a>
     <img
       class="event-poster-img"
       :src="src"

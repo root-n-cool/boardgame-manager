@@ -915,6 +915,47 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+/* I campi non prendono l'anello staccato dei bottoni: sul nero, 2px di
+   vuoto fra il bordo grigio e l'anello arancio si leggevano come due
+   cornici, e il campo spariva in mezzo. Il bordo stesso diventa arancio,
+   con un alone attaccato. */
+input:not([type='checkbox'], [type='radio']):focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgb(219 129 66 / 35%);
+}
+
+/* La select disegnata da noi: niente cromature di sistema (che sul nero
+   cambiano da browser a browser), una freccia gesso a destra, alta quanto
+   un dito, e il fondo un tono sopra il nero perché si legga come un
+   comando e non come un buco. La freccia è un SVG inline: le custom
+   property non arrivano dentro un data URI, il colore è --ink-muted. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 44px;
+  padding-right: 2.5rem;
+  background-color: var(--card-alt);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b5b0a6' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.8rem center;
+  background-size: 1.1rem;
+  cursor: pointer;
+}
+
+select:hover {
+  border-color: var(--ink-muted);
+}
+
+/* Le voci della tendina aperta: alcuni browser le disegnano col fondo
+   della select, altri col proprio; così sono leggibili in entrambi. */
+select option {
+  background: var(--card);
+  color: var(--ink);
+}
+
 /* Editor Markdown (descrizioni di giochi ed eventi, vedi
    MarkdownEditorImpl.vue): sostituisce le textarea semplici, ma resta nella
    stessa cornice dei campi di form. md-editor-v3 espone il proprio tema
@@ -6789,4 +6830,445 @@ label.select-filter {
   flex-wrap: wrap;
   gap: 1rem 1.5rem;
   margin: 1rem 0 0;
+}
+
+/* ---------- Viste delle liste di giochi (ViewSwitcher.vue) ---------- */
+
+/* Una pillola segmentata come la barra delle linguette: la vista scelta è
+   la tessera gesso col segno nero. */
+.view-switcher {
+  display: inline-flex;
+  flex: none;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius-pill);
+}
+
+.view-switcher button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-pill);
+  color: var(--ink-muted);
+}
+
+.view-switcher button:hover {
+  background: var(--card-alt);
+  color: var(--ink);
+}
+
+.view-switcher button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.view-switcher svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Selettore di vista e bottone "Filtri" in fondo alla riga dei filtri. */
+.list-tools {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.filters-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 44px;
+}
+
+.filters-button.is-active {
+  border-color: var(--accent);
+}
+
+.filters-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.35rem;
+  height: 1.35rem;
+  padding: 0 0.3rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.78rem;
+}
+
+/* Il foglio dei filtri sul telefono: le tendine a tutta larghezza, e in
+   fondo "Azzera" e "Mostra N giochi", che chiude il foglio. */
+.filters-sheet {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-bottom: 0.25rem;
+}
+
+.filters-sheet .select-filter select {
+  width: 100%;
+}
+
+.filters-sheet .form-actions {
+  max-width: none;
+}
+
+/* ---------- Catalogo in lista ---------- */
+
+/* Una riga per gioco dentro un solo foglio: copertina piccola, nome, dati
+   e difficoltà. In uno schermo di telefono ne stanno otto o nove. */
+.catalog-grid.is-list {
+  grid-template-columns: 1fr;
+  gap: 0;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.catalog-grid.is-list li {
+  border: 0;
+  border-bottom: 1px solid var(--card-line);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.catalog-grid.is-list li:last-child {
+  border-bottom: 0;
+}
+
+.catalog-grid.is-list li:hover {
+  transform: none;
+  box-shadow: none;
+  background: var(--card-alt);
+}
+
+.catalog-grid.is-list a {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr);
+  column-gap: 0.85rem;
+  row-gap: 0.15rem;
+  align-items: center;
+  min-height: 4.75rem;
+  padding: 0.55rem 0.9rem;
+}
+
+.catalog-grid.is-list img,
+.catalog-grid.is-list .cover-placeholder {
+  grid-row: 1 / 4;
+  width: 3rem;
+  height: 4rem;
+  aspect-ratio: auto;
+  margin: 0;
+  border: 1px solid var(--card-line);
+  border-radius: 4px;
+}
+
+.catalog-grid.is-list .cover-placeholder svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.catalog-grid.is-list h2 {
+  margin: 0;
+  font-family: 'Testo', system-ui, sans-serif;
+  font-variation-settings: normal;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.catalog-grid.is-list p,
+.catalog-grid.is-list .game-difficulty {
+  margin: 0;
+}
+
+/* ---------- Catalogo in miniature ---------- */
+
+/* Lo scaffale visto da lontano: solo copertine e nome, tre per riga sul
+   telefono. Dati e difficoltà sono nella scheda. */
+.catalog-grid.is-thumbs {
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.6rem;
+}
+
+.catalog-grid.is-thumbs a {
+  padding-bottom: 0.5rem;
+}
+
+.catalog-grid.is-thumbs img,
+.catalog-grid.is-thumbs .cover-placeholder {
+  margin-bottom: 0.4rem;
+}
+
+.catalog-grid.is-thumbs .cover-placeholder svg {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.catalog-grid.is-thumbs h2 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  margin: 0 0.5rem;
+  font-family: 'Testo', system-ui, sans-serif;
+  font-variation-settings: normal;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  hyphens: none;
+}
+
+.catalog-grid.is-thumbs p,
+.catalog-grid.is-thumbs .game-difficulty {
+  display: none;
+}
+
+/* ---------- Tavolo dell'evento: nome, locandina, viste ---------- */
+
+/* Il nome del gioco è il rimando alla scheda in ogni vista. */
+.event-game-name {
+  color: inherit;
+  text-decoration: none;
+}
+
+.event-game-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+}
+
+/* Tutta la locandina in cima alla pagina è il link all'immagine intera. */
+.event-poster-open {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.event-poster-open:focus-visible {
+  outline-offset: -3px;
+}
+
+@media (max-width: 560px) {
+  .event-poster--banner .event-poster-img {
+    max-height: 50vh;
+  }
+}
+
+/* Riga dei filtri sopra "Al tavolo": la tendina a sinistra, selettore di
+   vista (e "Filtri" sul telefono) a destra. */
+.event-filters {
+  align-items: flex-end;
+}
+
+/* Lista: una riga per tavolo dentro il foglio del tavolo — copertina
+   piccola, nome, difficoltà e posti, "Prenota" a destra sotto il pollice. */
+.event-games.is-list {
+  grid-template-columns: 1fr;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.event-games.is-list li {
+  display: grid;
+  grid-template-columns: 3rem minmax(0, 1fr) auto;
+  grid-template-rows: auto;
+  column-gap: 0.8rem;
+  align-items: center;
+  padding: 0.55rem 0.8rem;
+  border: 0;
+  border-bottom: 1px solid var(--card-line);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.event-games.is-list li:last-child {
+  border-bottom: 0;
+}
+
+.event-games.is-list li > img,
+.event-games.is-list li > .cover-placeholder {
+  grid-row: 1;
+  grid-column: 1;
+  width: 3rem;
+  height: 4rem;
+  min-height: 0;
+  aspect-ratio: auto;
+  margin: 0;
+  border: 1px solid var(--card-line);
+  border-radius: 4px;
+}
+
+.event-games.is-list .cover-placeholder svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.event-games.is-list .event-game-links {
+  display: none;
+}
+
+.event-games.is-list .event-game-body {
+  grid-column: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0;
+}
+
+.event-games.is-list h3 {
+  font-family: 'Testo', system-ui, sans-serif;
+  font-variation-settings: normal;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.event-games.is-list .event-game-body p {
+  margin: 0;
+}
+
+.event-games.is-list .event-game-actions {
+  grid-column: 3;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+}
+
+.event-games.is-list button {
+  width: auto;
+  padding: 0.45rem 1.1rem;
+}
+
+.event-games.is-list .status-badge {
+  align-self: flex-end;
+}
+
+/* Miniature: le scatole viste da lontano, tre per riga sul telefono. Resta
+   lo stato del tavolo (al completo, prenotato) e l'azione. */
+.event-games.is-thumbs {
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 0.6rem;
+  padding: 0.6rem;
+}
+
+.event-games.is-thumbs li {
+  display: flex;
+  flex-direction: column;
+}
+
+.event-games.is-thumbs li > img,
+.event-games.is-thumbs li > .cover-placeholder {
+  grid-row: auto;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  aspect-ratio: 3 / 4;
+  border-right: 0;
+  border-bottom: 1px solid var(--card-line);
+}
+
+.event-games.is-thumbs .cover-placeholder svg {
+  width: 1.6rem;
+  height: 1.6rem;
+}
+
+.event-games.is-thumbs .event-game-body {
+  padding: 0.4rem 0.5rem 0;
+}
+
+.event-games.is-thumbs h3 {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-family: 'Testo', system-ui, sans-serif;
+  font-variation-settings: normal;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.25;
+  hyphens: none;
+}
+
+.event-games.is-thumbs .game-difficulty,
+.event-games.is-thumbs .event-game-links,
+.event-games.is-thumbs .event-game-body p:not(.seat-state) {
+  display: none;
+}
+
+.event-games.is-thumbs .event-game-actions {
+  gap: 0.3rem;
+  padding: 0.4rem 0.5rem 0.5rem;
+}
+
+.event-games.is-thumbs button {
+  padding: 0.4rem 0.5rem;
+  font-size: 0.82rem;
+}
+
+/* "Annulla prenotazione" al tavolo è un'azione distruttiva: contorno e
+   testo rosso, non il pieno arancio che `.event-games button` dà a
+   "Prenota" (stessa specificità, arrivava dopo e lo scavalcava). */
+.event-games button.btn-danger {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--field-line);
+}
+
+.event-games button.btn-danger:hover {
+  background: var(--danger-bg);
+  border-color: var(--danger);
+}
+
+/* In lista e miniature lo spazio è poco: "Annulla" basta, il resto
+   dell'etichetta resta per chi legge con lo screen reader. */
+.event-games.is-list .label-long,
+.event-games.is-thumbs .label-long {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* In lista "Aggiungi risultato" sta nella colonna di destra con le altre
+   azioni, alto quanto un dito. */
+.event-games.is-list .detail-link {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-end;
+  min-height: 44px;
+}
+
+/* In lista la tipologia resta, piccola, sull'angolo della copertina:
+   sotto "Tutti" un tavolo di ruolo e una scatola non devono sembrare
+   uguali. */
+.event-games.is-list .type-chip {
+  display: inline-flex;
+  top: auto;
+  bottom: 0.4rem;
+  left: 0.55rem;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.58rem;
+}
+
+/* In miniature il nome è ritagliato a due righe (overflow nascosto): il
+   focus va disegnato dentro, o verrebbe tagliato. */
+.event-game-name:focus-visible {
+  outline-offset: -2px;
 }

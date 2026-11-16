@@ -266,6 +266,31 @@ scroll orizzontale sotto i 480px.
 - **Spunte e radio** in arancio (`accent-color`): col tema scuro il
   browser le farebbe blu.
 - **Titoli dei media** in Atkinson 700: sono nomi di file e URL.
+- **Select disegnate**: `appearance: none`, fondo `--card-alt`, freccia
+  gesso attenuato (SVG inline), 44px. **Focus dei campi** (input, select,
+  textarea): bordo arancio con alone attaccato, non l'anello staccato dei
+  bottoni, che sul nero si leggeva come una seconda cornice.
+
+### Viste delle liste di giochi (catalogo pubblico, tavolo dell'evento)
+- **Selettore** (`ViewSwitcher.vue`): pillola segmentata con tre icone,
+  Card · Lista · Miniature (`aria-pressed`, 44px). La scelta resta nel
+  browser per pagina (`bgm.view.catalog`, `bgm.view.event`,
+  `utils/listView.ts`); senza scelta il telefono (<560px) parte da Lista,
+  lo schermo largo da Card.
+- **Lista** (`.is-list`): una riga per gioco dentro un solo foglio,
+  copertina 3×4rem, nome in Atkinson 700, dati e difficoltà; al tavolo
+  "Prenota" a destra, e per chi ha prenotato "Prenotato", "Annulla"
+  (l'etichetta lunga resta per lo screen reader) e "Aggiungi risultato".
+  Niente Dettagli/Mentore: il **nome è il link alla scheda** in ogni vista.
+- **Miniature** (`.is-thumbs`): copertine `minmax(100px, 1fr)`, nome su due
+  righe; al tavolo resta lo stato ("Al completo") e l'azione.
+- **Filtri sul telefono**: la ricerca resta in vista; le tendine stanno in
+  un foglio dal basso aperto da "Filtri" con il conteggio di quelli
+  attivi; dentro "Azzera filtri" e "Mostra N giochi".
+- **Locandina dell'evento**: tutta cliccabile, apre l'immagine intera;
+  sul telefono alta al massimo metà schermo.
+- **"Annulla prenotazione" al tavolo** è a contorno rosso, mai il pieno
+  arancio di "Prenota".
 
 ## Elevation & Depth
 
